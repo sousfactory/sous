@@ -13,6 +13,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Paths under `.sous/` that make up the starter; folders are copied whole. */
 export const STARTER = [
+  "README.md",
   "sous",
   "sous.yaml",
   "package.json",

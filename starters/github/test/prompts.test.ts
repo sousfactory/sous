@@ -143,7 +143,7 @@ describe("prompts/plan.md", () => {
   it("exists, is not empty and no longer names fcli", () => {
     expect(plan.trim().length).toBeGreaterThan(0);
     expect(plan).not.toMatch(/fcli|\.factory-cli/);
-    expect(plan).toContain(".sous/README.md");
+    expect(plan).toContain("github.com/heerens/sous/blob/main/docs/manual.md");
   });
 
   it("points at every vendored skill it relies on", () => {

@@ -1,13 +1,21 @@
 # sous ui
 
-A local web view of sous runs that looks like GitHub Actions. It shows the
-runs list, each run's flow as a graph, and every step's visits and logs.
-It updates live while `sous run` writes.
+The screen above the pass. Every run drawn as its flow graph, live while
+`sous run` writes: which step is working, which passed, where a review sent
+the work back. Open a step for its visits, the eval verdict and the agent's
+log as it grows. Switch between the run's attempts and its work items, see
+the GitHub Actions state of the squash once it landed, and preview any flow
+before it ever ran. It reads only the run record on disk; nothing else.
+
+![The feature flow mid-run](../../docs/images/feature-flow.png)
 
 ```
 ./sous ui                 # http://127.0.0.1:4680
 ./sous ui --port 5000
 ```
+
+`/runs?flow=<name>` previews a flow's graph, run or not; everything else is
+one click from the runs list.
 
 The first start builds the app into `packages/ui/dist/`, which is gitignored. After a
 change to `src/`, delete `dist/` or run `npm run build` here. The server
