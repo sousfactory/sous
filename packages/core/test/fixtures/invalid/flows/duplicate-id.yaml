@@ -1,0 +1,14 @@
+entry: merge
+steps:
+  - id: merge
+    uses: merge
+    with: { commits: "[]" }
+    routes:
+      - to: done
+        else: true
+  - id: merge
+    uses: merge
+    with: { commits: "[]" }
+    routes:
+      - to: done
+        else: true

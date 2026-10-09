@@ -1,0 +1,7 @@
+name: writes
+description: Exercises the module writes besides ctx.work; specDir is assigned, done goes to ctx.workDone.
+inputs:
+  specDir: { required: false }
+  done: { required: false }
+run:
+  module: ./run.ts

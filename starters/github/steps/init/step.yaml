@@ -1,0 +1,10 @@
+name: init
+description: Guard the run target, make sure the spec folder exists in the worktree, create the mirror labels, record specDir. The spec folders are those of ctx.specDir, which sous run derives from the specsDir setting.
+
+run:
+  module: ./run.ts
+  output:
+    type: object
+    required: [specDir]
+    properties:
+      specDir: { type: string, description: "<specsDir>/<issue>-<slug>, relative to the repository root" }

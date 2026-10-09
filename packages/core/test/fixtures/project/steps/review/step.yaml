@@ -1,0 +1,14 @@
+name: review
+inputs:
+  diffRange: {}
+  criteria: { description: "acceptance criteria" }
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    required: [verdict]
+    properties:
+      verdict: { enum: [clean, findings] }
+eval: { shell: "true" }
+maxIterations: 2
+loop: false

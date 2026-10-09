@@ -1,0 +1,21 @@
+name: next-work
+description: Pick the first open child of the issue, in the tracker's order, with no open blockers, and put it on the bench.
+
+run:
+  module: ./run.ts
+  output:
+    type: object
+    required: [work, remaining]
+    properties:
+      work:
+        description: "the picked sub-issue, or null when none is open or every open one is blocked"
+        oneOf:
+          - type: "null"
+          - type: object
+            required: [id, ref, title, body]
+            properties:
+              id: { type: string }
+              ref: { type: string }
+              title: { type: string }
+              body: { type: string }
+      remaining: { type: integer, description: "number of open sub-issues; 0 with work null means all done, more means all blocked" }

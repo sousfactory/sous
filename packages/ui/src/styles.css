@@ -1,0 +1,108 @@
+/*
+ * Primer's light tokens are the palette; Tailwind contributes utilities only
+ * (no preflight, which would fight Primer's BaseStyles). The theme maps the
+ * Primer variables to Tailwind colour names.
+ */
+@import "@primer/primitives/dist/css/functional/themes/light.css";
+@import "@primer/primitives/dist/css/primitives.css";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme inline {
+  --color-fg: var(--fgColor-default);
+  --color-fg-muted: var(--fgColor-muted);
+  --color-fg-accent: var(--fgColor-accent);
+  --color-fg-success: var(--fgColor-success);
+  --color-fg-danger: var(--fgColor-danger);
+  --color-fg-attention: var(--fgColor-attention);
+  --color-canvas: var(--bgColor-default);
+  --color-canvas-muted: var(--bgColor-muted);
+  --color-canvas-inset: var(--bgColor-inset);
+  --color-line: var(--borderColor-default);
+  --color-line-muted: var(--borderColor-muted);
+  --font-mono: var(--fontStack-monospace);
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bgColor-default);
+  color: var(--fgColor-default);
+  font-size: 14px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+a {
+  color: var(--fgColor-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+@keyframes sous-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sous-rotate {
+  animation: sous-rotate 1s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+/* The job log: GitHub keeps it dark in the light theme too. */
+.sous-log {
+  --log-bg: #0d1117;
+  --log-fg: #e6edf3;
+  --log-muted: #8b949e;
+  --log-line: #30363d;
+  --log-hover: #161b22;
+  background: var(--log-bg);
+  color: var(--log-fg);
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+/* Routes are drawing only: they never take the pointer from a card (hover would flicker). */
+.react-flow__edge {
+  pointer-events: none;
+}
+
+/* GitHub's tooltip on a step card: a dark bubble on the card's top edge, its
+   lower quarter over the card, shown on hover. It stays inside the graph: the
+   hovered card is raised above its neighbours and the routes, and the
+   scrolling graph clips it like any other content. */
+.react-flow__node:hover {
+  z-index: 1000 !important;
+}
+.sous-tip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, 25%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--bgColor-emphasis);
+  color: var(--fgColor-onEmphasis);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+}
+.sous-tip-host:hover > .sous-tip {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 80ms 50ms;
+}

@@ -1,0 +1,17 @@
+name: implement
+description: "Implement a task in the worktree following the implement and tdd skills and commit. Eval: the project checks (../verify/eval.ts) in the worktree."
+
+inputs:
+  task: { required: true, description: "what to implement: title and body of the work item; its acceptance criteria are the definition of done" }
+
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    required: [filesTouched, testsRun]
+    properties:
+      filesTouched: { type: array, items: { type: string }, description: "paths relative to the repository root" }
+      testsRun: { type: array, items: { type: string }, description: "commands that were run" }
+
+eval: ../verify/eval.ts
+maxIterations: 3

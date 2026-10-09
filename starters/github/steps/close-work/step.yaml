@@ -1,0 +1,20 @@
+name: close-work
+description: Comment the work's commits on its sub-issue, close it and mark the work done in the run record. Idempotent.
+
+inputs:
+  commits: { required: true, description: "shas of the work's commits (build and fix), as an array or a JSON array string" }
+
+run:
+  module: ./run.ts
+  output:
+    type: object
+    required: [work]
+    properties:
+      work:
+        type: object
+        required: [id, ref, title, body]
+        properties:
+          id: { type: string }
+          ref: { type: string }
+          title: { type: string }
+          body: { type: string }

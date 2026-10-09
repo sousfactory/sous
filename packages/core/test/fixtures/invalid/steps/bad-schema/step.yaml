@@ -1,0 +1,5 @@
+name: bad-schema
+run:
+  prompt: prompt.md
+  output:
+    type: strng

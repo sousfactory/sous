@@ -1,0 +1,7 @@
+name: prepared
+prepare:
+  module: ./prepare.ts
+  output: { type: object, properties: { note: { type: string } }, required: 7 }
+run:
+  prompt: prompt.md
+  output: { type: object }

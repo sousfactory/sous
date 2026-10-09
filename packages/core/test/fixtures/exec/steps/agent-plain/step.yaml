@@ -1,0 +1,6 @@
+name: agent-plain
+inputs:
+  task: {}
+run:
+  prompt: prompt.md
+  output: { type: object }

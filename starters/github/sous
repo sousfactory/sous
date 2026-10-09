@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Runs the installed sous from `.sous/`, so the project root (sous.yaml,
+# flows/, logs/, runs/) resolves regardless of the caller's cwd.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+exec npx sous "$@"

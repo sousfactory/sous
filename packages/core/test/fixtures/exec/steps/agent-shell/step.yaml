@@ -1,0 +1,8 @@
+name: agent-shell
+inputs:
+  task: {}
+run:
+  prompt: prompt.md
+  output: { type: object }
+eval: { shell: "verify" }
+maxIterations: 2

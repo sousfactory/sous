@@ -1,0 +1,20 @@
+name: prepared
+description: A prompt step with a prepare that runs or skips the agent by `mode`, and an eval that reports what it saw.
+inputs:
+  task: { required: true }
+  mode: { required: false, description: "run (default), skip, work (puts #14 on the bench) or bad (output off the schema)" }
+prepare:
+  module: ./prepare.ts
+  output:
+    type: object
+    required: [note]
+    properties:
+      note: { type: string }
+      extra: { type: string }
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    properties:
+      ok: { type: boolean }
+eval: ./eval.ts

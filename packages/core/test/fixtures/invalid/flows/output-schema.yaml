@@ -1,0 +1,8 @@
+entry: bad
+steps:
+  - id: bad
+    uses: bad-schema
+    agent: { kind: claude, model: m }
+    routes:
+      - to: done
+        else: true

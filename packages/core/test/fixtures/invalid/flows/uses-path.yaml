@@ -1,0 +1,7 @@
+entry: merge
+steps:
+  - id: merge
+    uses: ../steps/merge
+    routes:
+      - to: done
+        else: true

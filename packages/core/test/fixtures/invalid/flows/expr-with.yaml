@@ -1,0 +1,8 @@
+entry: merge
+steps:
+  - id: merge
+    uses: merge
+    with: { commits: 'x ${{ steps.build.commits[ }} y' }
+    routes:
+      - to: done
+        else: true

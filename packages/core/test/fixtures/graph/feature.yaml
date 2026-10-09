@@ -1,0 +1,118 @@
+# A realistic feature flow for the graph renderer: parsed only, its steps
+# are never loaded.
+entry: init
+steps:
+  - id: init
+    uses: init
+    routes:
+      - to: next-work
+
+  - id: next-work
+    uses: next-work
+    routes:
+      - to: implement
+        when: 'result.output.work != null'
+      - to: sync
+        when: 'result.output.remaining === 0'
+      - to: blocked
+        else: true
+
+  - id: implement
+    uses: implement
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      task: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+    routes:
+      - to: review
+
+  - id: review
+    uses: review
+    agent: { kind: codex, model: gpt-5.5 }
+    with:
+      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      criteria:  ${{ ctx.work.body }}
+    routes:
+      - to: close-work
+        when: res.ok
+      - to: blocked
+        when: steps.review.visits >= 3
+      - to: fix
+        else: true
+
+  - id: fix
+    uses: fix
+    agent: { kind: claude, model: claude-opus-5-5 }
+    resume: ${{ steps.fix.session ?? steps.implement.session }}
+    with:
+      input:     ${{ steps.review.log }}
+      inputKind: review
+      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+    routes:
+      - to: review
+
+  - id: close-work
+    uses: close-work
+    with:
+      commits: ${{ [...steps.implement.commits, ...(steps.fix?.commits ?? [])] }}
+    routes:
+      - to: next-work
+
+  - id: sync
+    uses: sync
+    with:
+      baseBranch: main
+    routes:
+      - to: resolve
+        when: result.output.conflict
+      - to: verify
+        else: true
+
+  - id: resolve
+    uses: resolve
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      compile: "./gradlew compileKotlin compileTestKotlin"
+    routes:
+      - to: verify
+
+  - id: verify
+    uses: verify
+    routes:
+      - to: review-full
+        when: res.ok
+      - to: fix-full
+        else: true
+
+  - id: review-full
+    uses: review
+    agent: { kind: codex, model: gpt-5.5 }
+    with:
+      diffRange: main...HEAD
+      criteria:  ${{ ctx.readFile(ctx.specDir + "/spec.md") }}
+    routes:
+      - to: merge
+        when: res.ok
+      - to: blocked
+        when: 'steps["review-full"].visits >= 3'
+      - to: fix-full
+        else: true
+
+  - id: fix-full
+    uses: fix
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      input:     '${{ ctx.previous === "review-full" ? steps["review-full"].log : steps.verify.log }}'
+      inputKind: '${{ ctx.previous === "review-full" ? "review" : "verify" }}'
+      diffRange: main...HEAD
+    routes:
+      - to: review-full
+        when: 'ctx.previous === "review-full"'
+      - to: verify
+        else: true
+
+  - id: merge
+    uses: merge
+    with:
+      baseBranch: main
+    routes:
+      - to: done

@@ -1,0 +1,20 @@
+# bench: exercises the executor with one module step and one agent step,
+# not a delivery flow. No init or merge, so any issue id works and
+# nothing is committed; `lifecycle: steps` keeps the issue untouched too.
+entry: hello-world
+lifecycle: steps
+steps:
+  - id: hello-world
+    uses: hello-world
+    with:
+      name: ${{ ctx.issue.title }}
+    routes:
+      - to: tell-a-joke
+
+  - id: tell-a-joke
+    uses: tell-a-joke
+    agent: { kind: claude, model: claude-haiku-4-5-20251001 }
+    with:
+      topic: ${{ steps["hello-world"].output.name }}
+    routes:
+      - to: done

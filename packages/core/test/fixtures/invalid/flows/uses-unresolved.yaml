@@ -1,0 +1,7 @@
+entry: merge
+steps:
+  - id: merge
+    uses: does-not-exist
+    routes:
+      - to: done
+        else: true

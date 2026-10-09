@@ -1,0 +1,3 @@
+baseBranch: develop
+lifecycle: steps
+idleTimeoutSeconds: 60

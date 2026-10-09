@@ -1,0 +1,9 @@
+entry: build
+steps:
+  - id: build
+    uses: build
+    agent: { kind: claude, model: m }
+    with: { verify: "true" }
+    routes:
+      - to: done
+        else: true

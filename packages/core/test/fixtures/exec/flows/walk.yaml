@@ -1,0 +1,26 @@
+entry: start
+steps:
+  - id: start
+    uses: echo
+    with:
+      a: ${{ ctx.issue.title }}
+    routes:
+      - to: work
+
+  - id: work
+    uses: agent
+    agent: { kind: claude, model: claude-x }
+    with:
+      task: ${{ steps.start.output.inputs.a }}
+    routes:
+      - to: finish
+        when: res.ok
+      - to: blocked
+        else: true
+
+  - id: finish
+    uses: echo
+    with:
+      a: ${{ steps.work.commits.join(",") }}
+    routes:
+      - to: done

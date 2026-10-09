@@ -1,0 +1,7 @@
+name: mismatch
+inputs:
+  declared: {}
+  forEval: { prompt: false }
+run:
+  prompt: prompt.md
+  output: { type: object }

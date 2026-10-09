@@ -1,0 +1,8 @@
+entry: bang
+steps:
+  - id: bang
+    uses: bang
+    agent: { kind: claude, model: m }
+    routes:
+      - to: done
+        else: true

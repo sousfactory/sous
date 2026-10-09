@@ -1,0 +1,4 @@
+name: verify
+description: The project's checks in the worktree, eval-only, as listed in eval.ts; a check with `when` runs only when the diff against the base branch touches that folder. Stops at the first failure; an empty list passes with a warning.
+
+eval: ./eval.ts

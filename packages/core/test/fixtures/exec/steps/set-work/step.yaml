@@ -1,0 +1,6 @@
+name: set-work
+description: Puts `work` on the bench, or the issue itself without one (next-work and sync in one).
+inputs:
+  work: { required: false }
+run:
+  module: ./run.ts

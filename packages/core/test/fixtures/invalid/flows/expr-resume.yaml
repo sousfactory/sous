@@ -1,0 +1,10 @@
+entry: build
+steps:
+  - id: build
+    uses: build
+    agent: { kind: claude, model: m }
+    resume: '${{ steps.build?. }}'
+    with: { task: t, verify: v }
+    routes:
+      - to: done
+        else: true

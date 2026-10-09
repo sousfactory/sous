@@ -1,0 +1,19 @@
+name: fix
+description: "Address review findings or a failed verification log in the worktree and commit. Eval: the project checks (../verify/eval.ts) in the worktree."
+
+inputs:
+  input:     { required: true, description: "what came back: the blocking review findings, or the output of the failed verification" }
+  inputKind: { required: true, description: "review or verify" }
+  diffRange: { required: true, description: "git range of the change under discussion" }
+
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    required: [filesTouched, testsRun]
+    properties:
+      filesTouched: { type: array, items: { type: string }, description: "paths relative to the repository root" }
+      testsRun: { type: array, items: { type: string }, description: "commands that were run" }
+
+eval: ../verify/eval.ts
+maxIterations: 3

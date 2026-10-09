@@ -1,0 +1,19 @@
+# sous project settings. Every value here is the core default, written out
+# so the choices are visible. Models, iteration caps and commands are not settings:
+# they live in <flowsDir>/*.yaml and <stepsDir>/*/step.yaml.
+#
+# Every *Dir is relative to this folder (.sous/).
+
+baseBranch: main                                  # runs fork from it; merge squashes onto it
+branch: feature/${{ issue.id }}-${{ slug }}       # run branch; slug = first four words of the issue title
+labelPrefix: sous                                  # sous:running / sous:blocked set by the run, sous:merged by the merge step
+lifecycle: core                                   # the run claims, blocks and closes its issue; steps: the core only reads the tracker
+idleTimeoutSeconds: 1800                          # agent idle timeout; a long build may need more than sandcastle's 600
+tracker: github                                   # github, beads, local, or the path of a project module (see README)
+
+specsDir: ../specs                                # <specsDir>/<issue>-<slug>/spec.md, written by /sous-plan
+flowsDir: flows                                   # <flowsDir>/<name>.yaml, the flows `sous run <name>` starts
+stepsDir: steps                                   # <stepsDir>/<name>/step.yaml; `uses: <name>` in a flow
+skillsDir: skills                                 # vendored skills; {{ctx.skillsDir}} in prompts
+logsDir: logs                                     # gitignored; one agent log per step iteration under <logsDir>/<issue>/
+runsDir: runs                                     # gitignored; session.json and events.jsonl under <runsDir>/<issue>/

@@ -1,0 +1,10 @@
+entry: merge
+steps:
+  - id: merge
+    uses: merge
+    with: { commits: "[]" }
+    routes:
+      - to: done
+        when: res.ok
+      - to: blocked
+        when: "!res.ok"

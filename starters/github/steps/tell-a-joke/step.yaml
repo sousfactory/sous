@@ -1,0 +1,17 @@
+name: tell-a-joke
+description: Test-bench step (flows/bench.yaml), an agentic prompt that asks for one short joke about `topic`, with an eval that checks the shape of the answer. The agent must not touch the worktree.
+
+inputs:
+  topic: { required: true, description: "what the joke is about" }
+
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    required: [setup, punchline]
+    properties:
+      setup: { type: string, minLength: 1 }
+      punchline: { type: string, minLength: 1 }
+
+eval: ./eval.ts
+maxIterations: 2

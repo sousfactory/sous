@@ -1,0 +1,2 @@
+name: no-run
+description: Neither run nor eval; the loader rejects it.

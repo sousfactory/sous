@@ -1,0 +1,7 @@
+entry: bad
+steps:
+  - id: bad
+    uses: no-run
+    routes:
+      - to: done
+        else: true

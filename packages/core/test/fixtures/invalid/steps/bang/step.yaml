@@ -1,0 +1,4 @@
+name: bang
+run:
+  prompt: prompt.md
+  output: { type: object }

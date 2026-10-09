@@ -1,0 +1,7 @@
+name: echo
+description: Returns its inputs and what it saw of ctx.
+inputs:
+  a: { required: false }
+  b: { required: false }
+run:
+  module: ./run.ts

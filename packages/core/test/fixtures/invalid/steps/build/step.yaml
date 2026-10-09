@@ -1,0 +1,14 @@
+name: build
+description: Implement the task and run the verify command.
+inputs:
+  task: { required: true, description: "what to implement" }
+  verify: { description: "test command" }
+  hint: { required: false }
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    required: [filesTouched]
+    properties:
+      filesTouched: { type: array, items: { type: string } }
+eval: ./eval.ts

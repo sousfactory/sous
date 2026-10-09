@@ -1,0 +1,6 @@
+name: merge
+inputs:
+  commits: { required: true }
+  dryRun: { required: false }
+run:
+  module: ./run.ts

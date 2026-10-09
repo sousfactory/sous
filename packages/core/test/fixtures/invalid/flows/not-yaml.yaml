@@ -1,0 +1,4 @@
+entry: merge
+steps:
+  - id: merge
+   uses: [unclosed

@@ -1,0 +1,54 @@
+entry: sync
+steps:
+  - id: sync
+    uses: sync
+    routes:
+      - to: blocked
+        when: result.output.conflict
+      - to: build
+        else: true
+
+  - id: build
+    uses: build
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      task: ${{ ctx.issue.title + "\n\n" + ctx.issue.body }}
+      verify: "./gradlew test"
+    routes:
+      - to: review
+
+  - id: review
+    uses: review
+    agent: { kind: codex, model: gpt-5.5 }
+    with:
+      diffRange: ${{ steps.build.commits[0] + "^..HEAD" }}
+      criteria: ${{ ctx.issue.body }}
+    routes:
+      - to: merge
+        when: res.ok
+      - to: blocked
+        when: steps.review.visits >= 3
+      - to: fix
+        else: true
+
+  - id: fix
+    uses: build
+    agent: { kind: claude, model: claude-opus-5-5 }
+    resume: ${{ steps.fix?.session ?? steps.build.session }}
+    with:
+      task: "Address the review findings: ${{ steps.review.log }}"
+      verify: "./gradlew test"
+      hint: ${{ ctx.previous }}
+    maxIterations: 2
+    loop: true
+    routes:
+      - to: review
+        when: "true"
+
+  - id: merge
+    uses: merge
+    with:
+      commits: ${{ [...steps.build.commits, ...(steps.fix?.commits ?? [])] }}
+    routes:
+      - to: done
+        when: "true"

@@ -1,0 +1,7 @@
+entry: bad
+steps:
+  - id: bad
+    uses: bad-yaml
+    routes:
+      - to: done
+        else: true

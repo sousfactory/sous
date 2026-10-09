@@ -1,0 +1,12 @@
+name: agent
+description: A prompt step whose eval is ok unless the output says otherwise.
+inputs:
+  task: { required: true }
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    properties:
+      ok: { type: boolean }
+      log: { type: string }
+eval: ./eval.ts

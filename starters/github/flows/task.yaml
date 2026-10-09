@@ -1,0 +1,90 @@
+# task: a single issue without sub-issues (type:task or type:bug); the
+# feature flow minus next-work and close-work. The issue is the work from the
+# start, so the shared steps read ctx.work as they do in feature.
+allowedLabels: [type:task, type:bug]
+entry: init
+steps:
+  - id: init
+    uses: init
+    routes:
+      - to: implement
+
+  - id: implement
+    uses: implement
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      task: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+    routes:
+      - to: review
+
+  - id: review
+    uses: review
+    agent: { kind: claude, model: claude-opus-5-5 }   # cross-model alternative: { kind: codex, model: gpt-5.5 }
+    with:
+      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      criteria:  ${{ ctx.work.body }}
+    routes:
+      - to: sync
+        when: res.ok
+      - to: blocked
+        when: steps.review.visits >= 3
+      - to: fix
+        else: true
+
+  - id: fix
+    uses: fix
+    agent: { kind: claude, model: claude-opus-5-5 }
+    resume: ${{ steps.fix.session ?? steps.implement.session }}
+    with:
+      input:     ${{ steps.review.log }}
+      inputKind: review
+      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+    routes:
+      - to: review
+
+  - id: sync
+    uses: sync-resolve
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      baseBranch: main
+    routes:
+      # Review the branch the first time, and again whenever this sync brought
+      # anything in from main (a conflict always did): only reviewed code lands.
+      # A quiet main after a passed review goes straight to merge.
+      - to: review-full
+        when: 'steps["review-full"] === undefined || prepared.output.moved || prepared.output.conflict'
+      - to: merge
+        else: true
+
+  - id: review-full
+    uses: review
+    agent: { kind: claude, model: claude-opus-5-5 }   # cross-model alternative: { kind: codex, model: gpt-5.5 }
+    with:
+      diffRange: main...HEAD
+      criteria:  ${{ ctx.readFile(ctx.specDir + "/spec.md") }}
+    routes:
+      - to: sync
+        when: res.ok
+      # Counts review rounds and the re-reviews after a sync that brought something in.
+      - to: blocked
+        when: 'steps["review-full"].visits >= 4'
+      - to: fix-review-full
+        else: true
+
+  - id: fix-review-full
+    uses: fix
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      input:     ${{ steps["review-full"].log }}
+      inputKind: review
+      diffRange: main...HEAD
+    routes:
+      - to: review-full
+
+  - id: merge
+    uses: merge
+    with:
+      baseBranch: main
+      mergedLabel: sous:merged
+    routes:
+      - to: done

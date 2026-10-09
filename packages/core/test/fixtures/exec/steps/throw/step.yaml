@@ -1,0 +1,3 @@
+name: throw
+run:
+  module: ./run.ts

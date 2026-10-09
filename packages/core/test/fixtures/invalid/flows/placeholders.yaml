@@ -1,0 +1,9 @@
+entry: bad
+steps:
+  - id: bad
+    uses: mismatch
+    agent: { kind: claude, model: m }
+    with: { declared: x, forEval: y }
+    routes:
+      - to: done
+        else: true

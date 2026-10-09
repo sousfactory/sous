@@ -1,0 +1,28 @@
+name: review
+description: Judge a diff cold and read-only against acceptance criteria and the repository rules; findings for a fixer.
+
+inputs:
+  diffRange: { required: true, description: "git range of the change under review, e.g. <sha>^..HEAD or main...HEAD" }
+  criteria:  { required: true, description: "what the change must satisfy: the work item's body or the whole spec" }
+
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    required: [verdict, findings]
+    properties:
+      verdict: { enum: [clean, findings] }
+      findings:
+        type: array
+        items:
+          type: object
+          required: [severity, file, message]
+          properties:
+            severity: { enum: [blocker, major, minor, nit] }
+            file: { type: string }
+            line: { type: integer }
+            message: { type: string }
+
+eval: ./eval.ts
+maxIterations: 2
+loop: false

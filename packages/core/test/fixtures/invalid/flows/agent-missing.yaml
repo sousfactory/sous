@@ -1,0 +1,8 @@
+entry: build
+steps:
+  - id: build
+    uses: build
+    with: { task: t, verify: v }
+    routes:
+      - to: done
+        else: true

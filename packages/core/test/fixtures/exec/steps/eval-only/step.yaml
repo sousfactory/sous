@@ -1,0 +1,5 @@
+name: eval-only
+description: No run; the eval is the work. Ok unless `pass` is "no".
+inputs:
+  pass: { required: false }
+eval: ./eval.ts

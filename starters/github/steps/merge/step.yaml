@@ -1,0 +1,14 @@
+name: merge
+description: Squash the branch into the base-branch checkout, clean up sandbox, worktree and branch, label the issue and post the terminal comment. Never pushes; the lifecycle closes the issue.
+
+inputs:
+  baseBranch: { required: true, description: "the branch the repository checkout must be on and the squash lands on (the baseBranch setting)" }
+  mergedLabel: { required: false, description: "state label to set on the issue once landed, e.g. sous:merged; absent sets none" }
+
+run:
+  module: ./run.ts
+  output:
+    type: object
+    required: [sha]
+    properties:
+      sha: { type: string, description: "the squash commit, or the base branch head when the branch was already merged" }

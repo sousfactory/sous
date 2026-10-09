@@ -1,0 +1,6 @@
+name: echo-eval
+inputs:
+  pass: { required: false }
+run:
+  module: ./run.ts
+eval: ./eval.ts

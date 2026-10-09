@@ -1,0 +1,8 @@
+name: sync
+description: Merge the base branch.
+run:
+  module: ./run.ts
+  output:
+    type: object
+    properties:
+      conflict: { type: boolean }

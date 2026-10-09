@@ -1,0 +1,108 @@
+# feature: a parent issue delivered sub-issue by sub-issue, then reviewed as
+# a whole. Syncing repeats until main is quiet so only reviewed code lands.
+# Review rounds are capped per scope by `steps.<id>.visits`; an agent that
+# exhausts its iterations goes to blocked on its own.
+allowedLabels: [type:feature]
+entry: init
+steps:
+  - id: init
+    uses: init
+    routes:
+      - to: next-work
+
+  - id: next-work
+    uses: next-work
+    routes:
+      - to: implement
+        when: 'result.output.work != null'
+      - to: sync
+        when: 'result.output.remaining === 0'
+      - to: blocked
+        else: true
+
+  - id: implement
+    uses: implement
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      task: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+    routes:
+      - to: review
+
+  - id: review
+    uses: review
+    agent: { kind: claude, model: claude-opus-5-5 }   # cross-model alternative: { kind: codex, model: gpt-5.5 }
+    with:
+      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      criteria:  ${{ ctx.work.body }}
+    routes:
+      - to: close-work
+        when: res.ok
+      - to: blocked
+        when: steps.review.visits >= 3
+      - to: fix
+        else: true
+
+  - id: fix
+    uses: fix
+    agent: { kind: claude, model: claude-opus-5-5 }
+    resume: ${{ steps.fix.session ?? steps.implement.session }}
+    with:
+      input:     ${{ steps.review.log }}
+      inputKind: review
+      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+    routes:
+      - to: review
+
+  - id: close-work
+    uses: close-work
+    with:
+      commits: ${{ [...steps.implement.commits, ...(steps.fix?.commits ?? [])] }}
+    routes:
+      - to: next-work
+
+  - id: sync
+    uses: sync-resolve
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      baseBranch: main
+    routes:
+      # Review the branch the first time, and again whenever this sync brought
+      # anything in from main (a conflict always did): only reviewed code lands.
+      # A quiet main after a passed review goes straight to merge.
+      - to: review-full
+        when: 'steps["review-full"] === undefined || prepared.output.moved || prepared.output.conflict'
+      - to: merge
+        else: true
+
+  - id: review-full
+    uses: review
+    agent: { kind: claude, model: claude-opus-5-5 }   # cross-model alternative: { kind: codex, model: gpt-5.5 }
+    with:
+      diffRange: main...HEAD
+      criteria:  ${{ ctx.readFile(ctx.specDir + "/spec.md") }}
+    routes:
+      - to: sync
+        when: res.ok
+      # Counts review rounds and the re-reviews after a sync that brought something in.
+      - to: blocked
+        when: 'steps["review-full"].visits >= 4'
+      - to: fix-review-full
+        else: true
+
+  - id: fix-review-full
+    uses: fix
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      input:     ${{ steps["review-full"].log }}
+      inputKind: review
+      diffRange: main...HEAD
+    routes:
+      - to: review-full
+
+  - id: merge
+    uses: merge
+    with:
+      baseBranch: main
+      mergedLabel: sous:merged
+    routes:
+      - to: done

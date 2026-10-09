@@ -1,0 +1,9 @@
+entry: merge
+steps:
+  - id: merge
+    uses: merge
+    agent: { kind: claude, model: m }
+    with: { commits: "[]" }
+    routes:
+      - to: done
+        else: true
