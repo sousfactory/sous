@@ -129,7 +129,7 @@ describe("step READMEs", () => {
 });
 
 describe("the /sous-plan skill and the plan prompt", () => {
-  // Absent until `sous init` installed it; the starter's own checkout has none.
+  // Absent until `sous init` installed them; the starter's own checkout has none.
   it.skipIf(!existsSync(join(repoRoot, ".claude", "skills", "sous-plan", "SKILL.md")))("the installed skill is the starter's, unchanged", () => {
     expect(readFileSync(join(repoRoot, ".claude", "skills", "sous-plan", "SKILL.md"), "utf8")).toBe(readFileSync(join(root, "skills", "sous-plan", "SKILL.md"), "utf8"));
   });

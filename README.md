@@ -26,13 +26,17 @@ Once per repository, from its root:
 ```
 npm install -D sous-factory      # or in a scratch folder: npx sous-factory init
 npx sous init                    # copies the starter into .sous/, installs it,
-                                 # puts the /sous-plan skill under .claude/skills/
+                                 # puts /sous-plan under .claude/skills/,
+                                 # and prints what is left to adapt by hand
 ```
 
-The skill only starts `.sous/prompts/plan.md`; its `ADAPT` notes mark what
-must match your repository: the spec headings and sub-issue format your
-steps read, your flows' `allowedLabels`, your rule files and gate commands.
-The flows carry the repository's check commands, so steps know no build tool.
+`init` ends with a checklist: the check commands in
+`.sous/steps/verify/eval.ts`, `sous.yaml`, the flows' models and labels,
+and the `ADAPT` notes in `.sous/prompts/plan.md`. To be walked through all
+of it in Claude Code, add this repository's `skills/sous-setup` to your
+project (`cp -r <clone of this repo>/skills/sous-setup .claude/skills/`, or
+download that folder from GitHub) and run `/sous-setup`; it also does the
+install and init when `.sous/` is missing.
 
 **1. A module step**, `steps/greet/`:
 
@@ -405,7 +409,7 @@ Everything else on the tracker, such as the `<prefix>:merged` label the
 ## 8. CLI
 
 ```
-sous init [--starter <dir>] [--force] # copy a starter into .sous/, npm install, add the /sous-plan skill
+sous init [--starter <dir>] [--force] # copy a starter into .sous/, npm install, add the /sous-plan skill, print the checklist
 sous run <flow> <issue> [--restart]   # validate, then start or continue; <issue> may be a bead id
 sous status <issue>                   # session facts and the timeline
 sous graph <flow>                     # Mermaid diagram from the YAML

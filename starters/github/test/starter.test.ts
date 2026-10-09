@@ -34,6 +34,7 @@ export const STARTER = [
   "steps/hello-world",
   "steps/tell-a-joke",
   "skills",
+  "skills/sous-plan",
   "prompts/plan.md",
   "test/bench.test.ts",
   "test/checked-steps.ts",

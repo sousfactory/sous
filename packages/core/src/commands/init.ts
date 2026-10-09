@@ -3,6 +3,8 @@
  * dependencies and puts the `/sous-plan` skill where Claude Code finds it,
  * so a new project begins from working flows instead of an empty folder.
  * The starter is copied, not linked: the project owns it from then on.
+ * What stays manual is printed as a checklist, so nobody has to read the
+ * manual to know what to adapt.
  */
 import { existsSync } from "node:fs";
 import { cp, mkdir, readdir, writeFile } from "node:fs/promises";
@@ -19,6 +21,16 @@ export const GITIGNORE = "logs/\nruns/\nnode_modules/\n";
 /** The skill as the starter ships it, and where Claude Code looks for it. */
 export const SKILL_SOURCE = join("skills", "sous-plan");
 export const SKILL_TARGET = join(".claude", "skills", "sous-plan");
+
+/** What `sous init` cannot know about the project; printed once the files are in place. */
+export const setupChecklist = (project: string): string[] => [
+  "init: still to do by hand:",
+  `  1. ${join(project, "steps", "verify", "eval.ts")}: set BASE_BRANCH and fill CHECKS (until then every verify passes with a WARN in the log)`,
+  `  2. ${join(project, "sous.yaml")}: tracker, baseBranch, branch template, lifecycle`,
+  `  3. ${join(project, "flows")}/*.yaml: agent models and allowedLabels; create the labels on the tracker (type:task, type:bug, type:feature)`,
+  `  4. ${join(project, "prompts", "plan.md")}: follow its ADAPT notes`,
+  `  5. cd ${project} && ./sous validate && npx vitest run; then ./sous run bench <issue> as a smoke test`,
+];
 
 /** Folders a starter checkout may contain that a fresh project must not inherit. */
 const SKIPPED = new Set(["node_modules", "logs", "runs", ".lock"]);
@@ -90,11 +102,13 @@ export const initCommand = async (args: readonly string[], deps: InitDeps): Prom
 
   // Last, so a registry hiccup leaves a complete project behind: rerun `npm install` in .sous/ and go on.
   const install = await exec("npm", ["install"], { cwd: target });
+  const checklist = setupChecklist(relative(repoRoot, target));
   if (install.code !== 0) {
     err(`sous init: npm install failed in ${target} (exit ${install.code}); the project is in place, run it again there\n${install.stderr.trim()}`);
+    for (const line of checklist) out(line);
     return 1;
   }
   out(`init: installed dependencies in ${target}`);
-  out(`init: done; adapt ${join(target, "sous.yaml")} and the ADAPT notes in ${join(target, "prompts", "plan.md")}, then \`sous validate\``);
+  for (const line of checklist) out(line);
   return 0;
 };

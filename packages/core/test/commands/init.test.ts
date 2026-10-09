@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Exec, ExecResult } from "../../src/adapters/exec.js";
-import { defaultStarterDir, GITIGNORE, initCommand, parseInitArgs, SKILL_TARGET } from "../../src/commands/init.js";
+import { defaultStarterDir, GITIGNORE, initCommand, parseInitArgs, setupChecklist, SKILL_TARGET } from "../../src/commands/init.js";
 import { validateProject } from "../../src/config/validate.js";
 import { fixture, io } from "../helpers.js";
 
@@ -14,8 +14,10 @@ const ok: ExecResult = { code: 0, stdout: "", stderr: "" };
 const starterOf = async (): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), "sous-starter-"));
   await cp(fixture("project"), dir, { recursive: true });
-  await mkdir(join(dir, "skills", "sous-plan"), { recursive: true });
-  await writeFile(join(dir, "skills", "sous-plan", "SKILL.md"), "# plan\n", "utf8");
+  for (const [skill, text] of [["sous-plan", "# plan\n"], ["tdd", "# vendored\n"]] as const) {
+    await mkdir(join(dir, "skills", skill), { recursive: true });
+    await writeFile(join(dir, "skills", skill, "SKILL.md"), text, "utf8");
+  }
   await writeFile(join(dir, "package.json"), '{ "name": "starter" }\n', "utf8");
   for (const leftover of ["node_modules/x", "logs/1", "runs/1"]) {
     await mkdir(join(dir, leftover), { recursive: true });
@@ -49,8 +51,24 @@ describe("parseInitArgs", () => {
   });
 });
 
+describe("setupChecklist", () => {
+  it("names the four files to adapt and the checks to run", () => {
+    const lines = setupChecklist(".sous");
+    expect(lines).toHaveLength(6);
+    expect(lines[0]).toBe("init: still to do by hand:");
+    expect(lines[1]).toContain(".sous/steps/verify/eval.ts: set BASE_BRANCH and fill CHECKS");
+    expect(lines[2]).toContain(".sous/sous.yaml: tracker, baseBranch, branch template, lifecycle");
+    expect(lines[3]).toContain(".sous/flows/*.yaml: agent models and allowedLabels");
+    expect(lines[3]).toContain("type:task, type:bug, type:feature");
+    expect(lines[4]).toContain(".sous/prompts/plan.md: follow its ADAPT notes");
+    expect(lines[5]).toContain("cd .sous && ./sous validate && npx vitest run");
+    expect(lines[5]).toContain("./sous run bench <issue>");
+  });
+});
+
+
 describe("initCommand", () => {
-  it("copies the starter into .sous/ without its leftovers, writes the gitignore, installs and places the skill; the result validates", async () => {
+  it("copies the starter into .sous/ without its leftovers, writes the gitignore, installs, places the skill and prints the checklist; the result validates", async () => {
     const starter = await starterOf();
     const s = await setup();
     expect(await initCommand(["--starter", starter], s.deps)).toBe(0);
@@ -63,7 +81,8 @@ describe("initCommand", () => {
     expect(await readFile(join(root, ".gitignore"), "utf8")).toBe(GITIGNORE);
     expect(s.calls).toEqual([{ command: "npm", args: ["install"], cwd: root }]);
     expect(await readFile(join(s.repoRoot, SKILL_TARGET, "SKILL.md"), "utf8")).toBe("# plan\n");
-    expect(s.out.at(-1)).toMatch(/^init: done; adapt .*sous\.yaml/);
+    expect(existsSync(join(s.repoRoot, ".claude", "skills", "tdd"))).toBe(false);
+    expect(s.out.slice(-6)).toEqual(setupChecklist(".sous"));
     expect(validateProject(root).errors).toEqual([]);
   });
 
@@ -95,5 +114,7 @@ describe("initCommand", () => {
     const exec: Exec = async () => ({ code: 1, stdout: "", stderr: "npm ERR! boom" });
     expect(await initCommand(["--starter", bare], { ...failing.deps, exec })).toBe(1);
     expect(failing.err[0]).toMatch(/npm install failed in .*\.sous \(exit 1\); the project is in place.*\nnpm ERR! boom/);
+    // The files are there, so the checklist still applies.
+    expect(failing.out.slice(-6)).toEqual(setupChecklist(".sous"));
   });
 });
