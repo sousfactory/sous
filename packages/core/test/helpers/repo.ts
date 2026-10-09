@@ -14,14 +14,15 @@ export type TempRepo = {
   cleanup(): Promise<void>;
 };
 
-const identity = { GIT_AUTHOR_NAME: "sous test", GIT_AUTHOR_EMAIL: "sous@test", GIT_COMMITTER_NAME: "sous test", GIT_COMMITTER_EMAIL: "sous@test" };
-
 export const tempRepo = async (): Promise<TempRepo> => {
   const root = await mkdtemp(join(tmpdir(), "sous-git-"));
   const dir = join(root, "repo");
-  const git = async (args: readonly string[], cwd = dir) => must(await exec("git", args, { cwd, env: identity }), `git ${args[0]}`);
+  const git = async (args: readonly string[], cwd = dir) => must(await exec("git", args, { cwd }), `git ${args[0]}`);
 
   await git(["init", "-q", "-b", "main", dir], root);
+  // The adapter under test commits here too, so the identity lives in the repository, not in this helper's environment; a CI runner has no global one.
+  await git(["config", "user.name", "sous test"]);
+  await git(["config", "user.email", "sous@test"]);
   await git(["config", "commit.gpgsign", "false"]);
 
   const commitFile = async (file: string, content: string, message = `add ${file}`, cwd = dir) => {
