@@ -110,7 +110,7 @@ The browser opens one EventSource. Each change event names an issue, or
 `null` for the lock or the set of runs, and the visible views refetch. An
 open agent log fetches only the bytes after its last offset. Logs are served
 from `logs/<issue>/` by plain file name only. A visit's log name is the file
-name of the `logPath` its events recorded (core README §5.3, §7), so current
+name of the `logPath` its events recorded ([manual, chapter 8 and 11](../../docs/manual.md)), so current
 `<spanId>-<scope>-<step>-<n>.log` names and the `<step>-<n>.log` names of older
 runs both resolve; only an older run's call still in flight, with no path
 recorded yet, falls back to `<step>-<n>.log`.
