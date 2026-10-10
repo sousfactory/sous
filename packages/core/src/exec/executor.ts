@@ -337,10 +337,12 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
   /**
    * A continuing visit (re-entry after `blocked`, or a rerun after a crash)
    * evals the recorded result first, as iteration 0, so work a human fixed
-   * by hand is not redone. Without a session to resume, a retry sends the
-   * original prompt again: a retry prompt alone would reach an agent that
-   * never saw the task. When `prepare` skips the agent, the eval runs once
-   * with no result; there is nothing to retry.
+   * by hand is not redone. A step without an eval passes that check only on
+   * a recorded result: with neither, nothing shows the work was done, so the
+   * agent runs again with the original prompt. Without a session to resume,
+   * a retry sends the original prompt again: a retry prompt alone would
+   * reach an agent that never saw the task. When `prepare` skips the agent,
+   * the eval runs once with no result; there is nothing to retry.
    */
   const runAgentic = async (entry: LoadedEntry, c: CompiledEntry, key: string, inputs: Inputs, continuing: boolean): Promise<VisitResult> => {
     const { step } = entry;
@@ -360,8 +362,8 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     let nextPrompt = prompt;
     let last: VisitResult | undefined;
 
-    if (continuing) {
-      const recorded: Envelope | undefined = record?.output !== undefined ? { summary: "", commits: record.commits, output: record.output } : undefined;
+    const recorded: Envelope | undefined = continuing && record?.output !== undefined ? { summary: "", commits: record.commits, output: record.output } : undefined;
+    if (continuing && (step.eval !== undefined || recorded !== undefined)) {
       const res = await evaluate(step, inputs, 0, recorded, prepared);
       last = { res, ...(recorded !== undefined ? { envelope: recorded } : {}), ...withPrepared, iteration: 0, exhausted: false };
       if (res.ok) return last;

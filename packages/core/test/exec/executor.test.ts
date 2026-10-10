@@ -585,6 +585,33 @@ describe("runFlow: re-entry after blocked and resume after a crash", () => {
     expect(rerun.ports.events.of("iteration.agent.start")[0]?.n).toBe(3);
   });
 
+  it("runs the agent again when a step without an eval re-enters with no recorded result", async () => {
+    let crashed = bumpIteration(sessionOf("plain"), "plain");
+    crashed = updateVisit(recordVisit(crashed, "plain", { ok: false, log: "", output: undefined, commits: [] }), "plain", { session: "s1" });
+    const sandbox = fakeSandbox({ agent: [answer("s2")] });
+
+    const { session, requests, next } = await visit(entryOf("plain", "agent-plain", { with: { task: "x" } }), crashed, portsOf(sandbox));
+
+    expect(requests).toEqual([expect.objectContaining({ resumeSession: "s1" })]);
+    expect(requests[0]?.prompt).not.toBe(retryPrompt(""));
+    expect(next).toBe("done");
+    expect(session.scopes["1"]?.["plain"]).toMatchObject({ visits: 1, ok: true, session: "s2" });
+
+    const blocked = await visit(entryOf("plain", "agent-plain", { with: { task: "x" } }), markBlocked(crashed), portsOf(fakeSandbox({ agent: [answer("s3")] })));
+    expect(blocked.requests).toHaveLength(1);
+    expect(blocked.next).toBe("done");
+  });
+
+  it("passes a step without an eval on re-entry when its result was recorded, and routes on it", async () => {
+    const stopped = markBlocked(recordVisit(bumpIteration(sessionOf("plain"), "plain"), "plain", { ok: true, log: "", output: { outcome: "stopped" }, commits: [], session: "s1" }));
+    const plain = entryOf("plain", "agent-plain", { with: { task: "x" }, routes: [{ to: "blocked", when: "steps.plain.output.outcome === 'stopped'" }, { to: "done" }] });
+
+    const { requests, next } = await visit(plain, stopped);
+
+    expect(requests).toEqual([]);
+    expect(next).toBe("blocked");
+  });
+
   it("re-runs a deterministic step that was blocked through its routes", async () => {
     const stuck = markBlocked(recordVisit(sessionOf("next-work"), "next-work", { ok: true, log: "", output: {}, commits: [] }));
     const pick = entryOf("next-work", "echo", { routes: [{ to: "done" }] });
