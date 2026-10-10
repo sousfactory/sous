@@ -209,6 +209,8 @@ with an eval, a prepare that skips the agent, a new flow.
 - The starter's step READMEs, one per folder under `starters/github/steps/`.
 - [sous ui](packages/ui/README.md): pages, status mapping, architecture.
 - [`skills/sous-setup`](skills/sous-setup/SKILL.md): the guided setup.
+- [`skills/sous-migrate`](skills/sous-migrate/SKILL.md): port an existing
+  development-loop skill into a flow.
 - [Contributing](CONTRIBUTING.md): build, verify, release.
 
 ## Maintainers

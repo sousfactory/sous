@@ -62,6 +62,15 @@ and the tests. It skips what is already done, so it is safe to run again
 later. The skill is not part of the package, since it runs *before* the
 project exists.
 
+**Porting an existing workflow.** If the repository already has a
+development-loop skill (one big `SKILL.md`, or one that chains sub-skills
+and scripts), `skills/sous-migrate` ports it into a flow beside it:
+install it the same way and run `/sous-migrate <skill>` after setup. It
+maps every part of the skill to a step, eval, prepare, route or "not
+ported", shows that mapping for a yes before writing anything, keeps
+sub-skills whole as one step each, and lists the moves that would take
+more out of the agent as suggestions only.
+
 ### By hand
 
 From the repository root:
