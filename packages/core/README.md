@@ -44,7 +44,7 @@ cd .sous && ./sous validate
 in `steps/verify/eval.ts`, `sous.yaml`, the flows' models and labels, the
 `ADAPT` notes in `prompts/plan.md`. For a guided setup in Claude Code,
 install the
-[`sous-setup` skill](https://github.com/heerens/sous/tree/main/skills/sous-setup)
+[`sous-setup` skill](https://github.com/sousfactory/sous/tree/main/skills/sous-setup)
 from the repository first and run `/sous-setup`; it does the install and
 init too.
 
@@ -61,13 +61,13 @@ sous ui [--port n]                    # the run viewer on 127.0.0.1:4680
 
 ## Documentation
 
-- [README](https://github.com/heerens/sous#readme): the concept, the
+- [README](https://github.com/sousfactory/sous#readme): the concept, the
   flows, screenshots.
-- [The manual](https://github.com/heerens/sous/blob/main/docs/manual.md):
+- [The manual](https://github.com/sousfactory/sous/blob/main/docs/manual.md):
   getting started, concepts and reference, how-tos.
-- [The starter](https://github.com/heerens/sous/tree/main/starters/github):
+- [The starter](https://github.com/sousfactory/sous/tree/main/starters/github):
   the flows and steps `sous init` copies, with a README per step.
-- [`sous-factory/testing`](https://github.com/heerens/sous/blob/main/docs/manual.md#20-test-steps-and-flows):
+- [`sous-factory/testing`](https://github.com/sousfactory/sous/blob/main/docs/manual.md#20-test-steps-and-flows):
   the fakes and the harness for a project's own tests.
 
 MIT.

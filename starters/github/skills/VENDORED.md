@@ -4,7 +4,8 @@ Every folder here except `sous-plan/` is copied **verbatim** from Matt Pocock's
 skills repo (<https://github.com/mattpocock/skills>, `skills/engineering/*` and
 `skills/productivity/grilling`), so the factory has a pinned, offline-stable copy.
 
-- License: MIT, Copyright (c) 2026 Matt Pocock (the upstream `LICENSE`).
+- License: MIT, Copyright (c) 2026 Matt Pocock; the upstream `LICENSE` is
+  copied verbatim to [`LICENSE-mattpocock-skills`](LICENSE-mattpocock-skills).
 - Source commit: `ed37663cc5fbef691ddfecd080dff42f7e7e350d`
 - Vendored: 2026-07-26
 

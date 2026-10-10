@@ -3,7 +3,7 @@
 *Issue in, merged commit out.*
 
 [![npm](https://img.shields.io/npm/v/sous-factory)](https://www.npmjs.com/package/sous-factory)
-[![ci](https://github.com/heerens/sous/actions/workflows/ci.yml/badge.svg)](https://github.com/heerens/sous/actions/workflows/ci.yml)
+[![ci](https://github.com/sousfactory/sous/actions/workflows/ci.yml/badge.svg)](https://github.com/sousfactory/sous/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A local software factory, run like a kitchen: you write the menu, `sous`
@@ -210,6 +210,12 @@ with an eval, a prepare that skips the agent, a new flow.
 - [sous ui](packages/ui/README.md): pages, status mapping, architecture.
 - [`skills/sous-setup`](skills/sous-setup/SKILL.md): the guided setup.
 - [Contributing](CONTRIBUTING.md): build, verify, release.
+
+## Maintainers
+
+Built and maintained by [Alexander Heerens](https://github.com/heerens).
+Development is sponsored by [Inauditech](https://www.inauditech.com), which
+also helps teams adopt `sous`.
 
 ## License
 

@@ -56,7 +56,7 @@ npx sous init                 # copies this folder into .sous/, installs it, add
 ```
 
 or, guided, with the `sous-setup` skill from the
-[sous repository](https://github.com/heerens/sous/tree/main/skills/sous-setup)
+[sous repository](https://github.com/sousfactory/sous/tree/main/skills/sous-setup)
 and `/sous-setup` in Claude Code. Four things are the project's to set:
 
 1. `steps/verify/eval.ts`: `BASE_BRANCH` and the `CHECKS` to run. Until the
@@ -76,9 +76,9 @@ npx vitest run                    # the flows over fakes
 ./sous run task <issue>           # or feature; status and ui to follow
 ```
 
-The [manual](https://github.com/heerens/sous/blob/main/docs/manual.md)
-covers the rest: [getting started](https://github.com/heerens/sous/blob/main/docs/manual.md#part-i-getting-started)
-and the [how-tos](https://github.com/heerens/sous/blob/main/docs/manual.md#part-iii-how-tos)
+The [manual](https://github.com/sousfactory/sous/blob/main/docs/manual.md)
+covers the rest: [getting started](https://github.com/sousfactory/sous/blob/main/docs/manual.md#part-i-getting-started)
+and the [how-tos](https://github.com/sousfactory/sous/blob/main/docs/manual.md#part-iii-how-tos)
 for changing checks, models, steps, flows, the plan phase and the tracker.
 
 ## This project

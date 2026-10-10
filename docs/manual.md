@@ -52,7 +52,7 @@ Once per machine:
 Install the setup skill into the repository, then run it in Claude Code:
 
 ```
-cp -r <clone of github.com/heerens/sous>/skills/sous-setup .claude/skills/
+cp -r <clone of github.com/sousfactory/sous>/skills/sous-setup .claude/skills/
 ```
 
 `/sous-setup` checks the prerequisites, runs the install and init below

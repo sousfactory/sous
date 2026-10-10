@@ -143,7 +143,7 @@ describe("prompts/plan.md", () => {
   it("exists, is not empty and no longer names fcli", () => {
     expect(plan.trim().length).toBeGreaterThan(0);
     expect(plan).not.toMatch(/fcli|\.factory-cli/);
-    expect(plan).toContain("github.com/heerens/sous/blob/main/docs/manual.md");
+    expect(plan).toContain("github.com/sousfactory/sous/blob/main/docs/manual.md");
   });
 
   it("points at every vendored skill it relies on", () => {
@@ -239,6 +239,7 @@ describe("skills/", () => {
 
   it("holds the vendored skills the prompts point at, with the vendoring note", () => {
     expect(existsSync(join(root, "skills", "VENDORED.md"))).toBe(true);
+    expect(existsSync(join(root, "skills", "LICENSE-mattpocock-skills"))).toBe(true);
     for (const skill of skills) expect(existsSync(join(root, "skills", skill, "SKILL.md")), `${skill}/SKILL.md`).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 <!-- TEMPLATE: the /sous-plan skill starts this prompt. It came with the starter; review every ADAPT note against your steps and repository, then delete the notes. -->
 # sous plan: from an idea to a spec and runnable issues
 
-You are running the plan phase of `sous` (the factory: https://github.com/heerens/sous/blob/main/docs/manual.md;
+You are running the plan phase of `sous` (the factory: https://github.com/sousfactory/sous/blob/main/docs/manual.md;
 this prompt is the plan phase's only description). This is one interactive
 session with a human. You turn a GitHub issue into a committed spec and, for
 a feature, into sub-issues the run phase can pick up with

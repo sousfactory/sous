@@ -3,9 +3,11 @@
   "version": "0.1.1",
   "description": "A local software factory: runs an issue through a flow of agent prompts and TypeScript modules in a git worktree, with a live run viewer.",
   "license": "MIT",
+  "homepage": "https://sousfactory.com",
+  "bugs": "https://github.com/sousfactory/sous/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/heerens/sous.git",
+    "url": "git+https://github.com/sousfactory/sous.git",
     "directory": "packages/core"
   },
   "keywords": [
