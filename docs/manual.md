@@ -57,8 +57,9 @@ cp -r <clone of github.com/sousfactory/sous>/skills/sous-setup .claude/skills/
 
 `/sous-setup` checks the prerequisites, runs the install and init below
 when `.sous/` is missing, then goes through the files that need adapting
-one at a time, shows every edit as a diff, and finishes with `validate`
-and the tests. It skips what is already done, so it is safe to run again
+one at a time, shows every edit as a diff, and runs `validate` and the
+tests. Last, it looks for a development-loop skill the repository already
+has and offers to port it with `/sous-migrate` now or later. It skips what is already done, so it is safe to run again
 later. The skill is not part of the package, since it runs *before* the
 project exists.
 

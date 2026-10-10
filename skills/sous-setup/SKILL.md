@@ -1,10 +1,10 @@
 ---
 name: sous-setup
-description: Set up the sous software factory in this repository, step by step. Interactive: checks prerequisites, installs and inits sous-factory if .sous/ is missing, then adapts steps/verify/eval.ts, sous.yaml, the flows and prompts/plan.md with the human, and verifies. Use as /sous-setup ("set up sous", "sous setup"); skips what is already done.
+description: Set up the sous software factory in this repository, step by step. Interactive: checks prerequisites, installs and inits sous-factory if .sous/ is missing, then adapts steps/verify/eval.ts, sous.yaml, the flows and prompts/plan.md with the human, verifies, and offers /sous-migrate for a development-loop skill the repository already has. Use as /sous-setup ("set up sous", "sous setup"); skips what is already done.
 disable-model-invocation: true
 ---
 
-Walk the human through the four setup steps below, in order. Before each
+Walk the human through the five setup steps below, in order. Before each
 step, check its state and skip what is done; say in one line what you skip.
 Ask for the facts you need, show every edit as a diff before writing it,
 and write only after a yes. Never push. Never run `sous run` on a real
@@ -64,7 +64,30 @@ cd .sous && ./sous validate && npx vitest run
 
 Both must pass; fix what they report. Then offer a smoke test on an
 issue the human names: `./sous run bench <issue>` (the `bench` flow has
-`lifecycle: steps`, so it changes nothing on the issue). Finish with a
-two-line summary of what was set and what was deferred.
+`lifecycle: steps`, so it changes nothing on the issue).
+
+## 5. An existing development loop
+
+Look for a skill or command that already runs the development loop in
+this repository: in `.claude/skills/*/SKILL.md`, `.claude/commands/`,
+`.agents/`, `AGENTS.md` and `CLAUDE.md`, one whose description or steps
+take an issue or task through implement, test, review and merge or ship
+("next task", "pick up work", "implement the ticket"). Skip the
+starter's own skills and `/sous-plan`. Read only the front matter and
+the headings; this is a pointer, not a port.
+
+If none is found, say so in one line. If one or more are found, name
+each with its path and one line on what it does, and ask the human:
+
+- **Port it now** with `/sous-migrate <skill>`. If `.claude/skills/sous-migrate/`
+  is missing, install it first, the same way as this skill:
+  `cp -r <clone of github.com/sousfactory/sous>/skills/sous-migrate .claude/skills/`.
+  Then hand over; `/sous-migrate` asks its own questions.
+- **Later**: print the two commands (install, then `/sous-migrate <skill>`)
+  so the human has them.
+- **No**: leave it.
+
+Finish with a two-line summary of what was set and what was deferred,
+including the answer here.
 
 Argument received: $ARGUMENTS
