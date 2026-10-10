@@ -6,12 +6,12 @@
 [![ci](https://github.com/sousfactory/sous/actions/workflows/ci.yml/badge.svg)](https://github.com/sousfactory/sous/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A local software factory, run like a kitchen: you write the menu, `sous`
-runs the line, and nothing is served that did not pass the pass. The name
-is the sous-chef, the one who actually runs service. You plan an issue with
-an agent in the loop; `sous` builds, reviews, fixes and merges it without
-one. It runs on your machine, in a git worktree, with the `claude` or
-`codex` CLI you already have.
+**A software factory for coding agents, on your machine.**
+
+`sous` runs your software development flow with coding agents: implement,
+review, fix, merge, or any step you write. The flow is a deterministic graph
+in YAML, like a GitHub Actions workflow, so the agents do the work and the
+graph decides what happens next.
 
 ![The feature flow mid-run in sous ui](docs/images/feature-flow.png)
 

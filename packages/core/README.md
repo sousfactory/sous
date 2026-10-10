@@ -2,12 +2,12 @@
 
 *Issue in, merged commit out.*
 
-A local software factory, run like a kitchen: you write the menu, `sous`
-runs the line, and nothing is served that did not pass the pass. The name
-is the sous-chef, the one who actually runs service. You plan an issue with
-an agent in the loop; `sous` builds, reviews, fixes and merges it without
-one. It runs on your machine, in a git worktree, with the `claude` or
-`codex` CLI you already have.
+**A software factory for coding agents, on your machine.**
+
+`sous` runs your software development flow with coding agents: implement,
+review, fix, merge, or any step you write. The flow is a deterministic graph
+in YAML, like a GitHub Actions workflow, so the agents do the work and the
+graph decides what happens next.
 
 This package is the engine: the executor, the `sous` CLI, the trackers
 (GitHub, beads, local files, or a module of your own), the sandbox, the run
