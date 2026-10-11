@@ -51,14 +51,23 @@ const withRecord = (session: Session, key: string, id: string, record: StepRecor
 });
 
 /**
- * Leaves the previous record otherwise untouched, so its `session` is still
- * there for `resume:`. A first visit starts with `ok: true`, so `sous status`
- * reads a step in progress as fine, not as failed. `key` stays the visit's
- * scope even when the step changes the work item.
+ * Keeps only the previous visit's `session`, so `resume:` can continue it;
+ * its result does not carry over. Were it kept, a run that stops between
+ * this visit's agent call and its end would re-enter on the old output and
+ * pass on work this visit never finished. A visit starts with `ok: true`, so
+ * `sous status` reads a step in progress as fine, not as failed. `key` stays
+ * the visit's scope even when the step changes the work item.
  */
 export const openVisit = (session: Session, id: string, key: string = scopeKey(session.work)): Session => {
   const previous = session.scopes[key]?.[id];
-  return withRecord(session, key, id, { ok: true, log: "", output: undefined, commits: [], ...previous, visits: (previous?.visits ?? 0) + 1 });
+  return withRecord(session, key, id, {
+    ok: true,
+    log: "",
+    output: undefined,
+    commits: [],
+    ...(previous?.session !== undefined ? { session: previous.session } : {}),
+    visits: (previous?.visits ?? 0) + 1,
+  });
 };
 
 /** Used after an agent call (`session`) and at the end of the visit (`ok`, `log`, `output`, `commits`). */

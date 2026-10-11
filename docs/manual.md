@@ -616,7 +616,9 @@ changes nothing). Everything else on the tracker, such as the
   so a manual fix in the worktree moves the run on without an agent call.
   After a crash or Ctrl-C it re-enters the same way with the counter kept.
   A prompt step without an eval passes that check only when its result
-  was recorded; with neither, the agent runs again.
+  was recorded; with neither, the agent runs again. Only a result the
+  agent actually answered in this visit counts: a failed iteration records
+  none, and a new visit starts without the previous visit's.
 - A recorded `prepare` result is reused on re-entry, never run twice in
   one visit.
 - Ctrl-C or SIGTERM stops the agent and any running command with it,

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { AgentOutputError, AgentProcessError } from "../../src/exec/errors.js";
 import { runFlow } from "../../src/exec/executor.js";
 import { retryPrompt } from "../../src/exec/prompt.js";
-import { recordVisit, updateVisit, type Session } from "../../src/exec/scope.js";
+import { openVisit, recordVisit, updateVisit, type Session } from "../../src/exec/scope.js";
 import type { Event } from "../../src/session/events.js";
 import { foldTimeline } from "../../src/session/timeline.js";
 import { bumpIteration, markBlocked, setWork } from "../../src/session/update.js";
@@ -206,7 +206,10 @@ describe("runFlow: agent failures", () => {
     expect(requests).toHaveLength(2);
     expect(next).toBe("blocked");
     expect(session).toMatchObject({ blocked: true, iterations: { review: 2 } });
-    expect(session.scopes["1"]?.["review"]).toMatchObject({ ok: false, log: "codex exited with code 1 (2)", output: null });
+    expect(session.scopes["1"]?.["review"]).toMatchObject({ ok: false, log: "codex exited with code 1 (2)" });
+    // The failure's placeholder envelope is in the event log only, never the record: on re-entry it would count as the work.
+    expect(session.scopes["1"]?.["review"]?.output).toBeUndefined();
+    expect(ports.events.of("output").map((e) => e.envelope.output)).toEqual([null, null]);
     expect(ports.events.of("iteration.eval.start")).toEqual([]);
   });
 
@@ -600,6 +603,43 @@ describe("runFlow: re-entry after blocked and resume after a crash", () => {
     const blocked = await visit(entryOf("plain", "agent-plain", { with: { task: "x" } }), markBlocked(crashed), portsOf(fakeSandbox({ agent: [answer("s3")] })));
     expect(blocked.requests).toHaveLength(1);
     expect(blocked.next).toBe("done");
+  });
+
+  it("re-enters a step blocked on failed iterations by running the agent again, not by passing on the failure", async () => {
+    const crash = new AgentProcessError("codex exited with code 1", { exitCode: 1 });
+    const plain = entryOf("plain", "agent-plain", { with: { task: "x" }, maxIterations: 1 });
+
+    const first = await visit(plain, undefined, portsOf(fakeSandbox({ agent: [crash] })));
+    expect(first.next).toBe("blocked");
+    expect(first.session.scopes["1"]?.["plain"]).toEqual({ visits: 1, ok: false, log: "codex exited with code 1", output: undefined, commits: [] });
+
+    const second = await visit(plain, first.session, portsOf(fakeSandbox({ agent: [answer("s9")] })));
+    expect(second.requests).toHaveLength(1);
+    expect(second.next).toBe("done");
+    expect(second.session.scopes["1"]?.["plain"]).toMatchObject({ visits: 1, ok: true, output: { ok: true }, commits: ["c-s9"], session: "s9" });
+  });
+
+  it("opens a second visit with the first visit's result cleared, keeping only its session", async () => {
+    const build = entryOf("build", "agent", { with: { task: "x" }, routes: [{ to: "build", when: "steps.build.visits === 1" }, { to: "done" }] });
+    const ports = portsOf(fakeSandbox({ agent: [answer("s1"), answer("s2")] }));
+
+    await runFlow(flowOf(build), sessionOf("build"), ports);
+
+    expect(ports.transitions.map((t) => t.to)).toEqual(["build", "done"]);
+    const opened = ports.persisted.find((s) => s.scopes["1"]?.["build"]?.visits === 2);
+    expect(opened?.scopes["1"]?.["build"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [], session: "s1" });
+  });
+
+  it("a second visit stopped after its agent call re-enters on its own empty record, not on the first visit's output", async () => {
+    // Visit 1 recorded a result; visit 2 opened and persisted its agent call (session s2) before the process died.
+    let s = recordVisit(sessionOf("plain"), "plain", { ok: true, log: "", output: { outcome: "first" }, commits: ["c-s1"], session: "s1" });
+    s = updateVisit(bumpIteration(openVisit(s, "plain"), "plain"), "plain", { session: "s2" });
+
+    const rerun = await visit(entryOf("plain", "agent-plain", { with: { task: "x" } }), s, portsOf(fakeSandbox({ agent: [answer("s3")] })));
+
+    expect(rerun.requests).toEqual([expect.objectContaining({ resumeSession: "s2" })]);
+    expect(rerun.next).toBe("done");
+    expect(rerun.session.scopes["1"]?.["plain"]).toMatchObject({ visits: 2, ok: true, output: { ok: true }, commits: ["c-s3"], session: "s3" });
   });
 
   it("passes a step without an eval on re-entry when its result was recorded, and routes on it", async () => {

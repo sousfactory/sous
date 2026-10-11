@@ -32,4 +32,10 @@ describe("review eval", () => {
   it("fails without a result", async () => {
     expect(await reviewEval(ctxOf().ctx, {}, undefined)).toEqual({ ok: false, log: "review: no review output" });
   });
+
+  it("fails an output that is not a review, such as the null a failed agent call leaves, instead of reading it as clean", async () => {
+    const notAReview = { ok: false, log: "review: the output is not a review (no findings array)" };
+    expect(await reviewEval(ctxOf().ctx, {}, envelope({ commits: [], output: null }))).toEqual(notAReview);
+    expect(await reviewEval(ctxOf().ctx, {}, envelope({ commits: [], output: { verdict: "clean" } }))).toEqual(notAReview);
+  });
 });

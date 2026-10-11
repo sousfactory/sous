@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { recordVisit, scopeKey, stepsOf, type Session } from "../../src/exec/scope.js";
+import { openVisit, recordVisit, scopeKey, stepsOf, type Session } from "../../src/exec/scope.js";
 import { createSession, setWork } from "../../src/session/update.js";
 
 const fresh = (): Session =>
@@ -38,6 +38,15 @@ describe("recordVisit / stepsOf", () => {
     expect(s.scopes["15"]?.["build"]).toMatchObject({ visits: 1, commits: ["c2"], session: "s2" });
     expect(stepsOf(s)).toEqual({ verify: { visits: 1, ok: false, log: "BUILD FAILED", output: undefined, commits: [] } });
     expect(stepsOf(setWork(s, "14"))["build"]?.session).toBe("s1");
+  });
+
+  it("openVisit keeps only the previous visit's session: its result never carries into the new visit", () => {
+    const s = recordVisit(fresh(), "review", { ok: true, log: "clean", output: { verdict: "clean" }, commits: ["c1"], session: "s1" });
+    expect(stepsOf(openVisit(s, "review"))["review"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [], session: "s1" });
+
+    const noSession = recordVisit(fresh(), "build", { ok: false, log: "x", output: { ok: false }, commits: [] });
+    expect(stepsOf(openVisit(noSession, "build"))["build"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [] });
+    expect(stepsOf(openVisit(fresh(), "init"))["init"]).toEqual({ visits: 1, ok: true, log: "", output: undefined, commits: [] });
   });
 
   it("records into the issue's own scope of a fresh session without setWork", () => {

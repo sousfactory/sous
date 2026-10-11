@@ -339,10 +339,13 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
    * evals the recorded result first, as iteration 0, so work a human fixed
    * by hand is not redone. A step without an eval passes that check only on
    * a recorded result: with neither, nothing shows the work was done, so the
-   * agent runs again with the original prompt. Without a session to resume,
-   * a retry sends the original prompt again: a retry prompt alone would
-   * reach an agent that never saw the task. When `prepare` skips the agent,
-   * the eval runs once with no result; there is nothing to retry.
+   * agent runs again with the original prompt. Only an envelope the agent
+   * actually answered is recorded; a failed iteration leaves the record
+   * empty, since its placeholder envelope would otherwise count as the work
+   * on re-entry. Without a session to resume, a retry sends the original
+   * prompt again: a retry prompt alone would reach an agent that never saw
+   * the task. When `prepare` skips the agent, the eval runs once with no
+   * result; there is nothing to retry.
    */
   const runAgentic = async (entry: LoadedEntry, c: CompiledEntry, key: string, inputs: Inputs, continuing: boolean): Promise<VisitResult> => {
     const { step } = entry;
@@ -375,7 +378,7 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
       log.info(`${entry.id}: iteration ${iteration}/${max}`);
       const a = await attempt(entry, key, inputs, iteration, nextPrompt, resumeSession, skills, prepared);
       await recordOutput(entry.id, key, iteration, a.envelope, a.res, a.sessionId);
-      last = { res: a.res, envelope: a.envelope, ...withPrepared, iteration, exhausted: false };
+      last = { res: a.res, ...(a.failed ? {} : { envelope: a.envelope }), ...withPrepared, iteration, exhausted: false };
       if (a.res.ok) return last;
       if (!loop && !a.failed) return last;
       resumeSession = a.sessionId;
