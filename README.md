@@ -75,6 +75,7 @@ flowchart LR
   rf -- findings --> frf[fix] --> rf
   rf -- ok --> sync
   sync -- main quiet --> merge --> done([done])
+  merge -- main moved --> sync
 ```
 
 Every item goes through the pass (`review`) and is refired (`fix`) until
@@ -112,7 +113,7 @@ your-project/
     ├── test/                     # the project's step and flow tests
     ├── logs/<id>/                # agent logs            (gitignored)
     ├── runs/<id>/                # session.json, events.jsonl (gitignored)
-    └── .lock                     # one run at a time; present only while a run lives
+    └── locks/<id>.lock           # one run per issue; runs on different issues go in parallel
 ```
 
 ## Quick start

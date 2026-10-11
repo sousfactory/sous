@@ -104,5 +104,14 @@ steps:
     with:
       baseBranch: main
       mergedLabel: sous:merged
+      resync: ${{ true }}
     routes:
+      # Another run merged into main since the last sync: sync again, so the
+      # new main is merged in, checked and reviewed before anything lands.
+      # A main that keeps moving under the merge stops the run.
+      - to: blocked
+        when: 'result.output.stale && steps.merge.visits >= 3'
+      - to: sync
+        when: result.output.stale
       - to: done
+        else: true

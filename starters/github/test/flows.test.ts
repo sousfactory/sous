@@ -52,6 +52,8 @@ type Scenario = {
   moves?: number;
   /** The first sync stops on conflicts; a `synced` answer resolves them. */
   conflict?: boolean;
+  /** How many merge attempts find main moved since the last sync (another run landed); each such sync brings something in. */
+  stale?: number;
   subIssues?: string[];
   agent: AgentScript[] | ((git: FakeGit) => AgentScript[]);
   exec?: FakeSandboxOptions["exec"];
@@ -60,18 +62,29 @@ type Scenario = {
 const worktrees: string[] = [];
 afterEach(() => Promise.all(worktrees.splice(0).map((w) => rm(w, { recursive: true, force: true }))));
 
-const setup = async ({ labels, moves = 1, conflict = false, subIssues = [], agent, exec = {} }: Scenario): Promise<FakePorts> => {
+const setup = async ({ labels, moves = 1, conflict = false, stale = 0, subIssues = [], agent, exec = {} }: Scenario): Promise<FakePorts> => {
   const worktree = await mkdtemp(join(tmpdir(), "sous-project-"));
   worktrees.push(worktree);
   const target = issue({ id: ISSUE, title: "Some feature", body: "Make it so.", labels });
   const tracker = fakeTracker({ issues: [target, ...subIssues.map((id) => issue({ id }))], subIssues: { [ISSUE]: subIssues } });
-  const git = fakeGit({ existing: ["main", BRANCH], branches: { [worktree]: BRANCH }, trees: { main: "t-main", [BRANCH]: "t-branch" }, upToDate: moves === 0, conflict });
+  const git = fakeGit({ existing: ["main", BRANCH], branches: { [worktree]: BRANCH }, trees: { main: "t-main", [BRANCH]: "t-branch" }, ancestors: new Set([`main..${BRANCH}`]), upToDate: moves === 0, conflict });
   const merge = git.mergeInto.bind(git);
   let merged = 0;
   git.mergeInto = async (cwd, source) => {
     const out = await merge(cwd, source);
     if (++merged >= moves) git.state.upToDate = true;
     return out;
+  };
+  // Main moved under the merge: the next sync brings it in, then main is quiet again.
+  const ancestor = git.isAncestor.bind(git);
+  let staleLeft = stale;
+  git.isAncestor = async (cwd, a, b) => {
+    if (staleLeft === 0) return ancestor(cwd, a, b);
+    staleLeft--;
+    merged = 0;
+    moves = 1;
+    git.state.upToDate = false;
+    return false;
   };
   const sandbox = fakeSandbox({ worktreePath: worktree, branch: BRANCH, agent: typeof agent === "function" ? agent(git) : agent, exec });
   return portsOf(sandbox, { skillsDir: join(root, "skills"), repoRoot: dirname(root), tracker, git, issue: { id: target.id, ref: target.ref, title: target.title, body: target.body, labels: target.labels } });
@@ -143,6 +156,16 @@ describe("bench", () => {
 describe("feature", () => {
   const feature = (): Flow => loadFlow(flowFile("feature"), { stepsDir });
 
+  it("syncs again when main moved after the last sync, and merges once", async () => {
+    const ports = await setup({ labels: ["type:feature"], subIssues: ["14"], stale: 1, agent: [built("b14"), reviewed("r14"), reviewed("rf"), reviewed("rf2")] });
+
+    const session = await walk(feature(), ports);
+
+    expect(sequence(ports).slice(-8)).toEqual(["sync", "review-full", "sync", "merge", "sync", "review-full", "sync", "merge"]);
+    expect(session.current).toBe("done");
+    expect(ports.git.calls.filter((c) => c.startsWith("squashMerge"))).toHaveLength(1);
+  });
+
   it("builds and reviews two sub-issues, closes each, syncs, reviews in full, syncs again and merges", async () => {
     const ports = await setup({
       labels: ["type:feature"],
@@ -212,6 +235,30 @@ describe("task", () => {
     expect(ports.sandbox.execs).toEqual([DIFF_COMMAND, BUILD, DIFF_COMMAND, BUILD]);
     expect(ports.git.committed.map((c) => c.message)).toEqual(["spec(#12): stub from issue", "fix(#12): Some feature"]);
     expect(ports.tracker.issues.get(ISSUE)).toMatchObject({ state: "open", labels: ["type:task", "sous:merged"] });
+  });
+
+  it("syncs again when main moved after the last sync, and reviews what it brought in before merging", async () => {
+    const ports = await setup({ labels: ["type:task"], stale: 1, agent: [built("b1"), reviewed("r1"), reviewed("rf"), reviewed("rf2")] });
+
+    const session = await walk(task(), ports);
+
+    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "merge", "sync", "review-full", "sync", "merge"]);
+    expect(session.current).toBe("done");
+    expect(session.scopes["12"]?.["merge"]).toMatchObject({ visits: 2, ok: true, output: { stale: false, sha: "sha2" } });
+    // Only one squash landed; the stale visit merged and cleaned up nothing.
+    expect(ports.git.committed.map((c) => c.message)).toEqual(["spec(#12): stub from issue", "fix(#12): Some feature"]);
+    expect(ports.git.removedWorktrees).toHaveLength(1);
+    expect(ports.tracker.comments.filter((c) => c.body.startsWith("Merged into"))).toHaveLength(1);
+  });
+
+  it("stops blocked when main moved under the merge three times", async () => {
+    const ports = await setup({ labels: ["type:task"], stale: 3, agent: [built("b1"), reviewed("r1"), reviewed("rf"), reviewed("rf2"), reviewed("rf3")] });
+
+    const session = await walk(task(), ports);
+
+    expect(sequence(ports).filter((s) => s === "merge")).toHaveLength(3);
+    expect(session).toMatchObject({ current: "merge", blocked: true });
+    expect(ports.git.calls.some((c) => c.startsWith("squashMerge"))).toBe(false);
   });
 
   it("as shipped, with no checks filled in yet: every eval passes with the warning in its log and runs nothing", async () => {

@@ -17,7 +17,7 @@ const LIBRARY: Record<string, Expected> = {
   init: { kind: "module", inputs: [] },
   "next-work": { kind: "module", inputs: [] },
   "close-work": { kind: "module", inputs: ["commits"] },
-  merge: { kind: "module", inputs: ["baseBranch", "mergedLabel"] },
+  merge: { kind: "module", inputs: ["baseBranch", "mergedLabel", "resync"] },
 };
 
 const NAMES = Object.keys(LIBRARY);

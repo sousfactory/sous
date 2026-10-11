@@ -130,7 +130,7 @@ your-project/
     ├── test/                     # the project's step and flow tests, over sous-factory/testing
     ├── logs/<id>/                # one agent log per iteration             (gitignored)
     ├── runs/<id>/                # session.json and events.jsonl per issue (gitignored)
-    └── .lock                     # pid and issue of the running sous run; removed when it ends
+    └── locks/<id>.lock           # pid and issue of a running sous run; removed when it ends (gitignored)
 ```
 
 The settings `*Dir` keys move these folders; the defaults are what the
@@ -225,6 +225,9 @@ exists (a stub from the issue when `/sous-plan` did not write one),
 `implement` builds and commits, `review` judges the diff, `fix` addresses
 findings, `sync` brings the base branch in, `review-full` judges the whole
 branch, `merge` squashes it onto the base branch, and the issue is closed.
+If the base branch moved after the last `sync` (another run merged in the
+meantime), `merge` lands nothing and the flow goes back to `sync`
+(`resync: ${{ true }}` on the `merge` entry, with a route on `result.output.stale`).
 
 Watch it in a second terminal with `./sous status <id>` or in the browser
 with `./sous ui`. The UI lists every run, draws the flow with the visited
@@ -620,8 +623,16 @@ changes nothing). Everything else on the tracker, such as the
   writes `run.end` (`interrupted`), releases the lock and exits 130 / 143.
 - `--restart` deletes run record, worktree and branch after a
   confirmation and starts at the entry.
-- One run at a time: `.sous/.lock` holds pid and issue. A stale lock is
-  reported and removed by hand.
+- One run per issue at a time: `.sous/locks/<id>.lock` holds pid and
+  issue. Runs on different issues go in parallel, each in its own worktree
+  and branch; start each with its own `sous run`. A stale lock is reported
+  and removed by hand. Parallel runs share the base-branch checkout that
+  `merge` squashes into. In `task` and `feature`, a `merge` that finds
+  base commits its branch lacks lands nothing and routes back to `sync`
+  (`resync: ${{ true }}`; blocked after three such visits), so only
+  synced, checked and reviewed code lands. Two merges at the very same
+  moment can still collide on git's `index.lock`; the run crashes with the
+  checkout clean, and rerunning it resumes.
 - Modules should be idempotent; they run again on re-entry.
 
 ## 12. CLI
@@ -1022,7 +1033,7 @@ what to skip or change in the skill.
 | `tracker: … the tracker lacks children, parent` | The tracker module's default export is missing port methods; [chapter 10](#10-trackers) lists them. |
 | The run stops `blocked` right after `implement` | The verify checks failed three times; the issue comment carries the last log. Fix the worktree by hand and run the same command; it re-enters at the eval. |
 | `WARN: no checks configured` in every eval log | `CHECKS` in `steps/verify/eval.ts` is empty; [how-to 13](#13-change-the-check-commands). |
-| `another sous run holds .sous/.lock` | One run per project. If the pid is dead, the message says `stale`: delete the file. |
+| `another sous run holds .sous/locks/<id>.lock` | That issue is already running. If the pid is dead, the message says `stale`: delete the file. |
 | `session.json: /schemaVersion must be equal to constant` | A run folder from an older engine. Delete `runs/<id>/` (and the worktree) or `--restart`. |
 | `sous run: #12 was started with flow "feature"; run that flow or pass --restart` | A run record exists for another flow; continue that flow or restart. |
 | The UI shows a step as "Crashed (no end recorded)" | The process died without writing `run.end`. Run the same command; it re-enters at the open step. |

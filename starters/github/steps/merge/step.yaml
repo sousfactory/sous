@@ -1,14 +1,16 @@
 name: merge
-description: Squash the branch into the base-branch checkout, clean up sandbox, worktree and branch, label the issue and post the terminal comment. Never pushes; the lifecycle closes the issue.
+description: "Squash the branch into the base-branch checkout, clean up sandbox, worktree and branch, label the issue and post the terminal comment. Never pushes; the lifecycle closes the issue. With resync: true, when the base branch moved since the last sync, merges nothing and answers stale: route back to sync."
 
 inputs:
   baseBranch: { required: true, description: "the branch the repository checkout must be on and the squash lands on (the baseBranch setting)" }
   mergedLabel: { required: false, description: "state label to set on the issue once landed, e.g. sous:merged; absent sets none" }
+  resync: { required: false, description: "true: land nothing when the base branch has commits the branch lacks and answer stale, for a route back to sync; the flow must route result.output.stale" }
 
 run:
   module: ./run.ts
   output:
     type: object
-    required: [sha]
+    required: [stale]
     properties:
-      sha: { type: string, description: "the squash commit, or the base branch head when the branch was already merged" }
+      stale: { type: boolean, description: "the base branch has commits the branch lacks; nothing was merged or cleaned up, sync again" }
+      sha: { type: string, description: "the squash commit, or the base branch head when the branch was already merged; absent when stale" }

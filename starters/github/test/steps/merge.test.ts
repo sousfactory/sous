@@ -28,7 +28,7 @@ const events: Event[] = [
 
 const setup = (git: Partial<FakeGitState> & { existing?: string[] } = {}, options: FakeCtxOptions = {}) =>
   ctxOf({
-    git: fakeGit({ existing: ["main", BRANCH], trees: { main: "t-main", [BRANCH]: "t-branch" }, ...git }),
+    git: fakeGit({ existing: ["main", BRANCH], trees: { main: "t-main", [BRANCH]: "t-branch" }, ancestors: new Set([`main..${BRANCH}`]), ...git }),
     workProgress: { "1": { state: "open", commits: [] }, "14": { state: "done", commits: ["a", "b"] }, "15": { state: "done", commits: ["c"] } },
     events,
     ...options,
@@ -60,15 +60,16 @@ describe("mergeMessage / minorFindings / mergeComment", () => {
 describe("merge", () => {
   it("squashes the branch, cleans up, labels the issue merged, comments with sub-issues and minors, and marks the issue's work done; closing is the lifecycle's", async () => {
     const f = setup();
-    const out = await merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged" });
+    const out = await merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged", resync: true });
 
-    expect(out).toEqual({ summary: `merge: squashed ${BRANCH} into main as sha1`, commits: ["sha1"], output: { sha: "sha1" } });
+    expect(out).toEqual({ summary: `merge: squashed ${BRANCH} into main as sha1`, commits: ["sha1"], output: { stale: false, sha: "sha1" } });
     expect(f.git.calls).toEqual([
       `currentBranch(${REPO})`,
       `isDirty(${REPO})`,
       `branchExists(${REPO}, ${BRANCH})`,
       `treeSha(${REPO}, ${BRANCH})`,
       `treeSha(${REPO}, main)`,
+      `isAncestor(${REPO}, main, ${BRANCH})`,
       `squashMerge(${REPO}, ${BRANCH}, feat(#1): Test issue)`,
       `commit(${REPO}, feat(#1): Test issue)`,
       `removeWorktree(${REPO}, /tmp/worktree)`,
@@ -85,6 +86,31 @@ describe("merge", () => {
       },
     ]);
     expect(f.done).toEqual([{ work: "1", commits: ["sha1"] }]);
+  });
+
+  it("merges nothing and answers stale when main has commits the branch lacks: another run landed since the last sync", async () => {
+    const f = setup({ ancestors: new Set() });
+    const out = await merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged", resync: true });
+    expect(out).toEqual({ summary: `merge: main moved since the last sync; nothing merged, ${BRANCH} syncs again`, commits: [], output: { stale: true } });
+    expect(f.git.calls.at(-1)).toBe(`isAncestor(${REPO}, main, ${BRANCH})`);
+    expect(f.git.committed).toEqual([]);
+    expect(f.sandbox.closed).toBe(false);
+    expect(f.git.existing.has(BRANCH)).toBe(true);
+    expect(f.tracker.issues.get("1")?.labels).toEqual([]);
+    expect(f.tracker.comments).toEqual([]);
+    expect(f.done).toEqual([]);
+  });
+
+  it("an already squashed branch counts as merged even though main has moved past it", async () => {
+    const f = setup({ ancestors: new Set(), trees: { main: "same", [BRANCH]: "same" } });
+    expect((await merge(f.ctx, { baseBranch: "main", resync: true })).output).toEqual({ stale: false, sha: "sha0" });
+    expect(f.git.calls.some((c) => c.startsWith("isAncestor"))).toBe(false);
+  });
+
+  it("without resync squashes onto a moved main without asking", async () => {
+    const f = setup({ ancestors: new Set() });
+    expect((await merge(f.ctx, { baseBranch: "main" })).output).toEqual({ stale: false, sha: "sha1" });
+    expect(f.git.calls.some((c) => c.startsWith("isAncestor"))).toBe(false);
   });
 
   it("refuses a dirty base-branch checkout before touching anything", async () => {
@@ -104,7 +130,7 @@ describe("merge", () => {
   it("detects an already squashed branch by tree, skips the squash, still cleans up, labels and comments", async () => {
     const f = setup({ trees: { main: "same", [BRANCH]: "same" } });
     const out = await merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged" });
-    expect(out).toEqual({ summary: `merge: ${BRANCH} was already in main (sha0); cleaned up`, commits: [], output: { sha: "sha0" } });
+    expect(out).toEqual({ summary: `merge: ${BRANCH} was already in main (sha0); cleaned up`, commits: [], output: { stale: false, sha: "sha0" } });
     expect(f.git.calls).not.toContain(`squashMerge(${REPO}, ${BRANCH}, feat(#1): Test issue)`);
     expect(f.git.calls).toContain(`deleteBranch(${REPO}, ${BRANCH}, true)`);
     expect(f.sandbox.closed).toBe(true);
@@ -115,14 +141,14 @@ describe("merge", () => {
   it("treats a branch that is already gone as merged and skips the branch deletion", async () => {
     const f = setup({ existing: ["main"] });
     const out = await merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged" });
-    expect(out.output).toEqual({ sha: "sha0" });
+    expect(out.output).toEqual({ stale: false, sha: "sha0" });
     expect(f.git.calls.filter((c) => c.startsWith("treeSha") || c.startsWith("deleteBranch") || c.startsWith("squashMerge"))).toEqual([]);
     expect(f.git.removedWorktrees).toEqual(["/tmp/worktree"]);
     expect(f.tracker.issues.get("1")?.labels).toEqual(["sous:merged"]);
   });
 
   it("uses fix(#N) for a task and takes the base branch from the input", async () => {
-    const f = setup({ existing: ["develop", BRANCH], trees: { develop: "t-dev", [BRANCH]: "t-branch" }, branches: { [REPO]: "develop" } }, { issue: { id: "1", ref: "#1", title: "Test issue", labels: ["type:task"] } });
+    const f = setup({ existing: ["develop", BRANCH], trees: { develop: "t-dev", [BRANCH]: "t-branch" }, ancestors: new Set([`develop..${BRANCH}`]), branches: { [REPO]: "develop" } }, { issue: { id: "1", ref: "#1", title: "Test issue", labels: ["type:task"] } });
     await merge(f.ctx, { baseBranch: "develop" });
     expect(f.git.committed).toEqual([{ cwd: REPO, message: "fix(#1): Test issue", sha: "sha1" }]);
     expect(f.tracker.comments[0]?.body).toContain("Merged into `develop` as sha1: `fix(#1): Test issue`");

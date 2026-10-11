@@ -4,6 +4,11 @@
  * (`lifecycle: core` closes it on `done`). Never pushes. Idempotent so a
  * rerun after a crash neither squashes twice nor fails on what is already
  * removed.
+ *
+ * With `resync: true` it lands only what was synced: when the base branch
+ * has commits the branch does not contain (another run merged since the
+ * last sync), it merges nothing and answers `stale: true`, for a route back
+ * to sync. Without it, the branch is squashed onto whatever the base is.
  */
 import { SousError, isOutput, type Ctx, type Event, type RunFn, type WorkRecord } from "sous-factory";
 import { findingsOf, formatFinding, isBlocking, type Finding } from "../review/findings.js";
@@ -58,6 +63,9 @@ export default (async (ctx, inputs) => {
 
   const message = mergeMessage(issue);
   const alreadyMerged = !(await git.branchExists(repoRoot, branch)) || (await git.treeSha(repoRoot, branch)) === (await git.treeSha(repoRoot, baseBranch));
+  if (inputs["resync"] === true && !alreadyMerged && !(await git.isAncestor(repoRoot, baseBranch, branch))) {
+    return { summary: `merge: ${baseBranch} moved since the last sync; nothing merged, ${branch} syncs again`, commits: [], output: { stale: true } };
+  }
   const sha = alreadyMerged ? await git.headSha(repoRoot) : await git.squashMerge(repoRoot, branch, message);
   await cleanUpMerged(ctx);
 
@@ -69,6 +77,6 @@ export default (async (ctx, inputs) => {
   return {
     summary: alreadyMerged ? `merge: ${branch} was already in ${baseBranch} (${sha.slice(0, 7)}); cleaned up` : `merge: squashed ${branch} into ${baseBranch} as ${sha.slice(0, 7)}`,
     commits: alreadyMerged ? [] : [sha],
-    output: { sha },
+    output: { stale: false, sha },
   };
 }) satisfies RunFn;
