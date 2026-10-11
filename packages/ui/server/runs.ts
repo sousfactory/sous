@@ -23,6 +23,7 @@ import {
   SETTINGS_FILE,
   topology,
   type LockInfo,
+  type OutputEvent,
   type Session,
   type Timeline,
   type Topology,
@@ -63,14 +64,18 @@ const readSession = async (path: string, retries = 3): Promise<Session | undefin
   }
 };
 
-const readTimeline = async (path: string): Promise<Timeline> => {
+/** The folded timeline and the `output` events the fold leaves out. */
+const readEvents = async (path: string): Promise<{ timeline: Timeline; outputs: OutputEvent[] }> => {
   try {
-    return foldTimeline(parseEvents(await readFile(path, "utf8")));
+    const events = parseEvents(await readFile(path, "utf8"));
+    return { timeline: foldTimeline(events), outputs: events.filter((e): e is OutputEvent => e.type === "output") };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { runs: [], spans: [] };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { timeline: { runs: [], spans: [] }, outputs: [] };
     throw error;
   }
 };
+
+const readTimeline = async (path: string): Promise<Timeline> => (await readEvents(path)).timeline;
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -137,11 +142,12 @@ export const readRun = async (project: Project, issue: string, options: { attemp
   try {
     const session = await readSession(file);
     if (session === undefined) return existsSync(join(project.runsRoot, issue)) ? { kind: "error", error: NO_SESSION } : { kind: "missing" };
-    const timeline = await readTimeline(eventsFile(project.runsRoot, issue));
+    const { timeline, outputs } = await readEvents(eventsFile(project.runsRoot, issue));
     const locks = await liveLocks(project);
     const view = deriveRun({
       session,
       timeline,
+      outputs,
       topology: flowTopology(project, session.flow),
       live: holds(locks, session.issue),
       ...(options.attempt !== undefined ? { attempt: options.attempt } : {}),

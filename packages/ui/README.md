@@ -27,7 +27,7 @@ binds to 127.0.0.1 only and has no authentication.
 | --- | --- |
 | `/runs` | One row per issue folder under `runsDir`, newest write first. `?flow=<name>` filters, and draws that flow's graph above its runs as a preview, whether it ran or not: every step queued, every route solid grey. |
 | `?flow=<name>&step=<id>` | The preview with a step open below the graph: what it uses, its kind and model, the `description` of its `step.yaml`, and its routes. |
-| `/runs/<issue>` | The latest attempt: summary box, work items, flow graph. |
+| `/runs/<issue>` | The latest attempt: summary box, work items, flow graph, and under it the steps table: every visit oldest first, with its duration, the agent's summary, its output, a failed eval's log and the next step. Outputs are drawn by shape, since each step has its own schema: an object as fields, a list of objects as a table, a list of values inline, long text folded. Earlier iterations of a visit fold away; the table updates live with the graph. |
 | `?attempt=<n>` | An earlier run segment, with the visits of segments 1 to n. |
 | `?scope=<work>` | Another work item of a run with sub-issues. |
 | `?step=<id>` | The step's job view: routes, visits, agent and eval rows, output, commits. |

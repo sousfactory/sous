@@ -1,7 +1,7 @@
 import { foldTimeline } from "sous-factory/read";
 import { describe, expect, it } from "vitest";
 import { deriveFlow, deriveRun, type RunView } from "../../server/model";
-import type { Topology } from "sous-factory/read";
+import type { OutputEvent, Topology } from "sous-factory/read";
 import { at, Log, record, session, taskTopology } from "../fixtures";
 
 const statuses = (view: RunView) => Object.fromEntries(view.nodes.map((n) => [n.id, n.status]));
@@ -399,5 +399,60 @@ describe("deriveFlow", () => {
 
   it("carries the error of a flow file that does not load, and draws nothing", () => {
     expect(deriveFlow("task", { error: "bad yaml" })).toEqual({ name: "task", nodes: [], edges: [], details: {}, error: "bad yaml" });
+  });
+});
+
+describe("deriveRun: trace", () => {
+  const output = (spanId: string, step: string, iteration: number, out: unknown, ok = true, summary = "s"): OutputEvent => ({
+    type: "output",
+    at: at(0),
+    spanId,
+    step,
+    iteration,
+    scope: "84",
+    envelope: { summary, commits: [], output: out },
+    eval: { ok, logTail: ok ? "" : "1 failed" },
+  });
+
+  it("lists every visit oldest first, numbers repeated visits and attaches each visit's own outputs in iteration order", () => {
+    const log = new Log()
+      .start("r1", 0)
+      .visit("init", 0, 1, true, "implement")
+      .visit("review", 1, 3, false, "fix", "84", true)
+      .visit("fix", 3, 5, true, "review", "84", true)
+      .visit("review", 5, 6, true, "merge", "84", true)
+      .visit("merge", 6, undefined);
+    const outputs = [
+      output("r1-2", "review", 1, { verdict: "findings" }, false, "one blocker"),
+      output("r1-3", "fix", 2, { filesTouched: ["b"] }),
+      output("r1-3", "fix", 1, { filesTouched: ["a"] }, false),
+      output("r1-4", "review", 1, { verdict: "clean" }),
+    ];
+    const view = derive(log, true, { outputs });
+    expect(view.trace.map((r) => [r.step, r.visit, r.status, r.next ?? null])).toEqual([
+      ["init", 1, "success", "implement"],
+      ["review", 1, "failure", "fix"],
+      ["fix", 1, "success", "review"],
+      ["review", 2, "success", "merge"],
+      ["merge", 1, "in_progress", null],
+    ]);
+    expect(view.trace[1]?.outputs).toEqual([{ iteration: 1, summary: "one blocker", output: { verdict: "findings" }, commits: [], eval: { ok: false, logTail: "1 failed" } }]);
+    expect(view.trace[2]?.outputs.map((o) => o.output)).toEqual([{ filesTouched: ["a"] }, { filesTouched: ["b"] }]);
+    expect(view.trace[3]?.outputs.map((o) => o.output)).toEqual([{ verdict: "clean" }]);
+    expect(view.trace[4]).toMatchObject({ outputs: [] });
+    expect(view.trace[4]).not.toHaveProperty("endedAt");
+  });
+
+  it("shows only the selected attempt's runs and carries a crash onto the visit it left open", () => {
+    const log = new Log().start("r1", 0).visit("init", 0, 1, true, "implement").visit("implement", 1, undefined).end(2, "crashed", "boom").start("r2", 3).visit("implement", 3, 4, true, "review");
+    expect(derive(log, false, { attempt: 1 }).trace.map((r) => [r.step, r.error ?? null])).toEqual([
+      ["init", null],
+      ["implement", "boom"],
+    ]);
+    expect(derive(log, false).trace.map((r) => [r.runId, r.step, r.visit])).toEqual([
+      ["r1", "init", 1],
+      ["r1", "implement", 1],
+      ["r2", "implement", 2],
+    ]);
   });
 });

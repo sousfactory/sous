@@ -9,7 +9,7 @@
  * first, cancelled when it was interrupted; an unvisited node is queued while
  * the run is live, skipped after.
  */
-import { visitLanes, type Agent, type AgentOutcome, type RunOutcome, type RunSegment, type Session, type Span, type StepKind, type Timeline, type TokenUsage, type Topology, type TopologyNode } from "sous-factory/read";
+import { visitLanes, type Agent, type AgentOutcome, type OutputEvent, type RunOutcome, type RunSegment, type Session, type Span, type StepKind, type Timeline, type TokenUsage, type Topology, type TopologyNode } from "sous-factory/read";
 
 export type Status = "success" | "failure" | "in_progress" | "queued" | "skipped" | "cancelled";
 
@@ -111,6 +111,34 @@ export type StepDetail = {
   record?: { ok: boolean; log: string; output: unknown; commits: string[]; session?: string; prepared?: { agent: "run" | "skip"; reason?: string; output: unknown } };
 };
 
+/** One iteration's envelope as the `output` event recorded it, with the eval that judged it. */
+export type TraceOutput = { iteration: number; summary: string; output: unknown; commits: string[]; eval: { ok: boolean; logTail: string } };
+
+/**
+ * One visit in the order the run made them, every step and work item: the
+ * run as a story. Unlike a step's record in the session, which keeps the
+ * latest visit only, each row carries its own outputs.
+ */
+export type TraceRow = {
+  spanId: string;
+  runId: string;
+  step: string;
+  /** 1-based count of this step's visits so far. */
+  visit: number;
+  scope: string;
+  status: Status;
+  startedAt: string;
+  endedAt?: string;
+  next?: string;
+  /** Agent calls or eval rounds the visit took. */
+  iterations: number;
+  /** Prepare skipped the agent, with its reason. */
+  agentSkipped?: { reason?: string };
+  outputs: TraceOutput[];
+  /** The error that crashed the run while this visit was open. */
+  error?: string;
+};
+
 export type RunView = {
   summary: RunSummary;
   attempt: number;
@@ -121,6 +149,8 @@ export type RunView = {
   nodes: StepNode[];
   edges: StepEdge[];
   details: Record<string, StepDetail>;
+  /** Every visit of the shown attempts, oldest first. */
+  trace: TraceRow[];
   flowError?: string;
 };
 
@@ -145,6 +175,8 @@ export type DeriveInput = {
   topology: Topology | { error: string };
   /** A live `sous run` holds the lock for this issue. */
   live: boolean;
+  /** The event log's `output` events, for the trace. */
+  outputs?: readonly OutputEvent[];
   /** 1-based; the latest when absent or out of range. */
   attempt?: number;
   scope?: string;
@@ -414,6 +446,7 @@ export const deriveRun = (input: DeriveInput): RunView => {
 
   return {
     summary: summarize(session, timeline, live, selected, outcome),
+    trace: traceOf(spans, input.outputs ?? [], outcomes, errors),
     attempt: index + 1,
     attemptList,
     scope,
@@ -424,6 +457,36 @@ export const deriveRun = (input: DeriveInput): RunView => {
     details,
     ...("error" in input.topology ? { flowError: input.topology.error } : {}),
   };
+};
+
+/** Every span as a trace row, with the outputs recorded for it in iteration order. */
+const traceOf = (spans: readonly Span[], outputs: readonly OutputEvent[], outcomes: Outcomes, errors: ReadonlyMap<string, string>): TraceRow[] => {
+  const bySpan = new Map<string, TraceOutput[]>();
+  for (const o of outputs) {
+    const out: TraceOutput = { iteration: o.iteration, summary: o.envelope.summary, output: o.envelope.output, commits: o.envelope.commits, eval: o.eval };
+    bySpan.set(o.spanId, [...(bySpan.get(o.spanId) ?? []), out]);
+  }
+  const visits = new Map<string, number>();
+  return spans.map((span) => {
+    const visit = (visits.get(span.step) ?? 0) + 1;
+    visits.set(span.step, visit);
+    const error = span.endedAt === undefined ? errors.get(span.runId) : undefined;
+    return {
+      spanId: span.id,
+      runId: span.runId,
+      step: span.step,
+      visit,
+      scope: span.scope,
+      status: visitStatus(span, outcomes),
+      startedAt: span.startedAt,
+      ...(span.endedAt !== undefined ? { endedAt: span.endedAt } : {}),
+      ...(span.next !== undefined ? { next: span.next } : {}),
+      iterations: span.iterations.length,
+      ...(span.prepare?.agent === "skip" ? { agentSkipped: span.prepare.reason !== undefined ? { reason: span.prepare.reason } : {} } : {}),
+      outputs: (bySpan.get(span.id) ?? []).sort((a, b) => a.iteration - b.iteration),
+      ...(error !== undefined ? { error } : {}),
+    };
+  });
 };
 
 /** `merge` marks the issue's own work record done with the squash sha; none when the branch was already merged. */

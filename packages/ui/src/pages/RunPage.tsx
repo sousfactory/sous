@@ -4,6 +4,7 @@ import { ActionList, ActionMenu, Button, BranchName, Flash, NavList } from "@pri
 import type { Outcome, RunView } from "../../server/model";
 import { FlowGraph } from "../components/FlowGraph";
 import { GitHubActions, useGitHubView } from "../components/GitHubActionsCell";
+import { RunTrace } from "../components/RunTrace";
 import { STATUS_COLOR, STATUS_LABEL, StatusIcon } from "../components/StatusIcon";
 import { StepView } from "../components/StepView";
 import { elapsed, shortSha, timeAgo } from "../format";
@@ -234,6 +235,8 @@ export const RunPage = ({ route, view, error }: { route: RunRoute; view: RunView
                   <FlowGraph nodes={view.nodes} edges={view.edges} now={now} flow={s.flow} onOpen={(id) => navigate(to({ step: id }))} />
                 </div>
               </div>
+
+              <RunTrace rows={view.trace} now={now} stepHref={(id) => to({ step: id })} onOpen={(id, e) => onLinkClick(to({ step: id }))(e)} />
             </>
           )}
         </main>

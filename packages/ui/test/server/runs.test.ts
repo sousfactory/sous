@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listRows, liveLocks, openProject, readLog, readRun } from "../../server/runs";
-import { Log, session, tempProject, writeRun } from "../fixtures";
+import { at, Log, session, tempProject, writeRun } from "../fixtures";
 
 const dead = () => false;
 const alive = () => true;
@@ -67,6 +67,15 @@ describe("liveLocks", () => {
 });
 
 describe("readRun", () => {
+  it("reads the output events of the log into the trace", async () => {
+    const root = tempProject();
+    const log = new Log().start("r1", 0).visit("init", 0, 1, true, "implement");
+    log.events.push({ type: "output", at: at(1), spanId: "r1-1", step: "init", iteration: 1, scope: "84", envelope: { summary: "stub", commits: [], output: { stub: true } }, eval: { ok: true, logTail: "" } });
+    writeRun(root, "84", session(), log);
+    const read = await readRun(openProject(root, dead), "84");
+    expect(read.kind === "ok" && read.view.trace.map((r) => [r.step, r.outputs.map((o) => o.output)])).toEqual([["init", [{ stub: true }]]]);
+  });
+
   it("is missing for an issue without a run folder", async () => {
     expect(await readRun(openProject(tempProject(), dead), "1")).toEqual({ kind: "missing" });
   });
