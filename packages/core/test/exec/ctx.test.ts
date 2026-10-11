@@ -32,6 +32,7 @@ describe("ctx", () => {
       git: fakeGit(),
       tracker: gh,
       events: fakeEventLog([{ type: "run.end", at: "t", runId: "r", outcome: "done" }]),
+      repoLock: (fn) => fn(),
     };
   };
   const self = { id: "12", ref: "#12", title: "Some slug", body: "" };
@@ -90,6 +91,7 @@ describe("ctx", () => {
     ctx.workDone([]);
     expect(done.at(-1)).toEqual({ work: "12", commits: [] });
     expect((await ctx.events.readAll()).map((e) => e.type)).toEqual(["run.end"]);
+    expect(await ctx.repoLock(async () => "under the lock")).toBe("under the lock");
     await ctx.sandbox.close();
     expect((d.sandbox as ReturnType<typeof fakeSandbox>).closed).toBe(true);
     await ctx.tracker.setStateLabel("12", "sous:merged");

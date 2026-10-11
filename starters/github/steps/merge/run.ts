@@ -9,6 +9,10 @@
  * has commits the branch does not contain (another run merged since the
  * last sync), it merges nothing and answers `stale: true`, for a route back
  * to sync. Without it, the branch is squashed onto whatever the base is.
+ *
+ * The checks and the squash run under `ctx.repoLock`, as one transaction on
+ * the shared checkout: a merge by a parallel run in between would land this
+ * branch on a base it was never synced with, past the freshness check.
  */
 import { SousError, isOutput, type Ctx, type Event, type RunFn, type WorkRecord } from "sous-factory";
 import { findingsOf, formatFinding, isBlocking, type Finding } from "../review/findings.js";
@@ -53,20 +57,27 @@ export const cleanUpMerged = async (ctx: Pick<Ctx, "git" | "sandbox" | "repoRoot
   if (await ctx.git.branchExists(ctx.repoRoot, ctx.branch)) await ctx.git.deleteBranch(ctx.repoRoot, ctx.branch, { force: true });
 };
 
+/** What the transaction on the checkout decides: `undefined` when the branch is stale and nothing was merged. */
+type Landed = { sha: string; alreadyMerged: boolean };
+
 export default (async (ctx, inputs) => {
   const baseBranch = requireString(inputs, "baseBranch", "merge");
   const { git, repoRoot, branch, issue } = ctx;
-
-  const checkedOut = await git.currentBranch(repoRoot);
-  if (checkedOut !== baseBranch) throw new SousError(`merge: refusing to merge: ${repoRoot} has ${checkedOut} checked out, not ${baseBranch}`);
-  if (await git.isDirty(repoRoot)) throw new SousError(`merge: refusing to merge: the ${baseBranch} checkout at ${repoRoot} has uncommitted changes`);
-
   const message = mergeMessage(issue);
-  const alreadyMerged = !(await git.branchExists(repoRoot, branch)) || (await git.treeSha(repoRoot, branch)) === (await git.treeSha(repoRoot, baseBranch));
-  if (inputs["resync"] === true && !alreadyMerged && !(await git.isAncestor(repoRoot, baseBranch, branch))) {
+
+  const landed = await ctx.repoLock(async (): Promise<Landed | undefined> => {
+    const checkedOut = await git.currentBranch(repoRoot);
+    if (checkedOut !== baseBranch) throw new SousError(`merge: refusing to merge: ${repoRoot} has ${checkedOut} checked out, not ${baseBranch}`);
+    if (await git.isDirty(repoRoot)) throw new SousError(`merge: refusing to merge: the ${baseBranch} checkout at ${repoRoot} has uncommitted changes`);
+
+    const alreadyMerged = !(await git.branchExists(repoRoot, branch)) || (await git.treeSha(repoRoot, branch)) === (await git.treeSha(repoRoot, baseBranch));
+    if (inputs["resync"] === true && !alreadyMerged && !(await git.isAncestor(repoRoot, baseBranch, branch))) return undefined;
+    return { sha: alreadyMerged ? await git.headSha(repoRoot) : await git.squashMerge(repoRoot, branch, message), alreadyMerged };
+  });
+  if (landed === undefined) {
     return { summary: `merge: ${baseBranch} moved since the last sync; nothing merged, ${branch} syncs again`, commits: [], output: { stale: true } };
   }
-  const sha = alreadyMerged ? await git.headSha(repoRoot) : await git.squashMerge(repoRoot, branch, message);
+  const { sha, alreadyMerged } = landed;
   await cleanUpMerged(ctx);
 
   const mergedLabel = inputs["mergedLabel"];

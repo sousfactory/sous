@@ -3,7 +3,67 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { acquireLock, classifyLock, describeLock, isProcessAlive, liveLocks, lockPath, parseLock } from "../../src/commands/lock.js";
+import { acquireLock, classifyLock, createRepoLock, describeLock, isProcessAlive, liveLocks, lockPath, parseLock, repoLockPath } from "../../src/commands/lock.js";
+
+describe("repo lock", () => {
+  const withDir = async (fn: (dir: string, path: string) => Promise<void>) => {
+    const dir = await mkdtemp(join(tmpdir(), "sous-repo-lock-"));
+    try {
+      await fn(dir, repoLockPath(dir));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("lives at .sous/locks/repo.mutex: not a .lock, so it is no running issue to liveLocks", () => {
+    expect(repoLockPath("/repo/.sous")).toBe("/repo/.sous/locks/repo.mutex");
+  });
+
+  it("holds the file for the section and releases it after, also when the section throws", () =>
+    withDir(async (dir, path) => {
+      const lock = createRepoLock(path, { pid: 1, issue: "7" }, () => true);
+      expect(await lock(async () => [existsSync(path), await liveLocks(dir, () => true)])).toEqual([true, []]);
+      expect(existsSync(path)).toBe(false);
+      await expect(lock(async () => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
+      expect(existsSync(path)).toBe(false);
+    }));
+
+  it("waits for a live holder and goes on once it releases", () =>
+    withDir(async (_dir, path) => {
+      const holder = await acquireLock(path, { pid: 2, issue: "8" }, () => true);
+      let polls = 0;
+      const sleep = async () => {
+        if (++polls === 3 && holder.ok) await holder.release();
+      };
+      const lock = createRepoLock(path, { pid: 1, issue: "7" }, () => true, { sleep, pollMs: 1 });
+      expect(await lock(async () => "ran")).toBe("ran");
+      expect(polls).toBe(3);
+    }));
+
+  it("takes over a stale lock at once: the pid behind it is a crashed run", () =>
+    withDir(async (_dir, path) => {
+      await acquireLock(path, { pid: 2, issue: "8" }, () => true);
+      const lock = createRepoLock(path, { pid: 1, issue: "7" }, (pid) => pid === 1, { sleep: () => Promise.reject(new Error("should not wait")) });
+      expect(await lock(async () => "ran")).toBe("ran");
+      expect(existsSync(path)).toBe(false);
+    }));
+
+  it("gives up after the timeout, naming the holder", () =>
+    withDir(async (_dir, path) => {
+      await acquireLock(path, { pid: 2, issue: "8" }, () => true);
+      let t = 0;
+      const lock = createRepoLock(path, { pid: 1, issue: "7" }, () => true, {
+        now: () => t,
+        sleep: async (ms) => {
+          t += ms;
+        },
+        timeoutMs: 1000,
+        pollMs: 250,
+      });
+      await expect(lock(async () => "ran")).rejects.toThrow(/another sous run holds .*repo\.mutex \(pid 2, issue 8\); gave up waiting for it after 1s/);
+      expect(t).toBe(1000);
+    }));
+});
 
 describe("lock", () => {
   it("lives at .sous/locks/<issue>.lock, the issue path-safe", () => {

@@ -18,6 +18,7 @@ export const createGit = (exec: Exec = defaultExec): Git => {
 
   const headSha = (cwd: string) => run(cwd, ["rev-parse", "HEAD"]);
   const isDirty = async (cwd: string) => (await run(cwd, ["status", "--porcelain", "--untracked-files=no"])).length > 0;
+  const hasConflicts = async (cwd: string) => (await run(cwd, ["diff", "--name-only", "--diff-filter=U"])).length > 0;
   const mergeInProgress = (cwd: string) => succeeds(cwd, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
 
   const commit = async (cwd: string, message: string) => {
@@ -52,7 +53,11 @@ export const createGit = (exec: Exec = defaultExec): Git => {
       if (await isDirty(mainCwd)) throw new Error(`refusing to squash-merge: ${mainCwd} has uncommitted changes`);
       const merge = await git(mainCwd, ["merge", "--squash", branch]);
       if (merge.code !== 0) {
-        await git(mainCwd, ["reset", "--merge"]);
+        // Only a squash that stopped on conflicts has staged anything of
+        // ours. One that failed before touching the index (an `index.lock`
+        // another process holds, an unknown branch) left the checkout as it
+        // was, and a reset would discard what someone else has staged there.
+        if (await hasConflicts(mainCwd)) await git(mainCwd, ["reset", "--merge"]);
         must(merge, `git merge --squash ${branch}`);
       }
       const sha = await commit(mainCwd, message);

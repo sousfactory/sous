@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { exec } from "../../src/adapters/exec.js";
 import { createGit } from "../../src/adapters/git.js";
 import type { Git } from "../../src/ports/git.js";
 import { tempRepo, type TempRepo } from "../helpers/repo.js";
@@ -122,6 +123,27 @@ describe("git adapter (real repository)", () => {
     await repo.commitFile("a.txt", "a\n", "feat: a", wt);
     await writeFile(join(main, "README.md"), "dirty\n");
     await expect(git.squashMerge(main, "feature/1-x", "feat")).rejects.toThrow(/uncommitted changes/);
+  });
+
+  it("squashMerge undoes a squash that stopped on conflicts, and resets nothing when the merge failed before staging anything", async () => {
+    const calls: string[] = [];
+    const recording = createGit((command, args, options) => {
+      calls.push(args.join(" "));
+      return exec(command, args, options);
+    });
+    await recording.createBranch(main, "feature/1-x", "main");
+    const wt = await repo.worktree("feature/1-x");
+    await repo.commitFile("README.md", "branch\n", "feat: branch", wt);
+    await repo.commitFile("README.md", "main\n", "chore: main");
+
+    await expect(recording.squashMerge(main, "feature/1-x", "feat")).rejects.toThrow(/git merge --squash feature\/1-x failed/);
+    expect(calls).toContain("reset --merge");
+    expect(await recording.isDirty(main)).toBe(false);
+
+    // A failure before the index was touched (here an unknown branch; in a run, another process's index.lock) must not reset what someone else staged.
+    calls.length = 0;
+    await expect(recording.squashMerge(main, "nope", "feat")).rejects.toThrow(/git merge --squash nope failed/);
+    expect(calls).not.toContain("reset --merge");
   });
 
   it("isAncestor answers both ways and rejects unknown revisions", async () => {

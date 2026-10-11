@@ -36,6 +36,8 @@ export type FakeCtx = {
   events: FakeEventLog;
   /** Every `ctx.workDone` call, in order. */
   done: { work: string; commits: string[] }[];
+  /** The git calls made while `ctx.repoLock` was held, in order: what the step treated as one transaction on the checkout. */
+  locked: string[];
 };
 
 export const BRANCH = "feature/1-test-issue";
@@ -49,6 +51,7 @@ export const ctxOf = (options: FakeCtxOptions = {}): FakeCtx => {
   const sandbox = options.sandbox ?? fakeSandbox({ worktreePath: options.worktree ?? "/tmp/worktree", branch });
   const git = options.git ?? fakeGit({ existing: ["main", branch], branches: { [sandbox.worktreePath]: branch } });
   const events = fakeEventLog(options.events ?? []);
+  const locked: FakeCtx["locked"] = [];
   const deps: CtxDeps = {
     issue: { id: target.id, ref: target.ref, title: target.title, body: target.body, labels: target.labels },
     flow: "feature",
@@ -59,6 +62,14 @@ export const ctxOf = (options: FakeCtxOptions = {}): FakeCtx => {
     git,
     tracker,
     events,
+    repoLock: async (fn) => {
+      const before = git.calls.length;
+      try {
+        return await fn();
+      } finally {
+        locked.push(...git.calls.slice(before));
+      }
+    },
   };
   const done: FakeCtx["done"] = [];
   const ctx = buildCtx(
@@ -71,5 +82,5 @@ export const ctxOf = (options: FakeCtxOptions = {}): FakeCtx => {
     },
     { workDone: (work, commits) => done.push({ work, commits: [...commits] }) },
   );
-  return { ctx, git, tracker, sandbox, events, done };
+  return { ctx, git, tracker, sandbox, events, done, locked };
 };

@@ -110,6 +110,13 @@ export type Ctx = {
   readonly events: { readAll(): Promise<Event[]> };
   /** Close it once nothing else will run in the worktree, before removing it. */
   readonly sandbox: { close(): Promise<void> };
+  /**
+   * Runs `fn` as the only run working on the repository checkout. Runs on
+   * other issues share that checkout, so anything that reads its state and
+   * then changes it, like checking a branch is fresh and squashing it,
+   * belongs in one call. Waits for the holder; keep the section short.
+   */
+  repoLock<T>(fn: () => Promise<T>): Promise<T>;
 };
 
 /** The entry's resolved `with:` values, keyed by input name. */

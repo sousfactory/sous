@@ -104,6 +104,8 @@ export const portsOf = (sandbox: FakeSandbox = fakeSandbox(), overrides: FakePor
     persist: async (s) => {
       persisted.push(s);
     },
+    // Nothing runs in parallel in a test; the lock is the call itself.
+    repoLock: (fn) => fn(),
     onTransition: async (s, to) => {
       const from = s.history.at(-1)?.step ?? "?";
       transitions.push({ from, to, ok: s.history.at(-1)?.ok ?? false });

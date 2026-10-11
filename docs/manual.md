@@ -131,6 +131,7 @@ your-project/
     ├── logs/<id>/                # one agent log per iteration             (gitignored)
     ├── runs/<id>/                # session.json and events.jsonl per issue (gitignored)
     └── locks/<id>.lock           # pid and issue of a running sous run; removed when it ends (gitignored)
+        locks/repo.mutex          # held by the run working on the shared checkout (merge), seconds at a time
 ```
 
 The settings `*Dir` keys move these folders; the defaults are what the
@@ -416,6 +417,7 @@ JavaScript, compiled once, not sandboxed.
 | `ctx.workDone(commits)` | marks the work item done in the run record | — | ✓ | — | — |
 | `ctx.git`, `ctx.tracker` | git and issue-tracker ports | — | ✓ | ✓ | — |
 | `ctx.repoRoot`, `ctx.workProgress`, `ctx.events`, `ctx.sandbox` | checkout, progress per work item, event log, sandbox | — | ✓ | ✓ | — |
+| `ctx.repoLock(fn)` | runs `fn` as the only run on the repository checkout; a check and the change it guards belong in one call | — | ✓ | ✓ | — |
 | `prepared` | `{ agent, reason?, output }` of the visit's prepare | `{{prepared.<field>}}` of `output` | returned by prepare | 4th argument | `when` |
 | `result` | the visit's envelope `{ summary, commits, output }` | — | returned by run | 3rd argument | `when` |
 | `res` | `{ ok, log }` of the visit's final eval | — | — | returned | `when` |
@@ -639,9 +641,10 @@ changes nothing). Everything else on the tracker, such as the
   `merge` squashes into. In `task` and `feature`, a `merge` that finds
   base commits its branch lacks lands nothing and routes back to `sync`
   (`resync: ${{ true }}`; blocked after three such visits), so only
-  synced, checked and reviewed code lands. Two merges at the very same
-  moment can still collide on git's `index.lock`; the run crashes with the
-  checkout clean, and rerunning it resumes.
+  synced, checked and reviewed code lands. The check and the squash run
+  under `ctx.repoLock` (`.sous/locks/repo.mutex`), so two merges never
+  interleave: the second waits, then sees the base move and routes back
+  to `sync`. A stale `repo.mutex` from a crashed run is taken over.
 - Modules should be idempotent; they run again on re-entry.
 
 ## 12. CLI

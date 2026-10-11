@@ -26,6 +26,7 @@ export type CtxDeps = {
   git: Git;
   tracker: Tracker;
   events: Pick<EventLog, "readAll">;
+  repoLock: Ctx["repoLock"];
 };
 
 /** Changes between visits and iterations. */
@@ -99,6 +100,7 @@ export const buildCtx = (deps: CtxDeps, state: CtxState, writes?: CtxWrites): Ct
     tracker: deps.tracker,
     events: { readAll: () => deps.events.readAll() },
     sandbox: { close: () => deps.sandbox.close() },
+    repoLock: (fn) => deps.repoLock(fn),
   };
   return ctx;
 };

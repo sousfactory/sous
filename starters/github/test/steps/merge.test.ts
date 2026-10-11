@@ -88,11 +88,21 @@ describe("merge", () => {
     expect(f.done).toEqual([{ work: "1", commits: ["sha1"] }]);
   });
 
+  it("does the checks and the squash as one transaction under the repository lock; the cleanup runs outside it", async () => {
+    const f = setup();
+    await merge(f.ctx, { baseBranch: "main", resync: true });
+    // Everything from the branch check to the commit: a merge by another run in between would land this branch on a base it never synced.
+    expect(f.locked).toEqual(f.git.calls.slice(0, 8));
+    expect(f.locked.at(-1)).toBe(`commit(${REPO}, feat(#1): Test issue)`);
+    expect(f.git.calls.slice(8).map((c) => c.split("(")[0])).toEqual(["removeWorktree", "branchExists", "deleteBranch"]);
+  });
+
   it("merges nothing and answers stale when main has commits the branch lacks: another run landed since the last sync", async () => {
     const f = setup({ ancestors: new Set() });
     const out = await merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged", resync: true });
     expect(out).toEqual({ summary: `merge: main moved since the last sync; nothing merged, ${BRANCH} syncs again`, commits: [], output: { stale: true } });
     expect(f.git.calls.at(-1)).toBe(`isAncestor(${REPO}, main, ${BRANCH})`);
+    expect(f.locked).toEqual(f.git.calls);
     expect(f.git.committed).toEqual([]);
     expect(f.sandbox.closed).toBe(false);
     expect(f.git.existing.has(BRANCH)).toBe(true);

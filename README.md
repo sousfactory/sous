@@ -114,6 +114,7 @@ your-project/
     ├── logs/<id>/                # agent logs            (gitignored)
     ├── runs/<id>/                # session.json, events.jsonl (gitignored)
     └── locks/<id>.lock           # one run per issue; runs on different issues go in parallel
+        locks/repo.mutex          # the one run working on the shared checkout (merge) at a time
 ```
 
 ## Quick start
