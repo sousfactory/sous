@@ -65,8 +65,10 @@ from a laptop.
    browser login. `prepublishOnly` runs the full build, so `dist/`, the UI
    and the bundled `starter/` are what ships. A prerelease version
    (`1.2.0-rc.1`) is published under the `next` dist-tag.
-4. Check `npm view sous-factory version`.
+4. Check `npm view sous-factory version`; the registry can take a minute to
+   show the new version.
 
-If npm stages the publish instead of releasing it (the registry then holds a
-`0.0.0-stage` placeholder and refuses the version a second time), finish it
-with `npx npm@latest stage approve sous-factory@<version>`.
+npm trusts the workflow by its file name: the package's Trusted Publisher
+on npmjs.com names `sousfactory` / `sous` / `release.yml` / environment
+`npm`. If one of them differs, the publish fails with `ENEEDAUTH`; fix the
+entry and re-run the failed job.
