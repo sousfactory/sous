@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StepDetail, StepNode } from "../../server/model";
+import { AppHeader } from "../../src/components/AppHeader";
 import { focusOf } from "../../src/components/FlowGraph";
 import { actionsStatus, GitHubActions } from "../../src/components/GitHubActionsCell";
 import { StatusIcon } from "../../src/components/StatusIcon";
@@ -12,6 +13,14 @@ afterEach(cleanup);
 
 const now = Date.parse("2026-10-04T12:10:00.000Z");
 const node = (patch: Partial<StepNode> = {}): StepNode => ({ id: "review", status: "success", visits: 1, uses: "review", ...patch });
+
+describe("AppHeader", () => {
+  it("links home through the sous logo", () => {
+    render(<AppHeader repo="heerens/sous" live={false} />);
+    const home = screen.getByRole("link", { name: "sous home" });
+    expect(home.querySelector("img")?.getAttribute("src")).toMatch(/sous-logo.*\.svg/);
+  });
+});
 
 describe("StatusIcon", () => {
 

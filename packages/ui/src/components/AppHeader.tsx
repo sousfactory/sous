@@ -1,18 +1,17 @@
 /**
  * GitHub's repository header: owner/repo crumbs over an underline tab bar
- * with Actions selected. The sous mark in place of the Octocat and the
+ * with Actions selected. The sous logo in place of the Octocat and the
  * "factory" label are what tell this page from GitHub's.
  */
-import { PlayIcon, WorkflowIcon } from "@primer/octicons-react";
+import { PlayIcon } from "@primer/octicons-react";
+import logo from "../assets/sous-logo.svg";
 import { onLinkClick } from "../router";
 
 export const AppHeader = ({ repo, live }: { repo: string; live: boolean }) => (
   <header className="bg-canvas-muted border-b border-line">
     <div className="flex items-center gap-3 px-4 pt-4 pb-2 md:px-6">
       <a href="/runs" onClick={onLinkClick("/runs")} aria-label="sous home" className="flex items-center gap-2 text-fg hover:no-underline">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-canvas">
-          <WorkflowIcon size={16} />
-        </span>
+        <img src={logo} alt="sous" className="block h-6 w-auto translate-y-[2px]" />
       </a>
       <nav aria-label="Project" className="flex min-w-0 items-center gap-1 text-[14px]">
         <span className="truncate text-fg">{repo}</span>
@@ -21,7 +20,7 @@ export const AppHeader = ({ repo, live }: { repo: string; live: boolean }) => (
           factory
         </a>
       </nav>
-      <span className="rounded-full border border-line px-2 text-[12px] font-medium leading-[20px] text-fg-muted">sous · local</span>
+      <span className="rounded-full border border-line px-2 text-[12px] font-medium leading-[20px] text-fg-muted">local</span>
       {live ? (
         <span className="ml-auto flex items-center gap-1 text-[12px] text-fg-muted">
           <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--fgColor-attention)" }} />a flow is running
