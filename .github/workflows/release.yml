@@ -1,8 +1,9 @@
 name: release
 # Publishes sous-factory (core, the bundled UI and the starter) when a
 # `v<version>` tag is pushed. npm trusts this workflow file through trusted
-# publishing (OIDC), so no token is stored. The publish job waits in the `npm`
-# environment until a reviewer approves it on GitHub.
+# publishing (OIDC), so no token is stored. The publish job runs in the `npm`
+# environment because the trusted publisher entry on npmjs.com names it; the
+# environment has no required reviewers, so a tag publishes without a hand.
 on:
   push:
     tags: ["v*"]

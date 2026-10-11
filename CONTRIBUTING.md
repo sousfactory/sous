@@ -59,12 +59,13 @@ from a laptop.
    `package.json` pins `^` on the major) and push it to `main`.
 2. Tag that commit and push the tag: `git tag v<version> && git push origin v<version>`.
    The tag must match the version, or the workflow stops.
-3. The workflow builds and tests, then its `publish` job waits for approval
-   in the `npm` environment. Approve it on GitHub (the run page, Review
-   deployments). It publishes with npm trusted publishing: no token, no
-   browser login. `prepublishOnly` runs the full build, so `dist/`, the UI
-   and the bundled `starter/` are what ships. A prerelease version
-   (`1.2.0-rc.1`) is published under the `next` dist-tag.
+3. The workflow builds and tests, then its `publish` job publishes from
+   the `npm` environment with npm trusted publishing: no token, no browser
+   login, no approval. The environment exists because the trusted publisher
+   entry names it; keep it free of required reviewers. `prepublishOnly`
+   runs the full build, so `dist/`, the UI and the bundled `starter/` are
+   what ships. A prerelease version (`1.2.0-rc.1`) is published under the
+   `next` dist-tag.
 4. Check `npm view sous-factory version`; the registry can take a minute to
    show the new version.
 
