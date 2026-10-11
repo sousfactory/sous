@@ -1,0 +1,57 @@
+name: release
+# Publishes sous-factory (core, the bundled UI and the starter) when a
+# `v<version>` tag is pushed. npm trusts this workflow file through trusted
+# publishing (OIDC), so no token is stored. The publish job waits in the `npm`
+# environment until a reviewer approves it on GitHub.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches packages/core version
+        run: |
+          version=$(node -p "require('./packages/core/package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match packages/core version ${version}" >&2
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run starter:install
+      - run: npm run starter:test
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - run: npm install -g npm@^11.5.1
+      - run: npm ci
+      # prepublishOnly builds core, the UI and the bundle; a prerelease (1.2.0-rc.1) goes to the `next` tag.
+      - name: npm publish
+        working-directory: packages/core
+        run: |
+          version=$(node -p "require('./package.json').version")
+          case "$version" in
+            *-*) npm publish --access public --tag next ;;
+            *) npm publish --access public ;;
+          esac

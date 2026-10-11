@@ -1,6 +1,6 @@
 {
   "name": "sous-factory",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A software factory for coding agents, on your machine. sous runs your software development flow with coding agents: implement, review, fix, merge, or any step you write. The flow is a deterministic graph in YAML, like a GitHub Actions workflow, so the agents do the work and the graph decides what happens next.",
   "license": "MIT",
   "homepage": "https://sousfactory.com",

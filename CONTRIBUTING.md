@@ -52,13 +52,21 @@ Write commit messages for the maintainer who reads the history after the tracker
 
 ## Releasing
 
+Releases go out from GitHub Actions (`.github/workflows/release.yml`), not
+from a laptop.
+
 1. Bump `version` in `packages/core/package.json` (semver; the starter's
-   `package.json` pins `^` on the major).
-2. From `packages/core`: `npm publish --access public`. `prepublishOnly`
-   runs the full build first, so `dist/`, the UI and the bundled `starter/`
-   are what ships.
-3. npm may stage the publish instead of releasing it (the registry then holds
-   a `0.0.0-stage` placeholder and refuses the version a second time).
-   Finish it with `npx npm@latest stage list` and
-   `npx npm@latest stage approve sous-factory@<version>`.
-4. Check `npm view sous-factory version`, then tag and push.
+   `package.json` pins `^` on the major) and push it to `main`.
+2. Tag that commit and push the tag: `git tag v<version> && git push origin v<version>`.
+   The tag must match the version, or the workflow stops.
+3. The workflow builds and tests, then its `publish` job waits for approval
+   in the `npm` environment. Approve it on GitHub (the run page, Review
+   deployments). It publishes with npm trusted publishing: no token, no
+   browser login. `prepublishOnly` runs the full build, so `dist/`, the UI
+   and the bundled `starter/` are what ships. A prerelease version
+   (`1.2.0-rc.1`) is published under the `next` dist-tag.
+4. Check `npm view sous-factory version`.
+
+If npm stages the publish instead of releasing it (the registry then holds a
+`0.0.0-stage` placeholder and refuses the version a second time), finish it
+with `npx npm@latest stage approve sous-factory@<version>`.
