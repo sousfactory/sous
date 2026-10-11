@@ -1,15 +1,19 @@
 /**
- * One `sous run` per project at a time: `.sous/.lock` holds the running
- * pid and issue. A stale lock is reported, never taken over; a human
+ * One `sous run` per issue at a time: `.sous/locks/<issue>.lock` holds the
+ * running pid and issue. Runs on different issues go in parallel, each in
+ * its own worktree. A stale lock is reported, never taken over; a human
  * removes it.
  */
 import { rmSync } from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { safeId } from "../session/paths.js";
 
-export const LOCK_FILE = ".lock";
+export const LOCKS_DIR = "locks";
 
-export const lockPath = (root: string): string => join(root, LOCK_FILE);
+export const locksDir = (root: string): string => join(root, LOCKS_DIR);
+
+export const lockPath = (root: string, issue: string): string => join(locksDir(root), `${safeId(issue)}.lock`);
 
 export type LockInfo = { pid: number; issue: string };
 
@@ -61,6 +65,7 @@ export const isProcessAlive = (pid: number): boolean => {
 };
 
 export const acquireLock = async (path: string, lock: LockInfo, isAlive: (pid: number) => boolean): Promise<AcquireResult> => {
+  await mkdir(dirname(path), { recursive: true });
   try {
     await writeFile(path, `${JSON.stringify(lock)}\n`, { encoding: "utf8", flag: "wx" });
   } catch (error) {
@@ -70,4 +75,19 @@ export const acquireLock = async (path: string, lock: LockInfo, isAlive: (pid: n
     return { ok: false, status };
   }
   return { ok: true, release: () => rm(path, { force: true }), releaseSync: () => rmSync(path, { force: true }) };
+};
+
+/** Every lock under `locks/` whose pid is alive: the runs going on right now, ordered by issue. */
+export const liveLocks = async (root: string, isAlive: (pid: number) => boolean): Promise<LockInfo[]> => {
+  let names: string[];
+  try {
+    names = (await readdir(locksDir(root))).filter((n) => n.endsWith(".lock"));
+  } catch {
+    return [];
+  }
+  const raws = await Promise.all(names.map((n) => readFile(join(locksDir(root), n), "utf8").catch(() => undefined)));
+  return raws
+    .map((raw) => classifyLock(raw, isAlive))
+    .flatMap((status) => (status.kind === "held" ? [status.lock] : []))
+    .sort((a, b) => a.issue.localeCompare(b.issue));
 };

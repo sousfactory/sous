@@ -1,22 +1,22 @@
 /**
  * Change feed: which issue changed, as soon as the executor writes. Watches
- * the runs folder, the logs folder and the lock with `fs.watch`, debounced
+ * the runs folder, the logs folder and the locks with `fs.watch`, debounced
  * per issue. Where watching is unavailable it compares file mtimes on a
- * timer instead. The lock is also polled, because a run that dies without
- * removing it changes liveness without writing anything.
+ * timer instead. The locks are also polled, because a run that dies without
+ * removing its lock changes liveness without writing anything.
  */
 import { existsSync, readdirSync, statSync, watch, type FSWatcher } from "node:fs";
 import { join, sep } from "node:path";
-import { LOCK_FILE } from "sous-factory/read";
+import { LOCKS_DIR } from "sous-factory/read";
 
-/** `issue: null` means something every view shares changed: the lock, or the set of runs. */
+/** `issue: null` means something every view shares changed: a lock, or the set of runs. */
 export type Change = { issue: string | null };
 
 export type FeedOptions = {
   root: string;
   runsRoot: string;
   logsRoot: string;
-  /** Liveness of the lock; compared on each poll. */
+  /** Liveness of the locks; compared on each poll. */
   liveness: () => Promise<string>;
   debounceMs?: number;
   pollMs?: number;
@@ -112,9 +112,11 @@ export const createFeed = (options: FeedOptions): Feed => {
     const issue = issueOf(name);
     if (issue !== null) emit(issue);
   });
+  // The locks folder appears with the first run; until then the poll covers it.
   tryWatch(options.root, false, (name) => {
-    if (name === LOCK_FILE) emit(null);
+    if (name === LOCKS_DIR) emit(null);
   });
+  tryWatch(join(options.root, LOCKS_DIR), false, () => emit(null));
 
   let runs = watchedRuns ? new Map<string, number>() : snapshot(options.runsRoot);
   let logs = watchedLogs ? new Map<string, number>() : snapshot(options.logsRoot);

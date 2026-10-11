@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFileEventLog } from "../../src/adapters/eventlog.js";
 import { worktreePathFor, type OpenSandbox, type OpenSandboxOptions } from "../../src/adapters/sandcastle.js";
-import { lockPath } from "../../src/commands/lock.js";
+import { lockPath, locksDir } from "../../src/commands/lock.js";
 import { existingSpecDirName, onProcessSignal, parseRunArgs, runCommand, type RunDeps, type SignalHandler, type StopSignal } from "../../src/commands/run.js";
 import { AgentProcessError } from "../../src/exec/errors.js";
 import { recordVisit, type Session } from "../../src/exec/scope.js";
@@ -104,8 +104,8 @@ describe("runCommand", () => {
   });
 
   const runs = () => join(repoRoot, ".sous", "runs");
-  const lockExists = () =>
-    stat(lockPath(root)).then(
+  const lockExists = (issue = "7") =>
+    stat(lockPath(root, issue)).then(
       () => true,
       () => false,
     );
@@ -402,21 +402,32 @@ describe("runCommand", () => {
     expect(opened).toEqual([]);
   });
 
-  it("refuses while another run holds the lock and reports a stale one", async () => {
-    await writeFile(lockPath(root), '{"pid":99,"issue":"3"}\n');
+  it("refuses while another run holds the issue's lock and reports a stale one", async () => {
+    await mkdir(locksDir(root), { recursive: true });
+    await writeFile(lockPath(root, "7"), '{"pid":99,"issue":"7"}\n');
 
     expect(await runCommand(["walk", "7"], deps({ isAlive: () => true }))).toBe(1);
-    expect(err).toEqual([`sous run: another sous run holds ${lockPath(root)} (pid 99, issue 3)`]);
+    expect(err).toEqual([`sous run: another sous run holds ${lockPath(root, "7")} (pid 99, issue 7)`]);
 
-    expect(await runCommand(["walk", "7"], deps({ isAlive: () => false }))).toBe(1);
-    expect(err[1]).toBe(`sous run: stale lock ${lockPath(root)}: pid 99 (issue 3) is not running; remove the file and retry`);
+    expect(await runCommand(["walk", "#7"], deps({ isAlive: () => false }))).toBe(1);
+    expect(err[1]).toBe(`sous run: stale lock ${lockPath(root, "7")}: pid 99 (issue 7) is not running; remove the file and retry`);
     expect(opened).toEqual([]);
     expect(await lockExists()).toBe(true);
   });
 
+  it("runs beside a live run on another issue and leaves that run's lock alone", async () => {
+    await mkdir(locksDir(root), { recursive: true });
+    await writeFile(lockPath(root, "3"), '{"pid":99,"issue":"3"}\n');
+
+    expect(await runCommand(["walk", "7"], deps({ isAlive: () => true }))).toBe(0);
+    expect(err).toEqual([]);
+    expect(await lockExists()).toBe(false);
+    expect(await lockExists("3")).toBe(true);
+  });
+
   it("releases the lock when the tracker fails before anything else happens", async () => {
     await expect(runCommand(["walk", "999"], deps())).rejects.toThrow("fakeTracker: no issue 999");
-    expect(await lockExists()).toBe(false);
+    expect(await lockExists("999")).toBe(false);
     expect(opened).toEqual([]);
   });
 

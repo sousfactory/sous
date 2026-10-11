@@ -17,7 +17,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { basename, extname, join, normalize, sep } from "node:path";
 import { repoRootOf } from "sous-factory/read";
 import type { GitHubLookup } from "./github.js";
-import { flowNames, listRows, liveLock, readFlow, readLog, readRun, type Project } from "./runs.js";
+import { flowNames, listRows, liveLocks, readFlow, readLog, readRun, type Project } from "./runs.js";
 import type { Feed } from "./watch.js";
 
 export type ServerOptions = { project: Project; feed: Feed; distDir: string; github: GitHubLookup; heartbeatMs?: number };
@@ -77,8 +77,8 @@ const handle = async (req: IncomingMessage, res: ServerResponse, options: Server
   if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { error: "method not allowed" });
   if (path === "/api/events") return events(req, res, options.feed, options.heartbeatMs ?? 15_000);
   if (path === "/api/runs") {
-    const [rows, lock] = await Promise.all([listRows(options.project), liveLock(options.project)]);
-    return json(res, 200, { repo: basename(repoRootOf(options.project.root)), flows: flowNames(options.project), rows, live: lock ?? null });
+    const [rows, live] = await Promise.all([listRows(options.project), liveLocks(options.project)]);
+    return json(res, 200, { repo: basename(repoRootOf(options.project.root)), flows: flowNames(options.project), rows, live });
   }
   const flow = /^\/api\/flows\/([^/]+)$/.exec(path);
   if (flow !== null) {

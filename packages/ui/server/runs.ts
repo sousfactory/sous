@@ -1,6 +1,6 @@
 /**
  * Reading a project from disk: the run folders under `runsDir`, their
- * session and event log, the flow file, agent logs and the lock. The
+ * session and event log, the flow file, agent logs and the locks. The
  * executor overwrites `session.json` in place, so a read can catch it half
  * written; such a read is retried briefly before it counts as an error.
  */
@@ -8,14 +8,13 @@ import { existsSync, readdirSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import {
-  classifyLock,
   eventsFile,
   foldTimeline,
   isProcessAlive,
   listFlows,
+  liveLocks as readLiveLocks,
   loadSession,
   loadSettings,
-  lockPath,
   logDir,
   parseEvents,
   parseFlow,
@@ -45,17 +44,10 @@ export const openProject = (root: string, isAlive: (pid: number) => boolean = is
   return { root, runsRoot: dirs.runs, logsRoot: dirs.logs, flowsRoot: dirs.flows, stepsRoot: dirs.steps, isAlive };
 };
 
-/** The lock of a live `sous run`; a stale or unreadable lock is no live run. */
-export const liveLock = async (project: Project): Promise<LockInfo | undefined> => {
-  let raw: string | undefined;
-  try {
-    raw = await readFile(lockPath(project.root), "utf8");
-  } catch {
-    raw = undefined;
-  }
-  const status = classifyLock(raw, project.isAlive);
-  return status.kind === "held" ? status.lock : undefined;
-};
+/** The locks of the live `sous run`s, one per issue; a stale or unreadable lock is no live run. */
+export const liveLocks = (project: Project): Promise<LockInfo[]> => readLiveLocks(project.root, project.isAlive);
+
+const holds = (locks: readonly LockInfo[], issue: string): boolean => locks.some((l) => l.issue === issue);
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -103,14 +95,14 @@ const updatedAt = async (project: Project, issue: string): Promise<string> => {
 
 const NO_SESSION = "no session.json yet";
 
-export const readRow = async (project: Project, issue: string, lock: LockInfo | undefined): Promise<RunRow> => {
+export const readRow = async (project: Project, issue: string, locks: readonly LockInfo[]): Promise<RunRow> => {
   const updated = await updatedAt(project, issue);
   const file = sessionFile(project.runsRoot, issue);
   try {
     const session = await readSession(file);
     if (session === undefined) return { kind: "error", updatedAt: updated, issue, error: NO_SESSION };
     const timeline = await readTimeline(eventsFile(project.runsRoot, issue));
-    return { kind: "run", updatedAt: updated, summary: summarizeRun(session, timeline, lock?.issue === session.issue) };
+    return { kind: "run", updatedAt: updated, summary: summarizeRun(session, timeline, holds(locks, session.issue)) };
   } catch (error) {
     return { kind: "error", updatedAt: updated, issue, error: withoutPath(message(error), file) };
   }
@@ -118,8 +110,8 @@ export const readRow = async (project: Project, issue: string, lock: LockInfo | 
 
 /** Every run folder, most recently written first. */
 export const listRows = async (project: Project): Promise<RunRow[]> => {
-  const lock = await liveLock(project);
-  const rows = await Promise.all(runIssues(project).map((issue) => readRow(project, issue, lock)));
+  const locks = await liveLocks(project);
+  const rows = await Promise.all(runIssues(project).map((issue) => readRow(project, issue, locks)));
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 };
 
@@ -146,12 +138,12 @@ export const readRun = async (project: Project, issue: string, options: { attemp
     const session = await readSession(file);
     if (session === undefined) return existsSync(join(project.runsRoot, issue)) ? { kind: "error", error: NO_SESSION } : { kind: "missing" };
     const timeline = await readTimeline(eventsFile(project.runsRoot, issue));
-    const lock = await liveLock(project);
+    const locks = await liveLocks(project);
     const view = deriveRun({
       session,
       timeline,
       topology: flowTopology(project, session.flow),
-      live: lock?.issue === session.issue,
+      live: holds(locks, session.issue),
       ...(options.attempt !== undefined ? { attempt: options.attempt } : {}),
       ...(options.scope !== undefined ? { scope: options.scope } : {}),
     });

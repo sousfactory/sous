@@ -4,6 +4,7 @@ dist-server/
 logs/
 runs/
 .lock
+locks/
 *.tgz
 *.tsbuildinfo
 .idea/

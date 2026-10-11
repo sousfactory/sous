@@ -24,7 +24,7 @@ export const App = () => {
   const runs = useJson<RunsResponse>("/api/runs", useVersion());
   return (
     <>
-      <AppHeader repo={runs.data?.repo ?? "…"} live={runs.data?.live != null} />
+      <AppHeader repo={runs.data?.repo ?? "…"} live={(runs.data?.live.length ?? 0) > 0} />
       {route.page === "runs" ? <RunsPage data={runs.data} error={runs.error} flow={route.flow} step={route.step} /> : <RunScreen route={route} />}
     </>
   );

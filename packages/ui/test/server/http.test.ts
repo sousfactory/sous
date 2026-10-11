@@ -57,7 +57,7 @@ describe("api", () => {
     expect(body.repo).toBe("repo");
     expect(body.flows).toEqual(["task"]);
     expect(body.rows.map((r) => r.kind)).toEqual(["run", "run"]);
-    expect(body.live).toBeNull();
+    expect(body.live).toEqual([]);
   });
 
   it("asks GitHub about the squash commit of a done run only, 404 for an unknown issue", async () => {

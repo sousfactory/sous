@@ -64,8 +64,9 @@ in a red box naming the step it left open, and in that step's visit as an
 open "Run crashed" row. The terminal output of `sous run` is not stored, so
 the error message is all the UI has; runs from before the field show none.
 
-A run is live while `.sous/.lock` names its issue and the pid is
-alive, which is how core decides.
+A run is live while `.sous/locks/<id>.lock` names its issue and the pid
+is alive, which is how core decides. Runs on different issues can be live
+at once.
 
 The graph is built from `<flowsDir>/<name>.yaml` as the file is now, because
 core does not snapshot it per run. A visited step that is no longer in the

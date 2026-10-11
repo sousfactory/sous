@@ -9,7 +9,7 @@ afterEach(cleanup);
 const data: RunsResponse = {
   repo: "example-repo",
   flows: ["feature", "task"],
-  live: null,
+  live: [],
   rows: [
     {
       kind: "run",

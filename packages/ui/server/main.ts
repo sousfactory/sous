@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { repoRootOf } from "sous-factory/read";
 import { createGitHubLookup, ghIn } from "./github.js";
 import { createUiServer } from "./http.js";
-import { liveLock, openProject } from "./runs.js";
+import { liveLocks, openProject } from "./runs.js";
 import { createFeed } from "./watch.js";
 
 export const DEFAULT_PORT = 4680;
@@ -58,7 +58,7 @@ export const uiMain = async (args: string[], root: string): Promise<number> => {
     root,
     runsRoot: project.runsRoot,
     logsRoot: project.logsRoot,
-    liveness: async () => JSON.stringify((await liveLock(project)) ?? null),
+    liveness: async () => JSON.stringify(await liveLocks(project)),
   });
   const server = createUiServer({ project, feed, distDir: DIST_DIR, github: createGitHubLookup(ghIn(repoRootOf(root))) });
   await new Promise<void>((resolve, reject) => {

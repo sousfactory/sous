@@ -208,9 +208,11 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
   }
   const flow = loadFlow(file, { stepsDir: dirs.steps });
 
-  const lock = await acquireLock(lockPath(root), { pid: deps.pid ?? process.pid, issue: parsed.issue }, deps.isAlive ?? isProcessAlive);
+  // Per issue: runs on other issues may go on beside this one.
+  const lockFile = lockPath(root, parsed.issue);
+  const lock = await acquireLock(lockFile, { pid: deps.pid ?? process.pid, issue: parsed.issue }, deps.isAlive ?? isProcessAlive);
   if (!lock.ok) {
-    err(`sous run: ${describeLock(lockPath(root), lock.status)}`);
+    err(`sous run: ${describeLock(lockFile, lock.status)}`);
     return 1;
   }
   // Aborting terminates the agent process and any command in flight.

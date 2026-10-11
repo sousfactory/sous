@@ -9,7 +9,7 @@ export { loadSettings, projectDirs, SETTINGS_FILE, type ProjectDirs, type Settin
 export { parseFlow, BLOCKED, DONE, TERMINALS, type Agent, type AgentKind, type FlowFile } from "./config/flow.js";
 export { listFlows } from "./config/validate.js";
 export { topology, type StepKind, type Topology, type TopologyEdge, type TopologyNode } from "./commands/graph.js";
-export { classifyLock, isProcessAlive, lockPath, LOCK_FILE, type LockInfo, type LockStatus } from "./commands/lock.js";
+export { classifyLock, isProcessAlive, liveLocks, lockPath, locksDir, LOCKS_DIR, type LockInfo, type LockStatus } from "./commands/lock.js";
 export { runsRoot, runDir, sessionFile, eventsFile } from "./session/paths.js";
 export { loadSession, parseSession } from "./session/store.js";
 export { parseEvents } from "./adapters/eventlog.js";

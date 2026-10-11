@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listRows, liveLock, openProject, readLog, readRun } from "../../server/runs";
+import { listRows, liveLocks, openProject, readLog, readRun } from "../../server/runs";
 import { Log, session, tempProject, writeRun } from "../fixtures";
 
 const dead = () => false;
@@ -32,21 +32,37 @@ describe("listRows", () => {
   });
 });
 
-describe("liveLock", () => {
-  it("is the lock only while its process lives", async () => {
+describe("liveLocks", () => {
+  const lock = (root: string, issue: string, pid: number) => {
+    mkdirSync(join(root, "locks"), { recursive: true });
+    writeFileSync(join(root, "locks", `${issue}.lock`), JSON.stringify({ pid, issue }));
+  };
+
+  it("are the locks only while their process lives, one per issue", async () => {
     const root = tempProject();
-    expect(await liveLock(openProject(root, alive))).toBeUndefined();
-    writeFileSync(join(root, ".lock"), JSON.stringify({ pid: 4242, issue: "84" }));
-    expect(await liveLock(openProject(root, alive))).toEqual({ pid: 4242, issue: "84" });
-    expect(await liveLock(openProject(root, dead))).toBeUndefined();
+    expect(await liveLocks(openProject(root, alive))).toEqual([]);
+    lock(root, "84", 4242);
+    lock(root, "85", 4343);
+    expect(await liveLocks(openProject(root, alive))).toEqual([
+      { pid: 4242, issue: "84" },
+      { pid: 4343, issue: "85" },
+    ]);
+    expect(await liveLocks(openProject(root, dead))).toEqual([]);
   });
 
-  it("makes the locked issue's run live", async () => {
+  it("make every locked issue's run live at once", async () => {
     const root = tempProject();
     writeRun(root, "84", session(), new Log().start("r1", 0).visit("init", 0, undefined));
-    writeFileSync(join(root, ".lock"), JSON.stringify({ pid: 4242, issue: "84" }));
-    const read = await readRun(openProject(root, alive), "84");
-    expect(read.kind === "ok" && read.view.summary.outcome).toBe("running");
+    writeRun(root, "85", session({ issue: "85" }), new Log().start("r2", 0).visit("init", 0, undefined));
+    lock(root, "84", 4242);
+    lock(root, "85", 4343);
+    const project = openProject(root, alive);
+    for (const issue of ["84", "85"]) {
+      const read = await readRun(project, issue);
+      expect(read.kind === "ok" && read.view.summary.outcome).toBe("running");
+    }
+    const rows = await listRows(project);
+    expect(rows.map((r) => r.kind === "run" && r.summary.live)).toEqual([true, true]);
   });
 });
 
