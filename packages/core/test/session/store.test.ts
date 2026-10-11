@@ -1,11 +1,11 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../../src/config/settings.js";
 import { recordVisit, type Session } from "../../src/exec/scope.js";
 import { branchName, eventsFile, runDir, runsRoot, sessionFile, slugify, specDir, specDirName } from "../../src/session/paths.js";
-import { filePersist, loadSession, parseSession, saveSession } from "../../src/session/store.js";
+import { backupFile, filePersist, loadSession, parseSession, saveSession } from "../../src/session/store.js";
 import {
   appendHistory,
   bumpIteration,
@@ -87,7 +87,36 @@ describe("store", () => {
     expect(await loadSession(join(dir, "missing.json"))).toBeUndefined();
   });
 
-  it("rejects a file that does not match schema 5, naming the file and the violation", async () =>  {
+  it("never writes the session in place: the new state arrives by rename, the previous checkpoint stays as .bak, no temp file is left", async () => {
+    const path = join(dir, "session.json");
+    const first = fresh();
+    const second = bumpIteration(first, "init");
+    await saveSession(path, first);
+    expect(await readdir(dir)).toEqual(["session.json"]);
+
+    await saveSession(path, second);
+    expect((await readdir(dir)).sort()).toEqual(["session.json", "session.json.bak"]);
+    expect(await loadSession(path)).toEqual(second);
+    expect(JSON.parse(await readFile(backupFile(path), "utf8"))).toEqual(first);
+  });
+
+  it("loads the previous checkpoint when only .bak is left, as after a crash between the two renames", async () => {
+    const path = join(dir, "session.json");
+    await saveSession(path, fresh());
+    await saveSession(path, bumpIteration(fresh(), "init"));
+    await rm(path);
+    expect(await loadSession(path)).toEqual(fresh());
+  });
+
+  it("does not fall back to .bak over a present but broken session file", async () => {
+    const path = join(dir, "session.json");
+    await saveSession(path, fresh());
+    await saveSession(path, bumpIteration(fresh(), "init"));
+    await writeFile(path, "{ not json");
+    await expect(loadSession(path)).rejects.toThrow(/JSON/);
+  });
+
+  it("rejects a file of another schema version, naming the file and the violation", async () => {
     const path = join(dir, "session.json");
     await saveSession(path, { ...fresh(), schemaVersion: 3 } as unknown as Session);
     await expect(loadSession(path)).rejects.toThrow(/session\.json: \/schemaVersion must be equal to constant/);
