@@ -138,7 +138,8 @@ describe("runCommand", () => {
 
     const session = await savedSession();
     expect(session).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: 7,
+      closed: true,
       flow: "walk",
       issue: "7",
       title: "Cap asset slug length",
@@ -219,10 +220,40 @@ describe("runCommand", () => {
   });
 
   it("reports a finished session without opening a sandbox", async () => {
-    await saveSession(sessionFile(runs(), "7"), createSession({ flow: "walk", issue: "7", title: "t", branch: "b", specDir: "s", entry: "done" }));
+    await saveSession(sessionFile(runs(), "7"), { ...createSession({ flow: "walk", issue: "7", title: "t", branch: "b", specDir: "s", entry: "done" }), closed: true });
     expect(await runCommand(["walk", "7"], deps())).toBe(0);
     expect(out).toEqual(["#7 is already done (pass --restart to run it again)"]);
     expect(opened).toEqual([]);
+    expect(tracker.issues.get("7")?.state).toBe("open");
+  });
+
+  it("retries the issue close of a finished run on the next invocation when the close failed, and only until it succeeds", async () => {
+    const close = tracker.close.bind(tracker);
+    let closes = 0;
+    tracker.close = async (id, text) => {
+      closes++;
+      if (closes === 1) throw new Error("gh: 502 Bad Gateway");
+      await close(id, text);
+    };
+
+    await expect(runCommand(["walk", "7"], deps())).rejects.toThrow("gh: 502 Bad Gateway");
+    expect(await savedSession()).toMatchObject({ current: "done", closed: false });
+    expect((await savedEvents()).at(-1)).toMatchObject({ type: "run.end", outcome: "crashed", error: "gh: 502 Bad Gateway" });
+    expect(tracker.issues.get("7")?.state).toBe("open");
+    expect(await lockExists()).toBe(false);
+
+    out.length = 0;
+    expect(await runCommand(["walk", "7"], deps({ newId: () => "r2" }))).toBe(0);
+    expect(out).toEqual(["#7: closed the issue the finished run had left open", "#7 is already done (pass --restart to run it again)"]);
+    // No sandbox beyond the first run's: the retry is the tracker call alone.
+    expect(opened).toHaveLength(1);
+    expect(tracker.issues.get("7")?.state).toBe("closed");
+    expect(await savedSession()).toMatchObject({ current: "done", closed: true });
+
+    out.length = 0;
+    expect(await runCommand(["walk", "7"], deps())).toBe(0);
+    expect(out).toEqual(["#7 is already done (pass --restart to run it again)"]);
+    expect(closes).toBe(2);
   });
 
   it("closes the segment as crashed when the run throws, keeping the session where it was", async () => {

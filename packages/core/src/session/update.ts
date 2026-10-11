@@ -30,6 +30,7 @@ export const createSession = ({ flow, issue, title, branch, specDir, entry }: Ne
       history: [],
       iterations: { [entry]: 0 },
       blocked: false,
+      closed: false,
     },
     issue,
   );
@@ -51,6 +52,9 @@ export const bumpIteration = (session: Session, step: string): Session => withIt
 export const resetIteration = (session: Session, step: string): Session => withIteration(session, step, 0);
 
 export const markBlocked = (session: Session): Session => ({ ...session, blocked: true });
+
+/** The lifecycle's close of the issue went through; `sous run` has nothing left to retry. */
+export const markClosed = (session: Session): Session => ({ ...session, closed: true });
 
 /** Re-entry after `blocked` gives the current step a fresh iteration budget. */
 export const clearBlocked = (session: Session): Session => withIteration({ ...session, blocked: false }, session.current, 0);

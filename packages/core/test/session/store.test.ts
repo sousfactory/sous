@@ -14,6 +14,7 @@ import {
   iterationOf,
   logTail,
   markBlocked,
+  markClosed,
   markWorkDone,
   resetIteration,
   setCurrent,
@@ -139,9 +140,9 @@ describe("store", () => {
 });
 
 describe("update", () => {
-  it("createSession has the session shape: schema 6, the issue on the bench, entry counter at 0", () => {
+  it("createSession has the session shape: schema 7, the issue on the bench, entry counter at 0, neither blocked nor closed", () => {
     expect(fresh()).toEqual({
-      schemaVersion: 6,
+      schemaVersion: 7,
       flow: "feature",
       issue: "12",
       title: "Some slug",
@@ -155,7 +156,10 @@ describe("update", () => {
       history: [],
       iterations: { init: 0 },
       blocked: false,
+      closed: false,
     });
+    expect(markClosed(fresh()).closed).toBe(true);
+    expect(() => parseSession({ ...fresh(), closed: undefined }, "f")).toThrow(/required property 'closed'/);
   });
 
   it("setCurrent moves, remembers the step left and starts the target's counter fresh", () => {

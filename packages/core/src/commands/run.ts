@@ -28,8 +28,8 @@ import type { Tracker } from "../ports/tracker.js";
 import type { RunOutcome } from "../session/events.js";
 import { branchName, eventsFile, existingSpecDirName, runDir, sessionFile, specDirName } from "../session/paths.js";
 import { filePersist, loadSession } from "../session/store.js";
-import { createSession } from "../session/update.js";
-import { acquireLock, describeLock, isProcessAlive, lockPath } from "./lock.js";
+import { createSession, markClosed } from "../session/update.js";
+import { acquireLock, createRepoLock, describeLock, isProcessAlive, lockPath, repoLockPath } from "./lock.js";
 import { formatError } from "./validate.js";
 
 /** `issue` is the tracker's id as typed, minus a leading `#`, so `sous run task #96` works. */
@@ -289,7 +289,21 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
       return 1;
     }
     const session = existing ?? createSession({ flow: flow.name, issue: issue.id, title: issue.title, branch, specDir, entry: flow.entry });
+    const persist = filePersist(sessionFile(runs, issue.id));
+    const lifecycle = createLifecycle({ tracker, issue: issue.id, mode: flow.lifecycle ?? settings.lifecycle });
+    // The executor records `done` before the issue is closed, so the close
+    // has its own mark: one that failed, or never ran because the process
+    // ended in between, is retried here instead of being skipped for good.
+    const finish = async (s: Session): Promise<void> => {
+      if (s.closed) return;
+      await lifecycle.close();
+      await persist(markClosed(s));
+    };
     if (session.current === DONE) {
+      if (!session.closed) {
+        await finish(session);
+        out(`${issue.ref}: closed the issue the finished run had left open`);
+      }
       out(`${issue.ref} is already done (pass --restart to run it again)`);
       return 0;
     }
@@ -316,7 +330,6 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     segment = { events, runId, started };
     await started;
 
-    const lifecycle = createLifecycle({ tracker, issue: issue.id, mode: flow.lifecycle ?? settings.lifecycle });
     // Claimed on every start, so a resumed run takes the issue back from `blocked`.
     await lifecycle.claim(session.branch);
     let final: Session;
@@ -343,7 +356,14 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
       throw error;
     }
     if (interruption !== undefined) return await interruption;
-    if (final.current === DONE) await lifecycle.close();
+    if (final.current === DONE) {
+      try {
+        await finish(final);
+      } catch (error) {
+        await endRun("crashed", messageOf(error));
+        throw error;
+      }
+    }
     await endRun(final.blocked ? "blocked" : "done");
     out(final.blocked ? `${issue.ref} blocked in ${final.current}; see the issue comment` : `${issue.ref}: ${final.current}`);
     return final.blocked ? 1 : 0;

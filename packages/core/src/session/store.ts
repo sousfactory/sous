@@ -35,7 +35,7 @@ const stepRecord = {
 
 export const SESSION_SCHEMA = {
   type: "object",
-  required: ["schemaVersion", "flow", "issue", "title", "branch", "specDir", "current", "previous", "work", "scopes", "workProgress", "history", "iterations", "blocked"],
+  required: ["schemaVersion", "flow", "issue", "title", "branch", "specDir", "current", "previous", "work", "scopes", "workProgress", "history", "iterations", "blocked", "closed"],
   additionalProperties: false,
   properties: {
     schemaVersion: { const: SCHEMA_VERSION },
@@ -68,6 +68,7 @@ export const SESSION_SCHEMA = {
     },
     iterations: { type: "object", additionalProperties: { type: "integer", minimum: 0 } },
     blocked: { type: "boolean" },
+    closed: { type: "boolean" },
   },
 };
 

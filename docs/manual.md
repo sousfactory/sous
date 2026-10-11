@@ -586,10 +586,14 @@ owns the `## Blocked by` rule.
 
 ### Run record
 
-`session.json` (schema 6) holds what a run needs to continue: `current`,
+`session.json` (schema 7) holds what a run needs to continue: `current`,
 `previous`, `work`, `scopes` (the `steps.<id>` records per work item),
-`workProgress`, `history`, `iterations`, `blocked`. A file of another
-schema is an error, not a migration.
+`workProgress`, `history`, `iterations`, `blocked`, `closed` (the
+lifecycle has closed the issue of a finished run). A file of another
+schema is an error, not a migration. Every checkpoint is written beside
+the file and renamed into place, with the previous one kept as
+`session.json.bak`, so a crash mid-write never leaves a run that cannot
+continue.
 
 `events.jsonl` is append-only observability: `run.start/end`,
 `span.open/close` (one span per visit), `prepare.start/end`,
@@ -619,6 +623,9 @@ changes nothing). Everything else on the tracker, such as the
   was recorded; with neither, the agent runs again. Only a result the
   agent actually answered in this visit counts: a failed iteration records
   none, and a new visit starts without the previous visit's.
+- A run that reached `done` but could not close its issue (the tracker
+  was down) closes it on the next `sous run` of the issue, without
+  redoing any work.
 - A recorded `prepare` result is reused on re-entry, never run twice in
   one visit.
 - Ctrl-C or SIGTERM stops the agent and any running command with it,

@@ -6,7 +6,7 @@
  */
 import type { StepRecord, StepsScope, WorkRecord } from "../index.js";
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /** One transition: the step left, how its eval went, and where the run went next. */
 export type HistoryEntry = { step: string; at: string; ok: boolean; next: string };
@@ -35,6 +35,12 @@ export type Session = {
   iterations: Record<string, number>;
   /** The run stopped at `current` and waits for a human. */
   blocked: boolean;
+  /**
+   * The lifecycle has closed the issue of a run at `done`. Recorded apart
+   * from `current`, which the executor persists first: a close that fails
+   * after that is retried on the next `sous run` instead of being skipped.
+   */
+  closed: boolean;
 };
 
 export const scopeKey = (work: string): string => work;
