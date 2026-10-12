@@ -3,11 +3,11 @@
   <img alt="sous" src="docs/images/logo/sous-logo-light.svg" width="223" height="60">
 </picture>
 
-*sous · Issue in, merged commit out*
-
 [![npm](https://img.shields.io/npm/v/sous-factory)](https://www.npmjs.com/package/sous-factory)
 [![ci](https://github.com/sousfactory/sous/actions/workflows/ci.yml/badge.svg)](https://github.com/sousfactory/sous/actions/workflows/ci.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+[Homepage](https://sousfactory.com) · [Manual](docs/manual.md)
 
 # A software factory for coding agents, on your machine.
 
