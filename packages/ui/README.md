@@ -35,6 +35,11 @@ binds to 127.0.0.1 only and has no authentication.
 A run folder whose `session.json` core cannot load, for example an older
 schema, is listed greyed with the loader's message.
 
+The step view, here `implement` mid-run: its routes with the first match
+marked, the current visit, the running agent and its output.
+
+![sous ui step view for implement: routes with first match wins, the current visit, the running agent and its output](../../docs/images/run-detail.png)
+
 ## Status mapping
 
 Core stores an `ok` per visit and an outcome per run segment. The view maps

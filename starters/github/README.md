@@ -26,6 +26,25 @@ Three flows:
 | `feature` | `type:feature` | A parent issue delivered sub-issue by sub-issue (next-work → implement → review ⇄ fix → close-work, repeated), then synced, reviewed as a whole and merged. |
 | `bench` | any issue | A smoke test: one module step, one agent step, nothing committed, the issue untouched. |
 
+`feature` in one picture: `/sous-plan` turns the parent issue into a spec
+and sub-issues with acceptance criteria; the flow takes the sub-issues one
+by one, reviews the whole branch after the last, and squashes it onto the
+base branch.
+
+```mermaid
+flowchart LR
+  init --> nw[next-work] --> implement --> review
+  review -- findings --> fix --> review
+  review -- ok --> cw[close-work] --> nw
+  nw -- none left --> sync --> rf[review-full]
+  rf -- findings --> frf[fix] --> rf
+  rf -- ok --> sync
+  sync -- main quiet --> merge --> done([done])
+  merge -- main moved --> sync
+```
+
+![The feature flow mid-run in sous ui](https://raw.githubusercontent.com/sousfactory/sous/main/docs/images/feature-flow.png)
+
 Eleven steps, each with its own `README.md`:
 
 | Step | Kind | Does |
