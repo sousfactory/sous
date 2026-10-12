@@ -1,32 +1,17 @@
 # sous-factory
 
-*Issue in, merged commit out.*
+*Agents do the work. The graph decides what happens next.*
 
-**A software factory for coding agents, on your machine.**
-
-`sous` runs your software development flow with coding agents: implement,
-review, fix, merge, or any step you write. The flow is a deterministic graph
-in YAML, like a GitHub Actions workflow, so the agents do the work and the
-graph decides what happens next.
+**A software factory for coding agents, on your machine.** `sous` runs your
+software development flow with coding agents: implement, review, fix,
+merge, or any step you write. The flow is a deterministic graph in YAML,
+like a GitHub Actions workflow.
 
 This package is the engine: the executor, the `sous` CLI, the trackers
 (GitHub, beads, local files, or a module of your own), the sandbox, the run
 record, the live run viewer (`sous ui`) and the starter that `sous init`
 copies into a repository. It ships no steps of its own: the steps and flows
 live in your repository's `.sous/` and are yours to edit.
-
-## Why
-
-- **Like GitHub Actions, but for agents and local.** Flows are YAML, steps
-  are reusable units, routes make a graph; your flows are yours.
-- **Deterministic shell, agentic core.** The agent works only in a worktree
-  and answers with one JSON envelope; the executor renders, evaluates and
-  routes. It never asks the agent what happens next.
-- **Evals judge the work, not the agent's word.** A failed eval retries in
-  the same session; after the cap the run stops `blocked` instead of
-  guessing, and the same command continues it once you fixed things.
-- **Tracker-agnostic.** GitHub out of the box, `bd` and local files built
-  in, or a tracker module of your own.
 
 ## Install
 
@@ -40,31 +25,21 @@ cd .sous && ./sous validate
 ./sous run bench <issue>      # a smoke test; touches neither the issue nor the code
 ```
 
-`init` ends with a checklist of what to adapt by hand: the check commands
-in `steps/verify/eval.ts`, `sous.yaml`, the flows' models and labels, the
-`ADAPT` notes in `prompts/plan.md`. For a guided setup in Claude Code,
-install the
+`init` ends with a checklist of what to adapt by hand. For a guided setup in
+Claude Code, install the
 [`sous-setup` skill](https://github.com/sousfactory/sous/tree/main/skills/sous-setup)
 from the repository first and run `/sous-setup`; it does the install and
 init too.
 
-## CLI
-
-```
-sous init [--starter <dir>] [--force] # copy a starter into .sous/, npm install, add /sous-plan, print the checklist
-sous run <flow> <issue> [--restart]   # validate, then start or continue; <issue> is the tracker's id (96, #96, a bead id)
-sous status <issue>                   # session facts and the timeline
-sous graph <flow>                     # Mermaid diagram from the YAML
-sous validate                         # sous.yaml, every flow and step, the tracker module
-sous ui [--port n]                    # the run viewer on 127.0.0.1:4680
-```
-
 ## Documentation
 
-- [README](https://github.com/sousfactory/sous#readme): the concept, the
-  flows, screenshots.
+- [Homepage](https://sousfactory.com): what sous is and why.
+- [README](https://github.com/sousfactory/sous#readme): quick start, how
+  it works, what is in the box.
 - [The manual](https://github.com/sousfactory/sous/blob/main/docs/manual.md):
-  getting started, concepts and reference, how-tos.
+  getting started, concepts and reference, the
+  [CLI](https://github.com/sousfactory/sous/blob/main/docs/manual.md#12-cli),
+  how-tos.
 - [The starter](https://github.com/sousfactory/sous/tree/main/starters/github):
   the flows and steps `sous init` copies, with a README per step.
 - [`sous-factory/testing`](https://github.com/sousfactory/sous/blob/main/docs/manual.md#20-test-steps-and-flows):
