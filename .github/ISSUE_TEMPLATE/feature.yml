@@ -1,0 +1,21 @@
+name: Feature request
+description: Something the engine, the CLI, the UI or the starter should do and does not.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The flow or step you are building and where sous gets in the way. A concrete case beats a general wish.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+      description: A sketch is enough. If you know how you would want to write it in `step.yaml`, the flow or the CLI, show that.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today
+      description: The workaround, if there is one. It tells us how urgent this is.

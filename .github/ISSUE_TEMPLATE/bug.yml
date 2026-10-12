@@ -1,0 +1,37 @@
+name: Bug report
+description: The engine, the CLI, the UI or the starter does not do what the manual says.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: sous-factory version
+      description: The version in `.sous/package.json`, or `npm ls sous-factory` run in `.sous/`.
+      placeholder: 0.2.1
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: The command you ran and what came out. If a run stopped `blocked`, the comment it left on the issue says where.
+    validations:
+      required: true
+  - type: textarea
+    id: record
+    attributes:
+      label: Run record
+      description: The output of `./sous status <issue>` and, for a blocked run, the eval log of the blocked step from `.sous/logs/<issue>/`. Remove anything private first.
+      render: text
+  - type: textarea
+    id: flow
+    attributes:
+      label: Flow entry and step
+      description: The flow entry that ran and, when a step misbehaves, its `step.yaml`. Skip this if the starter is unchanged.
+      render: yaml
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Node version, agent CLI and tracker.
+      placeholder: macOS 15, Node 22.12, claude 2.1, GitHub

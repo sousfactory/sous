@@ -236,6 +236,21 @@ your-project/
   development-loop skill into a flow.
 - [Contributing](CONTRIBUTING.md): build, verify, release.
 
+## Support
+
+- Questions about a step, a flow or a run:
+  [Discussions, Q&A](https://github.com/sousfactory/sous/discussions/categories/q-a).
+- Bugs and feature requests:
+  [issues](https://github.com/sousfactory/sous/issues/new/choose). A bug
+  report wants the `sous-factory` version and the output of
+  `./sous status <issue>`.
+- Security problems: a
+  [private advisory](https://github.com/sousfactory/sous/security/advisories/new),
+  see [SECURITY.md](SECURITY.md).
+
+One maintainer reads all of it, usually within a few days. The details are
+in [SUPPORT.md](SUPPORT.md).
+
 ## Maintainers
 
 Built and maintained by [Alexander Heerens](https://github.com/heerens).
