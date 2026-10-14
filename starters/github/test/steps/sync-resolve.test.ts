@@ -1,7 +1,7 @@
 /**
  * `sync-resolve` unit tests over the fakes, then the step through the real
- * executor in a one-step flow so prepare, agent skip and eval are covered
- * together.
+ * executor in a one-step flow so prepare, the three verdicts and eval are
+ * covered together.
  */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -33,42 +33,35 @@ beforeAll(async () => {
 afterAll(() => checked.remove());
 
 describe("sync-resolve step", () => {
-  it("is agentic with a prepare; its placeholders are the declared input, ctx values and prepare.output properties", () => {
+  it("is agentic with a prepare; its placeholders are the declared input and ctx values", () => {
     const step = loadStep(stepDir);
     expect(step.run?.kind).toBe("prompt");
     expect(step.prepare?.module).toBe(join(stepDir, "prepare.ts"));
     expect(step.eval).toEqual({ kind: "module", module: join(stepDir, "eval.ts") });
     expect(Object.keys(step.inputs)).toEqual(["baseBranch"]);
-    const properties = Object.keys((step.prepare?.output["properties"] ?? {}) as object);
-    const own = [...step.placeholders].filter((p) => !p.startsWith("ctx."));
-    expect(own.filter((p) => !p.startsWith("prepared.")).sort()).toEqual(["baseBranch"]);
-    for (const p of own.filter((p) => p.startsWith("prepared."))) expect(properties).toContain(p.slice("prepared.".length));
+    expect(Object.keys((step.prepare?.output["properties"] ?? {}) as object)).toEqual(["conflict", "moved"]);
+    expect([...step.placeholders].filter((p) => !p.startsWith("ctx.")).sort()).toEqual(["baseBranch"]);
   });
 });
 
 describe("sync-resolve prepare", () => {
-  it("skips the agent when nothing came in, with the issue itself back on the bench", async () => {
+  it("never runs the agent when nothing came in, with the issue itself back on the bench", async () => {
     const f = ctxOf({ work: work14, git: fakeGit({ upToDate: true }) });
-    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "skip", reason: `${BRANCH} is already up to date with main`, output: { conflict: false, moved: false } });
+    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "never", reason: `${BRANCH} is already up to date with main`, output: { conflict: false, moved: false } });
     expect(f.ctx.work).toEqual({ id: "1", ref: "#1", title: "Test issue", body: f.ctx.issue.body });
     expect(f.sandbox.execs).toEqual([]);
   });
 
-  it("runs the checks after a clean merge and skips the agent when they pass", async () => {
-    const f = ctxOf({ work: work14, sandbox: fakeSandbox({ exec: { [DIFF_COMMAND]: ok("src/A.kt\n"), [BUILD]: ok("BUILD SUCCESSFUL") } }) });
-    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "skip", reason: "merged main cleanly; the checks pass", output: { conflict: false, moved: true } });
-    expect(f.sandbox.execs).toEqual([DIFF_COMMAND, BUILD]);
+  it("leaves the checks to the eval after a clean merge: the agent runs only if they fail", async () => {
+    const f = ctxOf({ work: work14 });
+    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "on-fail", reason: "merged main cleanly", output: { conflict: false, moved: true } });
+    expect(f.sandbox.execs).toEqual([]);
     expect(f.ctx.work.id).toBe("1");
   });
 
-  it("runs the agent with the transcript when the checks fail after a clean merge", async () => {
-    const f = ctxOf({ sandbox: fakeSandbox({ exec: { [BUILD]: fail("e: A.kt: unresolved reference", 1) } }) });
-    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "run", output: { conflict: false, moved: true, checkLog: `$ ${BUILD} (exit 1)\ne: A.kt: unresolved reference` } });
-  });
-
-  it("runs the agent on a conflict, without running the checks", async () => {
+  it("always runs the agent on a conflict, without running the checks", async () => {
     const f = ctxOf({ work: work14, git: fakeGit({ conflict: true }) });
-    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "run", output: { conflict: true, moved: false } });
+    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "always", output: { conflict: true, moved: false } });
     expect(f.git.state.merging).toBe(true);
     expect(f.sandbox.execs).toEqual([]);
     expect(f.ctx.work.id).toBe("1");
@@ -76,7 +69,7 @@ describe("sync-resolve prepare", () => {
 
   it("treats a merge already in progress as a conflict and does not merge again", async () => {
     const f = ctxOf({ git: fakeGit({ merging: true }) });
-    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "run", output: { conflict: true, moved: false } });
+    expect(await prepare(f.ctx, inputs)).toEqual({ agent: "always", output: { conflict: true, moved: false } });
     expect(f.git.calls).toEqual(["mergeInProgress(/tmp/worktree)"]);
   });
 
@@ -94,13 +87,14 @@ describe("sync-resolve prepare", () => {
 });
 
 describe("sync-resolve eval", () => {
-  const ran: Prepared<SyncPrepared> = { agent: "run", output: { conflict: true, moved: false } };
+  const conflicted: Prepared<SyncPrepared> = { agent: "always", output: { conflict: true, moved: false } };
+  const merged: Prepared<SyncPrepared> = { agent: "on-fail", reason: "merged main cleanly", output: { conflict: false, moved: true } };
 
-  it("passes a skipped visit without checking anything: prepare already did", async () => {
+  it("passes without checking anything when the merge brought nothing in", async () => {
     const f = ctxOf();
-    expect(await syncEval(f.ctx, inputs, undefined, { agent: "skip", reason: "merged main cleanly; the checks pass", output: { conflict: false, moved: true } })).toEqual({
+    expect(await syncEval(f.ctx, inputs, undefined, { agent: "never", reason: `${BRANCH} is already up to date with main`, output: { conflict: false, moved: false } })).toEqual({
       ok: true,
-      log: "sync-resolve: merged main cleanly; the checks pass",
+      log: `sync-resolve: ${BRANCH} is already up to date with main; nothing to check`,
     });
     expect(f.git.calls).toEqual([]);
     expect(f.sandbox.execs).toEqual([]);
@@ -108,15 +102,18 @@ describe("sync-resolve eval", () => {
 
   it("fails while the merge is still in progress, without running the checks", async () => {
     const f = ctxOf({ git: fakeGit({ merging: true }) });
-    expect(await syncEval(f.ctx, inputs, undefined, ran)).toEqual({ ok: false, log: "sync-resolve: the merge is still in progress; resolve every conflict and commit the merge" });
+    expect(await syncEval(f.ctx, inputs, undefined, conflicted)).toEqual({ ok: false, log: "sync-resolve: the merge is still in progress; resolve every conflict and commit the merge" });
     expect(f.sandbox.execs).toEqual([]);
   });
 
-  it("runs the verify checks once the merge is concluded", async () => {
+  it("runs the verify checks on a merged branch, before any agent and after one", async () => {
     const red = ctxOf({ sandbox: fakeSandbox({ exec: { [BUILD]: fail("red", 1) } }) });
-    expect(await syncEval(red.ctx, inputs, undefined, ran)).toEqual({ ok: false, log: `$ ${BUILD} (exit 1)\nred` });
+    expect(await syncEval(red.ctx, inputs, undefined, merged)).toEqual({ ok: false, log: `$ ${BUILD} (exit 1)\nred` });
     const green = ctxOf({ sandbox: fakeSandbox({ exec: { [BUILD]: ok("BUILD SUCCESSFUL") } }) });
-    expect(await syncEval(green.ctx, inputs, undefined, ran)).toMatchObject({ ok: true });
+    expect(await syncEval(green.ctx, inputs, undefined, merged)).toMatchObject({ ok: true });
+    const resolved = ctxOf({ sandbox: fakeSandbox({ exec: { [BUILD]: ok("BUILD SUCCESSFUL") } }) });
+    expect(await syncEval(resolved.ctx, inputs, { summary: "", commits: ["m1"], output: { filesTouched: [] } }, conflicted)).toMatchObject({ ok: true });
+    expect(resolved.sandbox.execs).toContain(BUILD);
   });
 });
 
@@ -138,12 +135,14 @@ describe("sync-resolve through the executor", () => {
     return agentResult("s1", { summary: "resolved", commits: ["m1"], output: { filesTouched: ["src/A.kt"] }, skills: [] });
   };
 
-  it("a clean merge with passing checks never calls the agent", async () => {
+  it("a clean merge with passing checks runs the checks once and never calls the agent", async () => {
     const ports = portsOf(fakeSandbox({ exec: { [BUILD]: ok("BUILD SUCCESSFUL") } }), { skillsDir: join(root, "skills") });
     const session = await walk(await flow(), ports);
     expect(session.current).toBe("done");
     expect(ports.sandbox.requests).toEqual([]);
-    expect(ports.events.of("prepare.end")).toEqual([expect.objectContaining({ agent: "skip", reason: "merged main cleanly; the checks pass" })]);
+    expect(ports.sandbox.execs).toEqual([DIFF_COMMAND, BUILD]);
+    expect(ports.events.of("prepare.end")).toEqual([expect.objectContaining({ agent: "on-fail", reason: "merged main cleanly" })]);
+    expect(ports.events.of("iteration.eval.end")).toEqual([expect.objectContaining({ n: 0, ok: true })]);
   });
 
   it("a conflict calls the agent, whose work the eval judges with the verify checks", async () => {
@@ -153,14 +152,19 @@ describe("sync-resolve through the executor", () => {
     expect(session.current).toBe("done");
     expect(ports.sandbox.requests).toHaveLength(1);
     expect(ports.sandbox.requests[0]?.prompt).toContain("Bring main into the branch of issue #1");
-    expect(ports.sandbox.execs).toContain(BUILD);
+    expect(ports.sandbox.requests[0]?.prompt).not.toContain("## The evaluation already ran");
+    expect(ports.sandbox.execs).toEqual([DIFF_COMMAND, BUILD]);
   });
 
-  it("failing checks after a clean merge reach the agent's prompt", async () => {
+  it("failing checks after a clean merge start the agent with their transcript appended, and the checks run again after it", async () => {
     const git = fakeGit();
     const ports = portsOf(fakeSandbox({ agent: [resolves(git)], exec: { [BUILD]: [fail("e: A.kt: unresolved reference", 1), ok("BUILD SUCCESSFUL")] } }), { git, skillsDir: join(root, "skills") });
     const session = await walk(await flow(), ports);
     expect(session.current).toBe("done");
-    expect(ports.sandbox.requests[0]?.prompt).toContain("e: A.kt: unresolved reference");
+    expect(ports.sandbox.requests).toHaveLength(1);
+    expect(ports.sandbox.requests[0]).not.toHaveProperty("resumeSession");
+    expect(ports.sandbox.requests[0]?.prompt).toContain(`## The evaluation already ran`);
+    expect(ports.sandbox.requests[0]?.prompt).toContain(`$ ${BUILD} (exit 1)\ne: A.kt: unresolved reference`);
+    expect(ports.sandbox.execs).toEqual([DIFF_COMMAND, BUILD, DIFF_COMMAND, BUILD]);
   });
 });

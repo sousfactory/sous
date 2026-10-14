@@ -61,7 +61,7 @@ Sort each phase, and each rule inside it, into exactly one row:
 | work that needs judgement (plan, implement, review, write docs) | a prompt step; the agent and model on its flow entry |
 | work that is mechanical (run commands, git, tracker calls, a script with exit codes) | a module step, or the `prepare` of the prompt step it serves |
 | a self-check the agent is told to do ("make sure tests pass") | the step's `eval`, so it is checked, not trusted |
-| "check first, skip if nothing to do" | a `prepare` returning `agent: "skip"` |
+| "check first, skip if nothing to do" | a `prepare` returning `agent: "never"`, or `"on-fail"` when the eval should decide |
 | order, branches, loops, bounds, exits | `routes`, `maxIterations`, a `steps.<id>.visits` cap, `done`, `blocked` |
 | a value passed between phases | an output field, a `with:` expression, `resume:` for a session |
 | stop on failure, resume after an interruption, a final summary of the run | the engine already does this (§6.2, §11, `sous status`); not ported, say so |

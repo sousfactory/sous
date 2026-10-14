@@ -14,11 +14,7 @@ and report.
   `git diff --name-only --diff-filter=U` and `git log --merge` show them.
   The checks have not run yet.
 - No merge in progress: the merge is committed and the checks failed. Their
-  transcript:
-
-```
-{{prepared.checkLog}}
-```
+  transcript is the evaluation output at the end of these instructions.
 
 ## How to work
 

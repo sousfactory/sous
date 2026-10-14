@@ -5,6 +5,7 @@
  * visits operated on.
  */
 import type { AgentKind } from "../config/flow.js";
+import type { PrepareVerdict } from "../index.js";
 import type { AgentOutcome, Event, RunOutcome, TokenUsage } from "./events.js";
 
 export type RunSegment = {
@@ -43,7 +44,7 @@ export type EvalSpan = {
 export type PrepareSpan = {
   startedAt: string;
   endedAt?: string;
-  agent?: "run" | "skip";
+  agent?: PrepareVerdict;
   reason?: string;
 };
 

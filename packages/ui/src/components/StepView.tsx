@@ -53,11 +53,19 @@ const prepareStatus = (visit: VisitView) => {
   return "success";
 };
 
-/** `agent runs`, or `agent skipped: <reason>`, once prepare has returned. */
+/**
+ * What prepare decided, once it has returned: `agent runs`, `agent skipped:
+ * <reason>`, or for `on-fail` whether the eval that ran first let the agent
+ * start (an iteration with an agent) or settled the visit.
+ */
 const prepareText = (visit: VisitView): string => {
   const p = visit.prepare;
   if (p?.agent === undefined) return "";
-  return p.agent === "run" ? " · agent runs" : ` · agent skipped${p.reason !== undefined ? `: ${p.reason}` : ""}`;
+  const why = p.reason !== undefined ? `: ${p.reason}` : "";
+  if (p.agent === "always") return " · agent runs";
+  if (p.agent === "never") return ` · agent skipped${why}`;
+  if (visit.iterations.some((it) => it.agent !== undefined)) return ` · eval failed, agent runs${why}`;
+  return visit.endedAt !== undefined ? ` · eval passed, agent skipped${why}` : ` · eval first${why}`;
 };
 
 const usageText = (it: IterationView): string => {

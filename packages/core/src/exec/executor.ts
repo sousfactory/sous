@@ -139,7 +139,9 @@ const runEval = async (ev: StepEval, ctx: Ctx, inputs: Inputs, result?: Envelope
 export const checkPrepared = (id: string, schema: Record<string, unknown>, value: unknown): Prepared => {
   const shape = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
   const agent = shape?.["agent"];
-  if (agent !== "run" && agent !== "skip") throw new SousError(`${id}: prepare must return { agent: "run" | "skip", output }; got agent ${JSON.stringify(agent)}`);
+  if (agent !== "always" && agent !== "on-fail" && agent !== "never") {
+    throw new SousError(`${id}: prepare must return { agent: "always" | "on-fail" | "never", output }; got agent ${JSON.stringify(agent)}`);
+  }
   const reason = shape?.["reason"];
   if (reason !== undefined && typeof reason !== "string") throw new SousError(`${id}: prepare reason must be a string`);
   const problem = validator(schema)(shape?.["output"]);
@@ -332,7 +334,9 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     session = updateVisit(session, entry.id, { prepared }, key);
     await persist(session);
     await emit({ type: "prepare.end", spanId, agent: prepared.agent, ...(prepared.reason !== undefined ? { reason: prepared.reason } : {}) });
-    if (prepared.agent === "skip") log.info(`${entry.id}: agent skipped${prepared.reason !== undefined ? `: ${prepared.reason}` : ""}`);
+    const why = prepared.reason !== undefined ? `: ${prepared.reason}` : "";
+    if (prepared.agent === "never") log.info(`${entry.id}: agent skipped${why}`);
+    if (prepared.agent === "on-fail") log.info(`${entry.id}: eval first, agent only if it fails${why}`);
     return prepared;
   };
 
@@ -344,10 +348,14 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
    * agent runs again with the original prompt. Only an envelope the agent
    * actually answered is recorded; a failed iteration leaves the record
    * empty, since its placeholder envelope would otherwise count as the work
-   * on re-entry. Without a session to resume, a retry sends the original
-   * prompt again: a retry prompt alone would reach an agent that never saw
-   * the task. When `prepare` skips the agent, the eval runs once with no
-   * result; there is nothing to retry.
+   * on re-entry. Without a session to resume, a failed eval cannot be sent
+   * as a retry prompt, which would reach an agent that never saw the task;
+   * the agent gets the original prompt with the eval log appended instead.
+   *
+   * `prepare` decides when the agent runs. `always`: now. `on-fail`: the
+   * eval runs first as iteration 0, and the agent starts only when it fails,
+   * with the log appended to its prompt. `never`: the eval runs once with no
+   * result and the visit routes on it; there is nothing to retry.
    */
   const runAgentic = async (entry: LoadedEntry, c: CompiledEntry, key: string, inputs: Inputs, continuing: boolean): Promise<VisitResult> => {
     const { step } = entry;
@@ -355,12 +363,13 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     const loop = entry.loop ?? step.loop;
     const prepared = await prepareVisit(entry, key, inputs);
     const withPrepared = prepared !== undefined ? { prepared } : {};
-    if (prepared?.agent === "skip") {
+    if (prepared?.agent === "never") {
       const n = continuing ? 0 : 1;
       return { res: await evaluate(step, inputs, n, undefined, prepared), ...withPrepared, iteration: n, exhausted: false };
     }
     const record = session.scopes[key]?.[entry.id];
-    const prompt = renderPrompt(step, inputs, ctxPlaceholders(ctxFor()), prepared?.output);
+    const promptAfter = (failedEval?: string): string => renderPrompt(step, inputs, ctxPlaceholders(ctxFor()), prepared?.output, failedEval);
+    const prompt = promptAfter();
     const skills = skillAudit(prompt, skillsDir);
     let iteration = iterationOf(session, entry.id);
     let resumeSession = continuing ? record?.session : sessionIdOf(c.resume?.(scopeFor(ctxFor())));
@@ -368,11 +377,12 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     let last: VisitResult | undefined;
 
     const recorded: Envelope | undefined = continuing && record?.output !== undefined ? { summary: "", commits: record.commits, output: record.output } : undefined;
-    if (continuing && (step.eval !== undefined || recorded !== undefined)) {
+    const evalFirst = continuing ? step.eval !== undefined || recorded !== undefined : prepared?.agent === "on-fail";
+    if (evalFirst) {
       const res = await evaluate(step, inputs, 0, recorded, prepared);
       last = { res, ...(recorded !== undefined ? { envelope: recorded } : {}), ...withPrepared, iteration: 0, exhausted: false };
       if (res.ok) return last;
-      nextPrompt = resumeSession !== undefined ? retryPrompt(res.log) : prompt;
+      nextPrompt = resumeSession !== undefined ? retryPrompt(res.log) : promptAfter(res.log);
     }
 
     while (iteration < max) {
@@ -384,7 +394,7 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
       if (a.res.ok) return last;
       if (!loop && !a.failed) return last;
       resumeSession = a.sessionId;
-      nextPrompt = resumeSession !== undefined ? retryPrompt(a.res.log) : prompt;
+      nextPrompt = resumeSession !== undefined ? retryPrompt(a.res.log) : a.failed ? prompt : promptAfter(a.res.log);
     }
 
     return { ...(last ?? { res: { ok: false, log: "" }, ...withPrepared }), iteration, exhausted: true };

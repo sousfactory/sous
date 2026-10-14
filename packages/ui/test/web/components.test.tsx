@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { StepDetail, StepNode } from "../../server/model";
+import type { StepDetail, StepNode, VisitView } from "../../server/model";
 import { AppHeader } from "../../src/components/AppHeader";
 import { focusOf } from "../../src/components/FlowGraph";
 import { actionsStatus, GitHubActions } from "../../src/components/GitHubActionsCell";
@@ -261,14 +261,30 @@ describe("StepView", () => {
     const visit = detail.visits[0]!;
     const prepared: StepDetail = {
       ...detail,
-      visits: [{ ...visit, prepare: { startedAt: visit.startedAt, endedAt: visit.startedAt, agent: "skip", reason: "nothing came in" }, iterations: [] }],
-      record: { ...detail.record!, prepared: { agent: "skip", reason: "nothing came in", output: { conflict: false, moved: false } } },
+      visits: [{ ...visit, prepare: { startedAt: visit.startedAt, endedAt: visit.startedAt, agent: "never", reason: "nothing came in" }, iterations: [] }],
+      record: { ...detail.record!, prepared: { agent: "never", reason: "nothing came in", output: { conflict: false, moved: false } } },
     };
     render(<StepView issue="84" node={node()} detail={prepared} now={now} live={false} />);
     const row = screen.getByTestId("prepare-1");
     expect(row.textContent).toContain("Run prepare · agent skipped: nothing came in");
     fireEvent.click(row.querySelector("button")!);
     expect(row.textContent).toContain('"moved": false');
+  });
+
+  it("says what an on-fail prepare led to: the eval first, then whether the agent ran", () => {
+    const visit = detail.visits[0]!;
+    const prepare = { startedAt: visit.startedAt, endedAt: visit.startedAt, agent: "on-fail" as const, reason: "merged main" };
+    const { endedAt: _closed, ...open } = visit;
+    const cases: [VisitView, string][] = [
+      [{ ...open, prepare, iterations: [] }, "Run prepare · eval first: merged main"],
+      [{ ...visit, prepare, iterations: [] }, "Run prepare · eval passed, agent skipped: merged main"],
+      [{ ...visit, prepare }, "Run prepare · eval failed, agent runs: merged main"],
+    ];
+    for (const [v, text] of cases) {
+      cleanup();
+      render(<StepView issue="84" node={node({ kind: "prompt", prepare: true })} detail={{ ...detail, visits: [v] }} now={now} live={false} />);
+      expect(screen.getByTestId("prepare-1").textContent).toContain(text);
+    }
   });
 
   it("shows agent and eval rows collapsed, with token usage, and opens the eval log", () => {

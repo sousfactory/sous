@@ -29,7 +29,7 @@ describe("compileCondition", () => {
   });
 
   it("sees the visit's prepare result as prepared, undefined when the scope has none", () => {
-    expect(compileCondition("prepared?.agent === 'skip'")({ ...scope, prepared: { agent: "skip", output: {} } })).toBe(true);
+    expect(compileCondition("prepared?.agent === 'never'")({ ...scope, prepared: { agent: "never", output: {} } })).toBe(true);
     expect(compileCondition("prepared === undefined")(scope)).toBe(true);
   });
 

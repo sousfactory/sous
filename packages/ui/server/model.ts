@@ -9,7 +9,7 @@
  * first, cancelled when it was interrupted; an unvisited node is queued while
  * the run is live, skipped after.
  */
-import { visitLanes, type Agent, type AgentOutcome, type OutputEvent, type RunOutcome, type RunSegment, type Session, type Span, type StepKind, type Timeline, type TokenUsage, type Topology, type TopologyNode } from "sous-factory/read";
+import { visitLanes, type Agent, type AgentOutcome, type OutputEvent, type PrepareVerdict, type RunOutcome, type RunSegment, type Session, type Span, type StepKind, type Timeline, type TokenUsage, type Topology, type TopologyNode } from "sous-factory/read";
 
 export type Status = "success" | "failure" | "in_progress" | "queued" | "skipped" | "cancelled";
 
@@ -65,7 +65,7 @@ export type StepNode = {
 
 export type Phase = "prepare" | "work" | "eval";
 
-export type PrepareView = { startedAt: string; endedAt?: string; agent?: "run" | "skip"; reason?: string };
+export type PrepareView = { startedAt: string; endedAt?: string; agent?: PrepareVerdict; reason?: string };
 
 export type StepEdge = { from: string; to: string; taken: boolean };
 
@@ -108,7 +108,7 @@ export type StepDetail = {
   routes: RouteView[];
   visits: VisitView[];
   /** The session's record of the latest visit; only for the latest attempt, which the session describes. */
-  record?: { ok: boolean; log: string; output: unknown; commits: string[]; session?: string; prepared?: { agent: "run" | "skip"; reason?: string; output: unknown } };
+  record?: { ok: boolean; log: string; output: unknown; commits: string[]; session?: string; prepared?: { agent: PrepareVerdict; reason?: string; output: unknown } };
 };
 
 /** One iteration's envelope as the `output` event recorded it, with the eval that judged it. */
@@ -195,6 +195,17 @@ const OUTCOME_STATUS: Record<Outcome, Status> = {
 export const outcomeStatus = (outcome: Outcome): Status => OUTCOME_STATUS[outcome];
 
 const last = <T>(items: readonly T[]): T | undefined => items[items.length - 1];
+
+/**
+ * `agentSkipped` for a visit whose prepare kept the agent out: `never` from
+ * the start, `on-fail` once the visit ended without an agent iteration.
+ */
+const agentSkippedOf = (span: Span): { agentSkipped?: { reason?: string } } => {
+  const p = span.prepare;
+  if (p?.agent === undefined || p.agent === "always") return {};
+  if (p.agent === "on-fail" && (span.endedAt === undefined || span.iterations.some((it) => it.agent !== undefined))) return {};
+  return { agentSkipped: p.reason !== undefined ? { reason: p.reason } : {} };
+};
 
 /** The outcome of a run segment; only the latest one can be running, and only while live. */
 const segmentOutcome = (run: RunSegment, isLatest: boolean, live: boolean): Outcome => {
@@ -389,7 +400,7 @@ export const deriveRun = (input: DeriveInput): RunView => {
       status,
       visits: own.length,
       ...(entry !== undefined ? shapeProps(entry) : { unknown: true as const }),
-      ...(latest?.prepare?.agent === "skip" ? { agentSkipped: latest.prepare.reason !== undefined ? { reason: latest.prepare.reason } : {} } : {}),
+      ...(latest !== undefined ? agentSkippedOf(latest) : {}),
       ...(latest !== undefined ? { startedAt: latest.startedAt } : {}),
       ...(latest?.endedAt !== undefined ? { endedAt: latest.endedAt } : {}),
       ...(phase !== undefined ? { phase } : {}),
@@ -482,7 +493,7 @@ const traceOf = (spans: readonly Span[], outputs: readonly OutputEvent[], outcom
       ...(span.endedAt !== undefined ? { endedAt: span.endedAt } : {}),
       ...(span.next !== undefined ? { next: span.next } : {}),
       iterations: span.iterations.length,
-      ...(span.prepare?.agent === "skip" ? { agentSkipped: span.prepare.reason !== undefined ? { reason: span.prepare.reason } : {} } : {}),
+      ...agentSkippedOf(span),
       outputs: (bySpan.get(span.id) ?? []).sort((a, b) => a.iteration - b.iteration),
       ...(error !== undefined ? { error } : {}),
     };

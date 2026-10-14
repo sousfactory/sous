@@ -5,7 +5,7 @@
  * `exec/`, which only emits it.
  */
 import type { AgentKind } from "../config/flow.js";
-import type { Envelope } from "../index.js";
+import type { Envelope, PrepareVerdict } from "../index.js";
 import type { SkillAudit } from "../skills.js";
 
 export const RUN_OUTCOMES = ["done", "blocked", "crashed", "interrupted"] as const;
@@ -82,7 +82,7 @@ export type AgentEndEvent = Base & {
 /** Appended before the `prepare` call, so a crash during it leaves it in the log. */
 export type PrepareStartEvent = Base & { type: "prepare.start"; spanId: string };
 
-export type PrepareEndEvent = Base & { type: "prepare.end"; spanId: string; agent: "run" | "skip"; reason?: string };
+export type PrepareEndEvent = Base & { type: "prepare.end"; spanId: string; agent: PrepareVerdict; reason?: string };
 
 export type EvalStartEvent = Base & { type: "iteration.eval.start"; spanId: string; n: number };
 
@@ -143,7 +143,7 @@ const OUTCOMES: Partial<Record<EventType, readonly string[]>> = {
   "iteration.agent.end": AGENT_OUTCOMES,
 };
 
-const PREPARE_AGENT = ["run", "skip"] as const;
+const PREPARE_AGENT = ["always", "on-fail", "never"] as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 

@@ -8,7 +8,7 @@ export const everyEvent = (): Event[] => [
   { type: "run.start", at, runId: "r1", pid: 42, host: "box", sha: "abc1234", flow: "feature", resumedFrom: { step: "build", iteration: 1 } },
   { type: "span.open", at, runId: "r1", spanId: "r1-1", step: "build", scope: "14" },
   { type: "prepare.start", at, spanId: "r1-1" },
-  { type: "prepare.end", at, spanId: "r1-1", agent: "skip", reason: "nothing came in" },
+  { type: "prepare.end", at, spanId: "r1-1", agent: "never", reason: "nothing came in" },
   { type: "iteration.agent.start", at, spanId: "r1-1", n: 1, kind: "claude", model: "claude-x", resumedSession: "s0" },
   {
     type: "iteration.agent.end",
@@ -47,7 +47,7 @@ describe("isEvent", () => {
     const minimal: Event[] = [
       { type: "run.start", at, runId: "r1", pid: 1, host: "h", sha: "x", flow: "task" },
       { type: "span.open", at, runId: "r1", spanId: "r1-1", step: "init", scope: "1" },
-      { type: "prepare.end", at, spanId: "r1-1", agent: "run" },
+      { type: "prepare.end", at, spanId: "r1-1", agent: "always" },
       { type: "iteration.agent.start", at, spanId: "r1-1", n: 1, kind: "codex", model: "m" },
       { type: "iteration.agent.end", at, spanId: "r1-1", n: 1, outcome: "process-failed", commits: [] },
       { type: "iteration.eval.end", at, spanId: "r1-1", n: 0, ok: false },

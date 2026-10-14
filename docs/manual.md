@@ -309,10 +309,13 @@ loop: true                         # false: a failed eval routes instead of retr
   an eval a step always passes. `{ shell }` is ok iff the command exits
   0, log = stdout + stderr.
 - **Prepare.** Runs once per visit before the prompt is rendered and
-  decides whether the agent runs: `{ agent: "run" | "skip", reason?,
-  output }`. `output` fills `{{prepared.*}}` and reaches the eval and the
-  routes as `prepared`. On `skip` the eval runs once without a result and
-  the visit routes on it.
+  decides when the agent runs: `{ agent: "always" | "on-fail" | "never",
+  reason?, output }`. `output` fills `{{prepared.*}}` and reaches the eval
+  and the routes as `prepared`. `always`: the agent starts now. `on-fail`:
+  the eval runs first, as iteration 0, and the agent starts only if it
+  fails, with the eval log appended to its prompt. `never`: the eval runs
+  once without a result and the visit routes on it; for a step whose eval
+  cannot fail after this prepare and that has no prompt for a repair.
 
 ### 5.1 Signatures
 
@@ -320,12 +323,13 @@ loop: true                         # false: a failed eval routes instead of retr
 import type { RunFn, PrepareFn, EvalFn } from "sous-factory";
 
 type RunFn     = (ctx: Ctx, inputs: Inputs) => Promise<Envelope | void>;
-type PrepareFn = (ctx: Ctx, inputs: Inputs) => Promise<{ agent: "run" | "skip"; reason?: string; output: unknown }>;
+type PrepareFn = (ctx: Ctx, inputs: Inputs) => Promise<{ agent: "always" | "on-fail" | "never"; reason?: string; output: unknown }>;
 type EvalFn    = (ctx: Ctx, inputs: Inputs, result?: Envelope, prepared?: Prepared) => Promise<{ ok: boolean; log: string }>;
 ```
 
 `inputs` are the resolved `with:` values. `result` is absent after a
-module that returned nothing, an eval-only step and a skipped agent. A
+module that returned nothing, an eval-only step, and in an eval that runs
+before any agent. A
 module and a prepare may assign `ctx.work` (a new work item, a new scope),
 assign `ctx.specDir`, and call `ctx.workDone(commits)`; the engine records
 them after the call.
@@ -439,10 +443,13 @@ the project root ([chapter 12](#12-cli)).
 ## 8. Execution
 
 Per visit: evaluate `with:`; for a module step run it, then its eval. For
-a prompt step: run `prepare` (if any); on `skip` evaluate once and route;
-otherwise render the prompt, then agent → eval until the eval passes or
-`maxIterations` is reached, each retry in the same agent session with the
-eval log. Then record the visit and take the first matching route.
+a prompt step: run `prepare` (if any); on `never` evaluate once and route;
+on `on-fail` evaluate first and route if it passes; otherwise render the
+prompt, then agent → eval until the eval passes or `maxIterations` is
+reached, each retry in the same agent session with the eval log. An agent
+started after a failed eval without a session to resume gets the eval log
+appended to its prompt. Then record the visit and take the first matching
+route.
 
 ### 8.1 Agent failures
 
@@ -588,7 +595,7 @@ owns the `## Blocked by` rule.
 
 ### Run record
 
-`session.json` (schema 7) holds what a run needs to continue: `current`,
+`session.json` (schema 8) holds what a run needs to continue: `current`,
 `previous`, `work`, `scopes` (the `steps.<id>` records per work item),
 `workProgress`, `history`, `iterations`, `blocked`, `closed` (the
 lifecycle has closed the issue of a finished run). A file of another
@@ -786,12 +793,14 @@ export default (async (_ctx, _inputs, result) => {
 
 The log is what the agent reads on a retry: say what to fix.
 
-### A prepare that skips the agent
+### A prepare that decides when the agent runs
 
 `sync-resolve` shows the pattern: `prepare.ts` merges the base branch
-itself and returns `{ agent: "skip", reason, output }` when the merge was
-clean and the checks pass, or `{ agent: "run", output: { checkLog } }` to
-hand the agent what to repair. Declare `prepare.output` in `step.yaml`;
+itself and returns `{ agent: "always", output }` on a conflict, `{ agent:
+"on-fail", reason, output }` after a merge that moved HEAD, so the eval runs
+the checks first and the agent repairs only when they fail, and `{ agent:
+"never", reason, output }` when nothing came in. The eval reads
+`prepared.output` to know what to check. Declare `prepare.output` in `step.yaml`;
 its properties are `{{prepared.*}}` in the prompt and `prepared.output.*`
 in the routes.
 

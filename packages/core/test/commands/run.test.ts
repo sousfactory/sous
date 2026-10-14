@@ -138,7 +138,7 @@ describe("runCommand", () => {
 
     const session = await savedSession();
     expect(session).toMatchObject({
-      schemaVersion: 7,
+      schemaVersion: 8,
       closed: true,
       flow: "walk",
       issue: "7",

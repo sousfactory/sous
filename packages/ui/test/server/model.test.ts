@@ -364,7 +364,7 @@ describe("deriveRun: the running phase of an in-progress step", () => {
     const log = new Log().start("r1", 0).visit("init", 0, 1, true, "implement").visit("implement", 1, undefined);
     log.events.push({ type: "prepare.start", at: at(1), spanId: "r1-2" });
     expect(phases(log).implement).toBe("prepare");
-    log.events.push({ type: "prepare.end", at: at(2), spanId: "r1-2", agent: "run" });
+    log.events.push({ type: "prepare.end", at: at(2), spanId: "r1-2", agent: "always" });
     expect(phases(log).implement).toBeUndefined();
     log.events.push({ type: "iteration.agent.start", at: at(2), spanId: "r1-2", n: 1, kind: "claude", model: "m" });
     expect(phases(log).implement).toBe("work");
@@ -372,11 +372,37 @@ describe("deriveRun: the running phase of an in-progress step", () => {
 
   it("marks a step whose latest visit's prepare skipped the agent, and keeps the prepare on the visit", () => {
     const log = new Log().start("r1", 0).visit("init", 0, 1, true, "implement").visit("implement", 1, undefined);
-    log.events.push({ type: "prepare.start", at: at(1), spanId: "r1-2" }, { type: "prepare.end", at: at(2), spanId: "r1-2", agent: "skip", reason: "nothing came in" });
+    log.events.push({ type: "prepare.start", at: at(1), spanId: "r1-2" }, { type: "prepare.end", at: at(2), spanId: "r1-2", agent: "never", reason: "nothing came in" });
     const view = deriveRun({ session: session(), timeline: foldTimeline(log.events), topology: kinds, live: true });
     expect(view.nodes.find((n) => n.id === "implement")?.agentSkipped).toEqual({ reason: "nothing came in" });
     expect(view.nodes.find((n) => n.id === "init")).not.toHaveProperty("agentSkipped");
-    expect(view.details["implement"]?.visits[0]?.prepare).toEqual({ startedAt: at(1), endedAt: at(2), agent: "skip", reason: "nothing came in" });
+    expect(view.details["implement"]?.visits[0]?.prepare).toEqual({ startedAt: at(1), endedAt: at(2), agent: "never", reason: "nothing came in" });
+  });
+
+  it("an on-fail prepare marks the agent skipped only once the visit ended without an agent call", () => {
+    const open = new Log().start("r1", 0).visit("init", 0, 1, true, "implement").visit("implement", 1, undefined);
+    open.events.push({ type: "prepare.start", at: at(1), spanId: "r1-2" }, { type: "prepare.end", at: at(2), spanId: "r1-2", agent: "on-fail", reason: "merged main" });
+    open.events.push({ type: "iteration.eval.start", at: at(2), spanId: "r1-2", n: 0 });
+    const checking = deriveRun({ session: session(), timeline: foldTimeline(open.events), topology: kinds, live: true });
+    expect(checking.nodes.find((n) => n.id === "implement")).not.toHaveProperty("agentSkipped");
+
+    const passed = new Log();
+    passed.events.push(...open.events, { type: "iteration.eval.end", at: at(3), spanId: "r1-2", n: 0, ok: true }, { type: "span.close", at: at(3), spanId: "r1-2", ok: true, next: "review" });
+    const settled = deriveRun({ session: session(), timeline: foldTimeline(passed.events), topology: kinds, live: true });
+    expect(settled.nodes.find((n) => n.id === "implement")?.agentSkipped).toEqual({ reason: "merged main" });
+    expect(settled.trace.find((r) => r.step === "implement")?.agentSkipped).toEqual({ reason: "merged main" });
+
+    const repaired = new Log();
+    repaired.events.push(
+      ...open.events,
+      { type: "iteration.eval.end", at: at(3), spanId: "r1-2", n: 0, ok: false },
+      { type: "iteration.agent.start", at: at(3), spanId: "r1-2", n: 1, kind: "claude", model: "m", logPath: "/x/logs/84/r1-2-84-implement-1.log" },
+      { type: "iteration.agent.end", at: at(4), spanId: "r1-2", n: 1, outcome: "ok", commits: [], logPath: "/x/logs/84/r1-2-84-implement-1.log" },
+      { type: "span.close", at: at(4), spanId: "r1-2", ok: true, next: "review" },
+    );
+    const withAgent = deriveRun({ session: session(), timeline: foldTimeline(repaired.events), topology: kinds, live: true });
+    expect(withAgent.nodes.find((n) => n.id === "implement")).not.toHaveProperty("agentSkipped");
+    expect(withAgent.trace.find((r) => r.step === "implement")).not.toHaveProperty("agentSkipped");
   });
 
   it("a step that is not in progress has no phase: a cancelled visit with an open agent call", () => {

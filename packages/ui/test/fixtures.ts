@@ -10,7 +10,7 @@ import type { Event, Session, StepRecord, Topology } from "sous-factory/read";
 export const at = (minute: number): string => new Date(Date.UTC(2026, 9, 4, 12, minute, 0)).toISOString();
 
 export const session = (patch: Partial<Session> = {}): Session => ({
-  schemaVersion: 7,
+  schemaVersion: 8,
   flow: "task",
   issue: "84",
   title: "shorten the KDoc",

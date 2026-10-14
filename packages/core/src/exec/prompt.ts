@@ -29,13 +29,37 @@ export const outputContract = (output: Record<string, unknown>): string =>
   ].join("\n");
 
 /**
+ * Appended to the step's prompt when the eval ran before the agent and
+ * failed: after `prepare` said `on-fail`, or on a re-entry without a session
+ * to resume. The agent starts fresh, so the log travels in its first message.
+ */
+export const failedEvalSection = (log: string): string =>
+  [
+    "## The evaluation already ran",
+    "",
+    "This step's evaluation ran before you, on the worktree as it is now, and",
+    "did not pass. Its output:",
+    "",
+    "```",
+    log.trimEnd(),
+    "```",
+    "",
+    "Fix the cause, then follow the instructions above and answer with the",
+    "result block below.",
+  ].join("\n");
+
+/**
  * An optional input the flow did not wire renders empty; a required one is
  * guaranteed by `validate`. `prepared` is what the visit's `prepare` returned.
+ * `failedEval` is the log of an eval that ran before this agent call and
+ * failed; it goes between the step's text and the output contract.
  */
-export const renderPrompt = (step: Step, inputs: Inputs, ctx: CtxValues, prepared?: unknown): string => {
+export const renderPrompt = (step: Step, inputs: Inputs, ctx: CtxValues, prepared?: unknown, failedEval?: string): string => {
   if (step.run?.kind !== "prompt") throw new Error(`${step.name} is deterministic; it has no prompt`);
   const filled: Inputs = { ...Object.fromEntries(Object.keys(step.inputs).map((name) => [name, ""])), ...inputs };
-  return `${renderPlaceholders(step.run.prompt, filled, ctx, prepared).trimEnd()}\n\n${outputContract(step.run.output)}\n`;
+  const body = renderPlaceholders(step.run.prompt, filled, ctx, prepared).trimEnd();
+  const sections = [body, ...(failedEval !== undefined ? [failedEvalSection(failedEval)] : []), outputContract(step.run.output)];
+  return `${sections.join("\n\n")}\n`;
 };
 
 /** Sent in the visit's own session after a failed eval, with the eval log. */

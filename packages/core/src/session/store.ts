@@ -28,7 +28,7 @@ const stepRecord = {
       type: "object",
       required: ["agent", "output"],
       additionalProperties: false,
-      properties: { agent: { enum: ["run", "skip"] }, reason: { type: "string" }, output: {} },
+      properties: { agent: { enum: ["always", "on-fail", "never"] }, reason: { type: "string" }, output: {} },
     },
   },
 };

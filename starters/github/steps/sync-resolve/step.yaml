@@ -1,5 +1,5 @@
 name: sync-resolve
-description: "Merge the base branch in and make the branch whole again: prepare merges and, after a clean merge, runs the project checks (../verify/eval.ts); the agent runs only on a conflict or failing checks, resolves and repairs. Eval: the merge is concluded and the checks pass."
+description: "Merge the base branch in and make the branch whole again: prepare merges; the eval runs the project checks (../verify/eval.ts); the agent runs on a conflict, or after a clean merge only when the checks fail, and resolves and repairs. Eval: the merge is concluded and the checks pass."
 
 inputs:
   baseBranch: { required: true, description: "the branch to merge in (the baseBranch setting)" }
@@ -12,7 +12,6 @@ prepare:
     properties:
       conflict: { type: boolean, description: "the merge stopped on conflicts and is still in progress" }
       moved: { type: boolean, description: "the merge moved HEAD; false on a conflict and when the branch was already up to date" }
-      checkLog: { type: string, description: "transcript of the verify checks that failed after a clean merge; absent otherwise" }
 
 run:
   prompt: prompt.md

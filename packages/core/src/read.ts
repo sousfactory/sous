@@ -17,4 +17,4 @@ export { logDir } from "./adapters/logs.js";
 export { foldTimeline, visitLanes, type IterationSpan, type RunSegment, type Span, type Timeline, type AgentSpan, type EvalSpan } from "./session/timeline.js";
 export { RUN_OUTCOMES, AGENT_OUTCOMES, type Event, type OutputEvent, type RunOutcome, type AgentOutcome, type TokenUsage } from "./session/events.js";
 export { SCHEMA_VERSION, type Session, type HistoryEntry } from "./exec/scope.js";
-export type { StepRecord, WorkRecord } from "./index.js";
+export type { PrepareVerdict, StepRecord, WorkRecord } from "./index.js";

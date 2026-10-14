@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AgentOutputError, AgentProcessError } from "../../src/exec/errors.js";
 import { runFlow } from "../../src/exec/executor.js";
-import { retryPrompt } from "../../src/exec/prompt.js";
+import { failedEvalSection, retryPrompt } from "../../src/exec/prompt.js";
 import { openVisit, recordVisit, updateVisit, type Session } from "../../src/exec/scope.js";
 import type { Event } from "../../src/session/events.js";
 import { foldTimeline } from "../../src/session/timeline.js";
@@ -669,44 +669,105 @@ describe("runFlow: prepare", () => {
   it("runs prepare before the agent, fills {{prepared.*}} (a missing value empty), hands it to the eval and records it", async () => {
     const sandbox = fakeSandbox({ agent: [answer("s1")] });
     const ports = portsOf(sandbox);
-    const entry = prepared(undefined, { routes: [{ to: "done", when: "prepared.agent === 'run' && steps.sync.prepared.output.note === 'run for #1'" }, { to: "blocked" }] });
+    const entry = prepared(undefined, { routes: [{ to: "done", when: "prepared.agent === 'always' && steps.sync.prepared.output.note === 'always for #1'" }, { to: "blocked" }] });
 
     const { session, requests, next } = await visit(entry, undefined, ports);
 
     expect(next).toBe("done");
-    expect(requests[0]?.prompt).toContain("Do merge (). Note: run for #1. Extra: []");
+    expect(requests[0]?.prompt).toContain("Do merge (). Note: always for #1. Extra: []");
     expect(ports.events.types().slice(0, 4)).toEqual(["span.open", "prepare.start", "prepare.end", "iteration.agent.start"]);
-    expect(ports.events.of("prepare.end")[0]).toEqual(expect.objectContaining({ spanId: "r1-1", agent: "run" }));
-    expect(session.scopes["1"]?.["sync"]).toMatchObject({ ok: true, log: "agent=run note=run for #1 result=some iteration=1", prepared: { agent: "run", output: { note: "run for #1" } } });
+    expect(ports.events.of("prepare.end")[0]).toEqual(expect.objectContaining({ spanId: "r1-1", agent: "always" }));
+    expect(session.scopes["1"]?.["sync"]).toMatchObject({ ok: true, log: "agent=always note=always for #1 result=some iteration=1", prepared: { agent: "always", output: { note: "always for #1" } } });
     // Persisted with the prepare result before the agent is called.
-    expect(ports.persisted[1]?.scopes["1"]?.["sync"]).toMatchObject({ prepared: { agent: "run" } });
+    expect(ports.persisted[1]?.scopes["1"]?.["sync"]).toMatchObject({ prepared: { agent: "always" } });
     expect(ports.persisted[1]?.iterations["sync"]).toBe(0);
   });
 
-  it("skips the agent when prepare says so: the eval runs once with no result and the visit routes on it", async () => {
+  it("never: the eval runs once with no result and the visit routes on it, whatever it says", async () => {
     const ports = portsOf();
-    const entry = prepared("skip", { routes: [{ to: "next", when: "res.ok && prepared.reason === 'nothing to do' && ctx.iteration === 1" }, { to: "blocked" }] });
+    const entry = prepared("never", { routes: [{ to: "next", when: "res.ok && prepared.reason === 'nothing to do' && ctx.iteration === 1" }, { to: "blocked" }] });
 
     const { session, requests, next } = await visit(entry, undefined, ports);
 
     expect(requests).toEqual([]);
     expect(next).toBe("next");
     expect(ports.events.types().slice(0, 6)).toEqual(["span.open", "prepare.start", "prepare.end", "iteration.eval.start", "iteration.eval.end", "span.close"]);
-    expect(ports.events.of("prepare.end")[0]).toEqual(expect.objectContaining({ agent: "skip", reason: "nothing to do" }));
+    expect(ports.events.of("prepare.end")[0]).toEqual(expect.objectContaining({ agent: "never", reason: "nothing to do" }));
     expect(ports.events.of("output")).toEqual([]);
-    expect(session.scopes["1"]?.["sync"]).toEqual({ visits: 1, ok: true, log: "agent=skip note=skip for #1 result=none iteration=1", commits: [], prepared: { agent: "skip", reason: "nothing to do", output: { note: "skip for #1" } } });
+    expect(session.scopes["1"]?.["sync"]).toEqual({ visits: 1, ok: true, log: "agent=never note=never for #1 result=none iteration=1", commits: [], prepared: { agent: "never", reason: "nothing to do", output: { note: "never for #1" } } });
     expect(session.iterations["sync"]).toBe(0);
     const { spans } = foldTimeline(ports.events.events);
-    expect(spans[0]?.prepare).toEqual({ startedAt: expect.any(String), endedAt: expect.any(String), agent: "skip", reason: "nothing to do" });
+    expect(spans[0]?.prepare).toEqual({ startedAt: expect.any(String), endedAt: expect.any(String), agent: "never", reason: "nothing to do" });
+  });
+
+  it("on-fail: a green eval settles the visit as iteration 0 without an agent call", async () => {
+    const ports = portsOf();
+    const entry = prepared("on-fail", { routes: [{ to: "next", when: "res.ok && prepared.reason === 'checking first' && ctx.iteration === 0" }, { to: "blocked" }] });
+
+    const { session, requests, next } = await visit(entry, undefined, ports);
+
+    expect(requests).toEqual([]);
+    expect(next).toBe("next");
+    expect(ports.events.types().slice(0, 6)).toEqual(["span.open", "prepare.start", "prepare.end", "iteration.eval.start", "iteration.eval.end", "span.close"]);
+    expect(ports.events.of("prepare.end")[0]).toEqual(expect.objectContaining({ agent: "on-fail", reason: "checking first" }));
+    expect(ports.events.of("iteration.eval.end")[0]).toEqual(expect.objectContaining({ n: 0, ok: true }));
+    expect(session.scopes["1"]?.["sync"]).toEqual({ visits: 1, ok: true, log: "agent=on-fail note=on-fail for #1 result=none iteration=0", commits: [], prepared: { agent: "on-fail", reason: "checking first", output: { note: "on-fail for #1" } } });
+    expect(session.iterations["sync"]).toBe(0);
+  });
+
+  it("on-fail: a red eval starts the agent fresh with the eval log appended to the prompt, then the loop judges its work", async () => {
+    const sandbox = fakeSandbox({ agent: [answer("s1")] });
+    const ports = portsOf(sandbox);
+    const entry = prepared("on-fail", { with: { task: "merge", mode: "on-fail", fail: "${{ true }}" } });
+
+    const { session, requests, next } = await visit(entry, undefined, ports);
+
+    expect(next).toBe("done");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).not.toHaveProperty("resumeSession");
+    expect(requests[0]?.prompt).toContain("Do merge (on-fail). Note: on-fail for #1. Extra: []");
+    expect(requests[0]?.prompt).toContain(failedEvalSection("agent=on-fail note=on-fail for #1 result=none iteration=0"));
+    expect(requests[0]?.prompt.indexOf("## The evaluation already ran")).toBeLessThan(requests[0]?.prompt.indexOf("## Output contract") ?? -1);
+    expect(ports.events.types().slice(0, 6)).toEqual(["span.open", "prepare.start", "prepare.end", "iteration.eval.start", "iteration.eval.end", "iteration.agent.start"]);
+    expect(ports.events.of("iteration.eval.end").map((e) => [e.n, e.ok])).toEqual([
+      [0, false],
+      [1, true],
+    ]);
+    expect(session.scopes["1"]?.["sync"]).toMatchObject({ visits: 1, ok: true, log: "agent=on-fail note=on-fail for #1 result=some iteration=1", session: "s1", prepared: { agent: "on-fail" } });
+    expect(session.iterations["sync"]).toBe(1);
+  });
+
+  it("on-fail: the agent's retries stay in its session with the retry prompt, and the cap counts the agent calls only", async () => {
+    const sandbox = fakeSandbox({ agent: [answer("s1", false, "still red"), answer("s2")] });
+    const entry = prepared("on-fail", { with: { task: "merge", mode: "on-fail", fail: "${{ true }}" }, maxIterations: 2 });
+
+    const { requests, next } = await visit(entry, undefined, portsOf(sandbox));
+
+    expect(next).toBe("done");
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toMatchObject({ resumeSession: "s1", prompt: retryPrompt("agent=on-fail note=on-fail for #1 result=some iteration=1") });
+  });
+
+  it("re-entry without a session to resume appends the failed eval's log to the original prompt", async () => {
+    let stuck = bumpIteration(sessionOf("sync"), "sync");
+    stuck = recordVisit(stuck, "sync", { ok: false, log: "red", output: { ok: false }, commits: [], prepared: { agent: "always", output: { note: "from before" } } });
+    const sandbox = fakeSandbox({ agent: [answer("s2")] });
+
+    const { requests, next } = await visit(prepared(), markBlocked(stuck), portsOf(sandbox));
+
+    expect(next).toBe("done");
+    expect(requests[0]).not.toHaveProperty("resumeSession");
+    expect(requests[0]?.prompt).toContain("Do merge (). Note: from before. Extra: []");
+    expect(requests[0]?.prompt).toContain(failedEvalSection("agent=always note=from before result=some iteration=0"));
   });
 
   it("records prepare's module writes after the call: the prompt and the session see the new work item, the record stays in the visit's scope", async () => {
     const sandbox = fakeSandbox({ agent: [answer("s1")] });
     const { session, requests } = await visit(prepared("work"), undefined, portsOf(sandbox));
 
-    expect(requests[0]?.prompt).toContain("Note: run for #14.");
+    expect(requests[0]?.prompt).toContain("Note: always for #14.");
     expect(session.work).toBe("14");
-    expect(session.scopes["1"]?.["sync"]).toMatchObject({ visits: 1, session: "s1", prepared: { output: { note: "run for #14" } } });
+    expect(session.scopes["1"]?.["sync"]).toMatchObject({ visits: 1, session: "s1", prepared: { output: { note: "always for #14" } } });
   });
 
   it("crashes when prepare's output does not match prepare.output", async () => {
@@ -717,20 +778,20 @@ describe("runFlow: prepare", () => {
 
   it("reuses the recorded result on re-entry after blocked instead of preparing again", async () => {
     let stuck = bumpIteration(sessionOf("sync"), "sync");
-    stuck = recordVisit(stuck, "sync", { ok: false, log: "red", output: { ok: false }, commits: [], session: "s1", prepared: { agent: "run", output: { note: "from before" } } });
+    stuck = recordVisit(stuck, "sync", { ok: false, log: "red", output: { ok: false }, commits: [], session: "s1", prepared: { agent: "always", output: { note: "from before" } } });
     const sandbox = fakeSandbox({ agent: [answer("s2")] });
     const ports = portsOf(sandbox);
 
     const { session, requests, next } = await visit(prepared(), markBlocked(stuck), ports);
 
     expect(ports.events.of("prepare.start")).toEqual([]);
-    expect(requests).toEqual([expect.objectContaining({ resumeSession: "s1", prompt: retryPrompt("agent=run note=from before result=some iteration=0") })]);
+    expect(requests).toEqual([expect.objectContaining({ resumeSession: "s1", prompt: retryPrompt("agent=always note=from before result=some iteration=0") })]);
     expect(next).toBe("done");
     expect(session.scopes["1"]?.["sync"]).toMatchObject({ visits: 1, prepared: { output: { note: "from before" } } });
   });
 
   it("continues a visit that crashed after prepare: no second visit count, no second prepare, the agent gets the original prompt", async () => {
-    const crashed = updateVisit(recordVisit(sessionOf("sync"), "sync", { ok: true, log: "", output: undefined, commits: [] }), "sync", { prepared: { agent: "run", output: { note: "recorded" } } });
+    const crashed = updateVisit(recordVisit(sessionOf("sync"), "sync", { ok: true, log: "", output: undefined, commits: [] }), "sync", { prepared: { agent: "always", output: { note: "recorded" } } });
     const sandbox = fakeSandbox({ agent: [answer("s1")] });
     const ports = portsOf(sandbox);
 
@@ -744,14 +805,14 @@ describe("runFlow: prepare", () => {
   });
 
   it("prepares again on the next visit of the step: the transition into it forgets the old result", async () => {
-    const sync = prepared("skip", { routes: [{ to: "again", when: "steps.sync.visits < 2" }, { to: "done" }] });
+    const sync = prepared("never", { routes: [{ to: "again", when: "steps.sync.visits < 2" }, { to: "done" }] });
     const again = entryOf("again", "echo", { with: { a: "${{ steps.sync.prepared.output.note }}" }, routes: [{ to: "sync" }] });
     const ports = portsOf();
 
     const session = await runFlow(flowOf(sync, again), sessionOf("sync"), ports);
 
     expect(ports.events.of("prepare.start")).toHaveLength(2);
-    expect(session.scopes["1"]?.["again"]?.output).toMatchObject({ inputs: { a: "skip for #1" } });
-    expect(session.scopes["1"]?.["sync"]).toMatchObject({ visits: 2, prepared: { agent: "skip" } });
+    expect(session.scopes["1"]?.["again"]?.output).toMatchObject({ inputs: { a: "never for #1" } });
+    expect(session.scopes["1"]?.["sync"]).toMatchObject({ visits: 2, prepared: { agent: "never" } });
   });
 });

@@ -129,12 +129,17 @@ export type Inputs = Record<string, unknown>;
 export type RunFn = (ctx: Ctx, inputs: Inputs) => Promise<Envelope | void>;
 
 /**
- * What a `prepare` decides. `agent: "skip"` means the work is already done
- * or not needed: the eval runs without an agent result. `output` must match
- * the step's `prepare.output` schema; its fields fill `{{prepared.*}}` in the
- * prompt. `reason` is shown when the agent is skipped.
+ * What a `prepare` decides: when the agent runs. `always`: now. `on-fail`:
+ * the eval runs first and the agent starts only if it fails, with the eval
+ * log appended to its prompt. `never`: the eval runs once without an agent
+ * result and the visit routes on it; for a step whose eval cannot fail after
+ * this prepare and that has no prompt for a repair. `output` must match the
+ * step's `prepare.output` schema; its fields fill `{{prepared.*}}` in the
+ * prompt. `reason` is shown when the agent does not run.
  */
-export type Prepared<Output = unknown> = { agent: "run" | "skip"; reason?: string; output: Output };
+export type PrepareVerdict = "always" | "on-fail" | "never";
+
+export type Prepared<Output = unknown> = { agent: PrepareVerdict; reason?: string; output: Output };
 
 /**
  * Default export of a `prepare` module: deterministic work before the agent,

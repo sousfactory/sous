@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invalidOutputPrompt, outputContract, renderPrompt, retryPrompt } from "../../src/exec/prompt.js";
+import { failedEvalSection, invalidOutputPrompt, outputContract, renderPrompt, retryPrompt } from "../../src/exec/prompt.js";
 import { stepOf } from "../fakes/executor.js";
 import { SKILLS_CONTRACT, SKILLS_CONTRACT_LINE } from "../../src/skills.js";
 
@@ -53,6 +53,34 @@ describe("outputContract", () => {
     const text = outputContract({ type: "object", required: ["sha"] });
     expect(text.startsWith("## Output contract\n\n")).toBe(true);
     expect(text.endsWith('{\n  "type": "object",\n  "required": [\n    "sha"\n  ]\n}')).toBe(true);
+  });
+});
+
+describe("renderPrompt with a failed eval", () => {
+  it("puts the eval section between the step's text and the contract", () => {
+    const text = renderPrompt(stepOf("agent"), { task: "the thing" }, ctx, undefined, "BUILD FAILED\n");
+    const section = failedEvalSection("BUILD FAILED\n");
+    expect(text.startsWith(`Do the thing in /wt for #12.\n\n${section}\n\n## Output contract`)).toBe(true);
+    expect(renderPrompt(stepOf("agent"), { task: "the thing" }, ctx)).not.toContain("## The evaluation already ran");
+  });
+
+  it("quotes the log in a fenced block and points back to the instructions and the contract", () => {
+    expect(failedEvalSection("> Task :test FAILED\nBUILD FAILED\n")).toBe(
+      [
+        "## The evaluation already ran",
+        "",
+        "This step's evaluation ran before you, on the worktree as it is now, and",
+        "did not pass. Its output:",
+        "",
+        "```",
+        "> Task :test FAILED",
+        "BUILD FAILED",
+        "```",
+        "",
+        "Fix the cause, then follow the instructions above and answer with the",
+        "result block below.",
+      ].join("\n"),
+    );
   });
 });
 

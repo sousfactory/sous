@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "sous-factory": "^0.2.0"
+    "sous-factory": "^0.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

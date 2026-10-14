@@ -97,8 +97,9 @@ between.
 
 A **step** is a folder with a `step.yaml`: declared inputs and either a
 prompt, where an agent does the work, or a TypeScript module. An agentic
-step can add a `prepare`, which may skip the agent when there is nothing to
-do, and an `eval`, which judges the result with `{ ok, log }`.
+step can add a `prepare`, which decides when the agent runs (always, only
+if the eval fails, never), and an `eval`, which judges the result with
+`{ ok, log }`.
 
 A **flow** wires steps into a graph. Each entry names its step, its inputs,
 the agent and model, and ordered routes with conditions. `done` and
@@ -183,7 +184,7 @@ steps:
 
 Writing a step of your own is a `step.yaml` and a module or a prompt; the
 manual's [add a step](docs/manual.md#15-add-a-step) shows a module step, a
-prompt step with an eval, and a prepare that skips the agent.
+prompt step with an eval, and a prepare that decides when the agent runs.
 
 ## What's in the box
 

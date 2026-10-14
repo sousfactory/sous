@@ -142,7 +142,7 @@ describe("store", () => {
 describe("update", () => {
   it("createSession has the session shape: schema 7, the issue on the bench, entry counter at 0, neither blocked nor closed", () => {
     expect(fresh()).toEqual({
-      schemaVersion: 7,
+      schemaVersion: 8,
       flow: "feature",
       issue: "12",
       title: "Some slug",
