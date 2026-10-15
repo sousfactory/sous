@@ -23,7 +23,7 @@ and report.
   - Primary sources are the commit messages on both sides,
     `{{ctx.specDir}}/spec.md` and the spec folders next to it of whatever
     landed on `{{baseBranch}}`. There is no issue tracker to consult; do not
-    touch GitHub.
+    touch it.
   - Preserve both intents. Where they conflict, the behaviour already on
     `{{baseBranch}}` wins unless this branch's spec explicitly changes it;
     say so in the summary.

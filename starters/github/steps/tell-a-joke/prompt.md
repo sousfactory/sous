@@ -7,4 +7,4 @@ punchline. Keep each under 140 characters and make the punchline a different
 sentence from the setup.
 
 **Hands off:** do not read, edit, create or delete files, do not run
-commands, do not commit, and do not touch GitHub. Just answer.
+commands, do not commit, and do not touch the issue tracker. Just answer.

@@ -23,7 +23,7 @@ Follow the skill in `{{ctx.skillsDir}}/implement/SKILL.md`, with these overrides
   step's evaluation is the authority: it runs them after you. Do not run them;
   report that criterion as covered by the evaluation, not as unconfirmed.
 - Run single test classes for the red → green loop.
-- Do not touch GitHub.
+- Do not touch the issue tracker.
 - Keep the change to this task. Out-of-scope improvements go in the summary,
   not in the diff.
 

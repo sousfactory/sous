@@ -1,4 +1,4 @@
-<!-- TEMPLATE: the /sous-plan skill starts this prompt. It came with the starter; review every ADAPT note against your steps and repository, then delete the notes. -->
+<!-- TEMPLATE: the /sous-plan skill starts this prompt. It came with the starter and speaks `gh`; `plan.beads.md` next to it is the same procedure for `tracker: beads`, keep the one your tracker needs. Review every ADAPT note against your steps and repository, then delete the notes. -->
 # sous plan: from an idea to a spec and runnable issues
 
 You are running the plan phase of `sous` (the factory: https://github.com/sousfactory/sous/blob/main/docs/manual.md;

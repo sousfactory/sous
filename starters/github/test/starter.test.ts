@@ -37,6 +37,7 @@ export const STARTER = [
   "skills",
   "skills/sous-plan",
   "prompts/plan.md",
+  "prompts/plan.beads.md",
   "test/bench.test.ts",
   "test/checked-steps.ts",
   "test/flows.test.ts",

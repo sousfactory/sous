@@ -80,10 +80,13 @@ and `/sous-setup` in Claude Code. Four things are the project's to set:
 
 1. `steps/verify/eval.ts`: `BASE_BRANCH` and the `CHECKS` to run. Until the
    list is filled, every verify passes with a `WARN` in the log.
-2. `sous.yaml`: tracker, `baseBranch`, the branch template, `lifecycle`.
-3. The flows: the agent and model per step, `allowedLabels`; create the
-   `type:task`, `type:bug` and `type:feature` labels on the repository.
-4. `prompts/plan.md`: follow its `ADAPT` notes.
+2. `sous.yaml`: tracker (`github` or `beads`), `baseBranch`, the branch
+   template, `lifecycle`.
+3. The flows: the agent and model per step, `allowedLabels`; on GitHub,
+   create the `type:task`, `type:bug` and `type:feature` labels (bd derives
+   them from the bead type).
+4. `prompts/plan.md`: follow its `ADAPT` notes. It speaks `gh`; for bd,
+   move `prompts/plan.beads.md` over it first.
 
 Then:
 

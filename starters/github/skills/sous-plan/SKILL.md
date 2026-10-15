@@ -1,6 +1,6 @@
 ---
 name: sous-plan
-description: Plan a GitHub issue for the sous software factory (.sous). Interactive: clarifies the idea with the human, writes specs/<n>-<slug>/spec.md, files sub-issues for a feature, and commits the spec to main after an explicit GO. Use as /sous-plan [#id]; without an id it creates the issue first.
+description: Plan an issue (GitHub or bd) for the sous software factory (.sous). Interactive: clarifies the idea with the human, writes specs/<n>-<slug>/spec.md, files sub-issues for a feature, and commits the spec to main after an explicit GO. Use as /sous-plan [#id]; without an id it creates the issue first.
 disable-model-invocation: true
 ---
 

@@ -82,7 +82,7 @@ describe("step prompts", () => {
       if (step.run?.kind !== "prompt") throw new Error(`${name} is not a prompt step`);
       const text = step.run.prompt;
       expect(text, `${name}: points at the vendored skill`).toContain(`{{ctx.skillsDir}}/${SKILL[name]}`);
-      expect(text, `${name}: keeps the no-GitHub rule`).toMatch(/GitHub/);
+      expect(text, `${name}: keeps the no-tracker rule`).toMatch(/issue tracker/);
       expect(text, `${name}: the output contract is core's`).not.toMatch(/<result>|Output contract/);
       expect(text, `${name}: no label names`).not.toMatch(/sous:|fcli:/);
       expect(text, `${name}: no test command; the eval runs it`).not.toMatch(/gradle/i);
@@ -100,6 +100,13 @@ describe("step prompts", () => {
 });
 
 const plan = readFileSync(join(root, "prompts", "plan.md"), "utf8");
+const planBeads = readFileSync(join(root, "prompts", "plan.beads.md"), "utf8");
+
+/** Both plan prompts; `ref` is how each writes the issue in text. */
+const PLANS: [string, string, string][] = [
+  ["plan.md", plan, "#<ISSUE>"],
+  ["plan.beads.md", planBeads, "<ISSUE>"],
+];
 
 /** Vendored skill files the prompt must send the session to. */
 const REQUIRED_SKILLS = [
@@ -128,51 +135,88 @@ describe("step READMEs", () => {
   });
 });
 
-describe("the /sous-plan skill and the plan prompt", () => {
+describe("the /sous-plan skill and the plan prompts", () => {
   // Absent until `sous init` installed them; the starter's own checkout has none.
   it.skipIf(!existsSync(join(repoRoot, ".claude", "skills", "sous-plan", "SKILL.md")))("the installed skill is the starter's, unchanged", () => {
     expect(readFileSync(join(repoRoot, ".claude", "skills", "sous-plan", "SKILL.md"), "utf8")).toBe(readFileSync(join(root, "skills", "sous-plan", "SKILL.md"), "utf8"));
   });
 
-  it("the plan prompt keeps its ADAPT notes, so a new project sees what to change", () => {
-    expect(plan.match(/<!-- ADAPT: /g)?.length ?? 0).toBeGreaterThanOrEqual(5);
+  it.each(PLANS)("%s keeps its ADAPT notes, so a new project sees what to change", (_name, text) => {
+    expect(text.match(/<!-- ADAPT: /g)?.length ?? 0).toBeGreaterThanOrEqual(5);
   });
 });
 
-describe("prompts/plan.md", () => {
+describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
   it("exists, is not empty and no longer names fcli", () => {
-    expect(plan.trim().length).toBeGreaterThan(0);
-    expect(plan).not.toMatch(/fcli|\.factory-cli/);
-    expect(plan).toContain("github.com/sousfactory/sous/blob/main/docs/manual.md");
+    expect(text.trim().length).toBeGreaterThan(0);
+    expect(text).not.toMatch(/fcli|\.factory-cli/);
+    expect(text).toContain("github.com/sousfactory/sous/blob/main/docs/manual.md");
   });
 
   it("points at every vendored skill it relies on", () => {
-    for (const path of REQUIRED_SKILLS) expect(plan, `missing reference to ${path}`).toContain(path);
+    for (const path of REQUIRED_SKILLS) expect(text, `missing reference to ${path}`).toContain(path);
   });
 
   it("references only skill paths that exist under .sous/skills/", () => {
-    const referenced = [...new Set([...plan.matchAll(/\.sous\/skills\/[\w./-]+/g)].map((m) => m[0]))];
+    const referenced = [...new Set([...text.matchAll(/\.sous\/skills\/[\w./-]+/g)].map((m) => m[0]))];
     expect(referenced.length).toBeGreaterThanOrEqual(REQUIRED_SKILLS.length);
     // `.sous/` is this folder, whatever it is called in a checkout of the starter itself.
     for (const path of referenced) expect(existsSync(join(root, path.replace(/^\.sous\//, ""))), `${path} does not exist`).toBe(true);
   });
 
   it("lists the standard spec headings in the order init expects", () => {
-    const positions = SPEC_HEADINGS.map((h) => plan.indexOf(`## ${h}`));
+    const positions = SPEC_HEADINGS.map((h) => text.indexOf(`## ${h}`));
     for (const [i, pos] of positions.entries()) expect(pos, `## ${SPEC_HEADINGS[i]} not found`).toBeGreaterThanOrEqual(0);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
   it("spells out the spec header block and the slug rule", () => {
-    expect(plan).toContain("# Spec: <issue title>");
-    expect(plan).toContain("- **Issue:** #<ISSUE>");
-    expect(plan).toContain("- **Status:** draft");
-    expect(plan).toContain("specs/<ISSUE>-<slug>/spec.md");
-    expect(plan).toContain("first four words");
-    expect(plan).toContain("specs/42-add-csv-export-for/spec.md");
+    expect(text).toContain("# Spec: <issue title>");
+    expect(text).toContain(`- **Issue:** ${ref}`);
+    expect(text).toContain("- **Status:** draft");
+    expect(text).toContain("specs/<ISSUE>-<slug>/spec.md");
+    expect(text).toContain("first four words");
+    expect(text).toMatch(/specs\/(42|bd-a3f8)-add-csv-export-for\/spec\.md/);
   });
 
-  it("has the sub-issue body template the run phase parses", () => {
+  it("keeps the repository's gate commands out of acceptance criteria, for slices and for a task/bug checklist", () => {
+    expect(text).toContain("Criteria never name the repository's gate commands.");
+    expect(text).toContain("observable behaviour or a named test");
+    for (const command of ["./gradlew clean build", "./gradlew test", "npm test", "npm run typecheck"]) expect(text, `names ${command} as forbidden`).toContain(`\`${command}\``);
+    expect(text).toContain("the run phase's evals own the gate");
+    const rule = text.indexOf("Criteria never name the repository's gate commands.");
+    const tasks = text.indexOf("### Tasks and bugs");
+    expect(rule).toBeGreaterThan(text.indexOf("## Step 3: Slices"));
+    expect(tasks).toBeGreaterThan(rule);
+    expect(text.slice(tasks)).toContain("never a gate command");
+  });
+
+  it("covers the amend mode and the `sous:*` labels the run phase owns", () => {
+    expect(text).toContain("## Amendment — <short title>");
+    expect(text).toContain("`sous:*` labels");
+  });
+
+  it("has the GO gate before commit and push, without trailers or branches", () => {
+    const gate = text.indexOf("ask for an explicit GO");
+    expect(gate).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf("git push origin main")).toBeGreaterThan(gate);
+    expect(text).toContain(`git commit -m "spec(${ref}): spec"`);
+    expect(text).toContain(`spec(${ref}): amend — <short title>`);
+    expect(text).toContain("git pull --rebase origin main");
+    expect(text).toContain("no `Co-Authored-By`");
+    expect(text).toContain("never run `./sous`");
+    expect(text).toContain("./sous run <flow> <ISSUE>");
+    expect(text).toContain("`allowedLabels` include the");
+    expect(text).not.toMatch(/sous run (task|feature)\b/);
+  });
+
+  it("contains no shell-expansion sequences", () => {
+    expect(text).not.toMatch(/!`/);
+  });
+});
+
+describe("prompts/plan.md speaks gh", () => {
+  it("has the sub-issue body template the GitHub tracker parses", () => {
     expect(plan).toContain("## Parent");
     expect(plan).toContain("## What to build");
     expect(plan).toContain("## Acceptance criteria");
@@ -181,42 +225,28 @@ describe("prompts/plan.md", () => {
     expect(plan).toContain("--label type:task");
     expect(plan).toContain("/sub_issues");
     expect(plan).toContain('-F sub_issue_id="$cid"');
-    expect(plan).toContain("`sous:*` labels");
   });
 
-  it("keeps the repository's gate commands out of acceptance criteria, for slices and for a task/bug checklist", () => {
-    expect(plan).toContain("Criteria never name the repository's gate commands.");
-    expect(plan).toContain("observable behaviour or a named test");
-    for (const command of ["./gradlew clean build", "./gradlew test", "npm test", "npm run typecheck"]) expect(plan, `names ${command} as forbidden`).toContain(`\`${command}\``);
-    expect(plan).toContain("the run phase's evals own the gate");
-    const rule = plan.indexOf("Criteria never name the repository's gate commands.");
-    const tasks = plan.indexOf("### Tasks and bugs");
-    expect(rule).toBeGreaterThan(plan.indexOf("## Acceptance criteria"));
-    expect(tasks).toBeGreaterThan(rule);
-    expect(plan.slice(tasks)).toContain("never a gate command");
-  });
-
-  it("covers the issue-less entry and the amend mode", () => {
+  it("covers the issue-less entry", () => {
     expect(plan).toContain("gh issue create");
-    expect(plan).toContain("## Amendment — <short title>");
+    expect(plan).not.toMatch(/\bbd (create|show|update|dep)\b/);
+  });
+});
+
+describe("prompts/plan.beads.md speaks bd", () => {
+  it("creates the parent as an epic, the slices as children with blocks edges, and sets no label", () => {
+    expect(planBeads).toContain("bd create --title \"<title>\" --type epic");
+    expect(planBeads).toContain("--type task --parent <ISSUE>");
+    expect(planBeads).toContain("--acceptance");
+    expect(planBeads).toContain("bd dep add <child> --blocked-by <m>");
+    expect(planBeads).toContain("bd show <ISSUE> --json");
+    expect(planBeads).toContain("Never set a label");
+    expect(planBeads).not.toMatch(/\bgh\b|## Blocked by|sub_issue/);
   });
 
-  it("has the GO gate before commit and push, without trailers or branches", () => {
-    const gate = plan.indexOf("ask for an explicit GO");
-    expect(gate).toBeGreaterThanOrEqual(0);
-    expect(plan.indexOf("git push origin main")).toBeGreaterThan(gate);
-    expect(plan).toContain('git commit -m "spec(#<ISSUE>): spec"');
-    expect(plan).toContain("spec(#<ISSUE>): amend — <short title>");
-    expect(plan).toContain("git pull --rebase origin main");
-    expect(plan).toContain("no `Co-Authored-By`");
-    expect(plan).toContain("never run `./sous`");
-    expect(plan).toContain("./sous run <flow> <ISSUE>");
-    expect(plan).toContain("`allowedLabels` include the issue's `type:*` label");
-    expect(plan).not.toMatch(/sous run (task|feature)\b/);
-  });
-
-  it("contains no shell-expansion sequences", () => {
-    expect(plan).not.toMatch(/!`/);
+  it("names the type-to-label mapping the beads tracker applies", () => {
+    for (const label of ["type:feature", "type:task", "type:bug"]) expect(planBeads).toContain(label);
+    expect(planBeads).toContain("epic or feature");
   });
 });
 

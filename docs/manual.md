@@ -127,6 +127,7 @@ your-project/
     │   └── tell-a-joke/
     ├── skills/                   # vendored skills (VENDORED.md names source and license) and sous-plan/
     ├── prompts/plan.md           # the procedure /sous-plan follows; ADAPT notes mark what to change
+    │   └── plan.beads.md         # the same for tracker: beads; keep the one your tracker needs
     ├── test/                     # the project's step and flow tests, over sous-factory/testing
     ├── logs/<id>/                # one agent log per iteration             (gitignored)
     ├── runs/<id>/                # session.json and events.jsonl per issue (gitignored)
@@ -144,7 +145,7 @@ init: still to do by hand:
   1. .sous/steps/verify/eval.ts: set BASE_BRANCH and fill CHECKS
   2. .sous/sous.yaml: tracker, baseBranch, branch template, lifecycle
   3. .sous/flows/*.yaml: agent models and allowedLabels; create the labels on the tracker
-  4. .sous/prompts/plan.md: follow its ADAPT notes
+  4. .sous/prompts/plan.md: follow its ADAPT notes (tracker beads: move plan.beads.md over it first)
   5. cd .sous && ./sous validate && npx vitest run; then ./sous run bench <issue>
 ```
 
@@ -153,17 +154,20 @@ init: still to do by hand:
    is taken against. Until `CHECKS` is filled, every verify passes and
    writes `WARN: no checks configured` into its log, so the gap is visible
    in `sous status` and the UI. See [how-to 13](#13-change-the-check-commands).
-2. **`sous.yaml`.** `tracker` (`github` by default), `baseBranch`, the
-   `branch` template for run branches, `lifecycle` (whether the run itself
-   claims and closes the issue). See [chapter 9](#9-settings-sousyaml).
+2. **`sous.yaml`.** `tracker` (`github` by default, `beads` for bd),
+   `baseBranch`, the `branch` template for run branches, `lifecycle`
+   (whether the run itself claims and closes the issue). See
+   [chapter 9](#9-settings-sousyaml).
 3. **Flows.** Every agentic entry names an `agent: { kind, model }`; pick
    the models you have access to. `allowedLabels` decides which issues a
    flow accepts: `type:task` and `type:bug` for `task`, `type:feature` for
-   `feature`. Create those labels on the tracker (`gh label create
-   type:task`, and so on).
+   `feature`. On GitHub, create those labels (`gh label create type:task`,
+   and so on); bd needs none, the tracker derives them from the bead type.
 4. **`prompts/plan.md`.** The plan prompt carries `<!-- ADAPT: … -->`
    notes naming what is repository-specific: rule files, the spec folder,
-   the labels. Apply each and delete the note.
+   the labels. Apply each and delete the note. The starter's `plan.md`
+   speaks `gh`; with `tracker: beads`, move `prompts/plan.beads.md` over it
+   first and delete the other one otherwise.
 5. **Verify.** `./sous validate` checks every flow and step; the tests
    walk the flows over fakes; `bench` is a flow that runs one module step
    and one agent step without touching the issue or the code.
@@ -907,7 +911,8 @@ for a new flow the same way.
 
 **When:** after `init`, and when the repository's rules or layout change.
 
-**Files:** `prompts/plan.md` (the procedure `/sous-plan` follows),
+**Files:** `prompts/plan.md` (the procedure `/sous-plan` follows; the
+starter ships it for GitHub and, as `prompts/plan.beads.md`, for bd),
 `skills/sous-plan/SKILL.md` and its installed copy
 `.claude/skills/sous-plan/SKILL.md` (which only starts the prompt),
 `steps/init/run.ts` (the spec headings and the stub).
@@ -938,6 +943,12 @@ not ship.
 ```yaml
 tracker: beads                      # bd; run as sous run <flow> <bead-id>
 ```
+
+With bd, the plan phase speaks `bd` too: move the starter's
+`prompts/plan.beads.md` over `prompts/plan.md`. It creates a feature as an
+epic with child beads, puts acceptance criteria into bd's own field, and
+wires blockers as `blocks` dependencies instead of a `## Blocked by`
+section.
 
 ```yaml
 tracker: local                      # files under .sous/issues/

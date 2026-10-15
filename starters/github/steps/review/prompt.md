@@ -6,7 +6,7 @@ code and you have no memory of it. Judge the diff cold.
 **Read-only:** do not edit, create, format or delete files; do not commit,
 stage, stash, check out or run builds that modify the tree. Reading files
 and running `git diff`, `git log`, `git show` is all you need. Do not touch
-GitHub.
+the issue tracker.
 
 ## What to review
 

@@ -28,7 +28,7 @@ report.
   report that criterion as covered by the evaluation, not as unconfirmed.
 - Run single test classes for the red → green loop.
 - Do not run `/code-review`; a separate reviewer runs after you. Do not touch
-  GitHub.
+  the issue tracker.
 - Fix the cause, not the symptom. Keep the change to what the input asks for.
 
 ## Commit rules
