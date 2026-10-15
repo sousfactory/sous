@@ -42,7 +42,7 @@ running, with each step's agent, model and duration. Not a hosted service.
 
 - **Local-first.** Like GitHub Actions, for agents, on your machine. Flows
   are YAML, steps are reusable units, routes make a graph.
-- **Deterministic shell, agentic core.** The agent works in a worktree and
+- **Agentic core, deterministic shell.** The agent works in a worktree and
   answers with one JSON envelope. The executor renders, evaluates and
   routes; it never asks the agent what happens next.
 - **Quality gates.** Evals judge the work, not the agent's word. A failed
