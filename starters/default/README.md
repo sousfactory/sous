@@ -1,9 +1,9 @@
-# sous: the GitHub starter
+# sous: the default starter
 
 **The most popular dev skills, run in a deterministic flow.**
 
 This folder is a project's factory: the `.sous/` that `sous init` copies
-into a repository tracked on GitHub. It wires Matt Pocock's engineering
+into a repository tracked on GitHub or in bd. It wires Matt Pocock's engineering
 skills into flows the `sous` engine runs without a human: `implement` and
 `tdd` write the code, `code-review` judges it, `tdd` again fixes what the
 review found, `resolving-merge-conflicts` brings the base branch in, and

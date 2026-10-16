@@ -13,8 +13,8 @@
     "build": "npm run build:lib -w packages/core && npm run build -w packages/ui && npm run bundle -w packages/core",
     "typecheck": "npm run typecheck -w packages/core && npm run typecheck -w packages/ui",
     "test": "vitest run",
-    "starter:install": "cd starters/github && npm install --no-save ../../packages/core",
-    "starter:test": "cd starters/github && npm run typecheck && npm test"
+    "starter:install": "cd starters/default && npm install --no-save ../../packages/core",
+    "starter:test": "cd starters/default && npm run typecheck && npm test"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

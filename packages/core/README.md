@@ -40,7 +40,7 @@ init too.
   getting started, concepts and reference, the
   [CLI](https://github.com/sousfactory/sous/blob/main/docs/manual.md#12-cli),
   how-tos.
-- [The starter](https://github.com/sousfactory/sous/tree/main/starters/github):
+- [The starter](https://github.com/sousfactory/sous/tree/main/starters/default):
   the flows and steps `sous init` copies, with a README per step.
 - [`sous-factory/testing`](https://github.com/sousfactory/sous/blob/main/docs/manual.md#20-test-steps-and-flows):
   the fakes and the harness for a project's own tests.

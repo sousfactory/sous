@@ -10,7 +10,7 @@ locks/
 .idea/
 .vscode/
 .DS_Store
-# built from starters/github by packages/core's build
+# built from starters/default by packages/core's build
 packages/core/starter/
 # check-filled copies of the starter steps made by its tests
-starters/github/test/.steps-*/
+starters/default/test/.steps-*/

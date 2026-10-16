@@ -185,10 +185,10 @@ flows from YAML and your steps and tracker module through `tsx`, so a
 project needs no build step. Steps reach the engine through
 `import … from "sous-factory"`.
 
-**The starter is optional.** `sous init` copies `starters/github`: three
+**The starter is optional.** `sous init` copies `starters/default`: three
 flows (`task`, `feature`, `bench`), eleven steps, the vendored skills, the
-plan prompt and the tests. It is a working factory for a GitHub-tracked
-repository and the recommended beginning. Nothing in the engine depends on
+plan prompts and the tests. It is a working factory for a repository
+tracked on GitHub or in bd, and the recommended beginning. Nothing in the engine depends on
 it:
 
 - Keep the delivery flows and change the steps they use: `implement`,

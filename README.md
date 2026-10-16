@@ -128,7 +128,7 @@ touch anything outside its worktree, because it was never given those
 tools.
 
 This is the starter's `task` flow, shortened. The
-[full file](starters/github/flows/task.yaml) also brings main in and
+[full file](starters/default/flows/task.yaml) also brings main in and
 reviews the whole branch before the merge.
 
 ```yaml
@@ -191,7 +191,7 @@ prompt step with an eval, and a prepare that decides when the agent runs.
 | Part | What it is | Where |
 | --- | --- | --- |
 | **Engine** | Executor, CLI, trackers, sandbox, run record. Ships no steps. | npm `sous-factory` (`packages/core`) |
-| **Starter** | One project layout for a GitHub-tracked repository: flows, steps, skills and prompts. `sous init` copies it into `.sous/`. | `starters/github`, shipped with the engine |
+| **Starter** | One project layout for a repository tracked on GitHub or in bd: flows, steps, skills and prompts. `sous init` copies it into `.sous/`. | `starters/default`, shipped with the engine |
 | **Project** | `sous.yaml`, `flows/`, `steps/`, `skills/`, `prompts/`: the factory of one repository, yours to edit. | `.sous/` in your repository |
 | **UI** | `sous ui`, a live run viewer. | bundled with the engine (`packages/ui`) |
 
@@ -199,7 +199,7 @@ The starter wires Matt Pocock's engineering skills into three flows:
 `task` takes one issue through implement, review, fix, sync and merge;
 `feature` delivers a parent issue sub-issue by sub-issue, then reviews the
 branch as a whole; `bench` is a smoke test that touches neither the issue
-nor the code. Its [README](starters/github/README.md) lists every flow,
+nor the code. Its [README](starters/default/README.md) lists every flow,
 step and skill. Keep its steps, replace some, or start from an empty
 `.sous/` with flows of your own. The engine never imports the project; it
 loads your steps, flows and tracker from `.sous/` at run time.
@@ -229,7 +229,7 @@ your-project/
 
 - [The manual](docs/manual.md): getting started, concepts and reference,
   how-tos.
-- [The starter](starters/github/README.md): its flows and steps, with a
+- [The starter](starters/default/README.md): its flows and steps, with a
   README per step.
 - [sous ui](packages/ui/README.md): pages, status mapping, architecture.
 - [`skills/sous-setup`](skills/sous-setup/SKILL.md): the guided setup.

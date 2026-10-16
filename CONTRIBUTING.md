@@ -6,7 +6,7 @@ Node 22 or newer. The repository is an npm workspace:
 
 - `packages/core`: the engine, published as `sous-factory` (CLI, executor, trackers, `sous-factory/testing`).
 - `packages/ui`: the run viewer, private; its build is bundled into the core package.
-- `starters/github`: what `sous init` copies into a project; not a workspace, it depends on the published package.
+- `starters/default`: what `sous init` copies into a project; not a workspace, it depends on the published package.
 
 ```
 npm install
@@ -21,7 +21,7 @@ All five pass before a commit. CI runs the same sequence.
 ## Verification is unit tests
 
 Every change comes with the test that would have caught its absence, next to
-the code it exercises (`packages/*/test`, `starters/github/test`). The starter
+the code it exercises (`packages/*/test`, `starters/default/test`). The starter
 is tested as a project: `starter:install` links the built core into it, then
 its own `typecheck` and `vitest` run, so a change in the core that breaks a
 step shows up there. Steps are tested through the fakes in

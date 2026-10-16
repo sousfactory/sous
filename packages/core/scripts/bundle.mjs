@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const core = join(dirname(fileURLToPath(import.meta.url)), "..");
-const starter = join(core, "..", "..", "starters", "github");
+const starter = join(core, "..", "..", "starters", "default");
 const ui = join(core, "..", "ui");
 
 const skipped = new Set(["node_modules", "logs", "runs", "locks", ".lock"]);
