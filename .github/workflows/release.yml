@@ -21,6 +21,9 @@ jobs:
             echo "tag ${GITHUB_REF_NAME} does not match packages/core version ${version}" >&2
             exit 1
           fi
+      # The release notes are the version's section; a tag without one stops here, before anything is published.
+      - name: CHANGELOG.md has a section for the version
+        run: scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" > /dev/null
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -56,3 +59,22 @@ jobs:
             *-*) npm publish --access public --tag next ;;
             *) npm publish --access public ;;
           esac
+  # The GitHub Release carries the version's CHANGELOG.md section as its notes, once npm has the package.
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the GitHub Release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          scripts/changelog-section.sh "$version" > notes.md
+          case "$version" in
+            *-*) prerelease=--prerelease ;;
+            *) prerelease= ;;
+          esac
+          gh release create "${GITHUB_REF_NAME}" --title "sous-factory ${version}" --notes-file notes.md $prerelease

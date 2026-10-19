@@ -55,18 +55,24 @@ Write commit messages for the maintainer who reads the history after the tracker
 Releases go out from GitHub Actions (`.github/workflows/release.yml`), not
 from a laptop.
 
-1. Bump `version` in `packages/core/package.json` (semver; the starter's
-   `package.json` pins `^` on the major) and push it to `main`.
-2. Tag that commit and push the tag: `git tag v<version> && git push origin v<version>`.
+1. Add a `## <version>` section at the top of `CHANGELOG.md`: what changed
+   for people who run sous, write steps or adapt the starter, under
+   `Breaking`, `Changed` and `Added` as needed. The workflow refuses a tag
+   whose version has no section.
+2. Bump `version` in `packages/core/package.json` (semver; the starter's
+   `package.json` pins `^` on the major) and push both to `main`.
+3. Tag that commit and push the tag: `git tag v<version> && git push origin v<version>`.
    The tag must match the version, or the workflow stops.
-3. The workflow builds and tests, then its `publish` job publishes from
+4. The workflow builds and tests, then its `publish` job publishes from
    the `npm` environment with npm trusted publishing: no token, no browser
    login, no approval. The environment exists because the trusted publisher
    entry names it; keep it free of required reviewers. `prepublishOnly`
    runs the full build, so `dist/`, the UI and the bundled `starter/` are
    what ships. A prerelease version (`1.2.0-rc.1`) is published under the
    `next` dist-tag.
-4. Check `npm view sous-factory version`; the registry can take a minute to
+5. Its `release` job then creates the GitHub Release for the tag with the
+   section as its notes (`--prerelease` for a prerelease version).
+6. Check `npm view sous-factory version`; the registry can take a minute to
    show the new version.
 
 npm trusts the workflow by its file name: the package's Trusted Publisher
