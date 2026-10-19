@@ -117,7 +117,7 @@ Example: `Add CSV export for portfolios (v2)` becomes
 title on GitHub, so the folder name must match the title as it is when the run
 starts; do not rename the issue afterwards without renaming the folder.
 
-<!-- ADAPT: The headings must match what your steps rely on, e.g. a step that writes a stub spec when none exists. -->
+<!-- ADAPT: The headings are yours to choose; the run hands the whole file to its steps as `ctx.spec`. -->
 **Create mode:** write the file with this header block and the standard
 headings in exactly this order (the run phase and the reviewer rely on them):
 

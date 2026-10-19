@@ -1,13 +1,13 @@
 # init
 
-Prepares a delivery run: checks the issue and makes sure its spec exists.
+Guards a delivery run: the issue is open and the worktree is on the run's branch.
 
 | | |
 | --- | --- |
 | Kind | module |
 | Inputs | — |
-| Output | `{ specDir }` |
+| Output | `{}` |
 | Eval | — |
 | Used by | `task`, `feature` (entry) |
 
-Refuses a closed issue; a sub-issue runs like any other, its label decides the flow. Uses the `<specsDir>/<issue>-*/` folder the plan phase made, else commits a stub `spec.md` from the issue (`spec(#N): stub from issue`). Records `ctx.specDir`.
+Refuses a closed issue and a worktree on another branch; a sub-issue runs like any other, its label decides the flow. Writes nothing: the spec is `ctx.spec`, which `sous run` reads from `<specsDir>/<issue>-*/spec.md` on the checkout at every start, or builds from the issue when the plan phase wrote none.

@@ -49,7 +49,7 @@ Eleven steps, each with its own `README.md`:
 
 | Step | Kind | Does |
 | --- | --- | --- |
-| `init` | module | Checks the issue is open and makes sure its spec exists (stubs one from the issue if not). |
+| `init` | module | Checks the issue is open and the worktree is on the run's branch. |
 | `next-work` | module | Puts the next open child with no open blockers on the bench. |
 | `implement` | prompt | Implements the work item following the `implement` and `tdd` skills, commits. |
 | `review` | prompt | Judges the diff cold and read-only against the criteria, following `code-review`. |

@@ -16,6 +16,8 @@ import type { Sandbox } from "../ports/sandbox.js";
 /** Fixed for the whole run. */
 export type CtxDeps = {
   issue: Issue;
+  /** `ctx.spec`: the spec markdown, read once at the run's start. */
+  spec: string;
   flow: string;
   branch: string;
   /** The repository checkout (`merge` squashes there). */
@@ -79,6 +81,7 @@ export const buildCtx = (deps: CtxDeps, state: CtxState, writes?: CtxWrites): Ct
   const worktree = deps.sandbox.worktreePath;
   const ctx: Ctx = {
     issue: deps.issue,
+    spec: deps.spec,
     flow: deps.flow,
     work: state.work,
     branch: deps.branch,
@@ -112,6 +115,7 @@ export const ctxPlaceholders = (ctx: Ctx): CtxValues => ({
   "ctx.work.id": ctx.work.id,
   "ctx.work.ref": ctx.work.ref,
   "ctx.worktree": ctx.worktree,
+  "ctx.spec": ctx.spec,
   "ctx.specDir": ctx.specDir,
   "ctx.skillsDir": ctx.skillsDir,
 });

@@ -7,6 +7,7 @@
 import type { AgentKind } from "../config/flow.js";
 import type { PrepareVerdict } from "../index.js";
 import type { AgentOutcome, Event, RunOutcome, TokenUsage } from "./events.js";
+import type { SpecSource } from "./spec.js";
 
 export type RunSegment = {
   id: string;
@@ -20,6 +21,7 @@ export type RunSegment = {
   sha: string;
   flow: string;
   resumedFrom?: { step: string; iteration: number };
+  spec?: SpecSource;
 };
 
 export type AgentSpan = {
@@ -116,8 +118,8 @@ const applyToSpan = (spans: Span[], id: string, next: (span: Span) => Span): Spa
 const apply = ({ runs, spans }: Timeline, event: Event): Timeline => {
   switch (event.type) {
     case "run.start": {
-      const { at, runId, pid, host, sha, flow, resumedFrom } = event;
-      const run: RunSegment = { id: runId, startedAt: at, pid, host, sha, flow, ...(resumedFrom !== undefined ? { resumedFrom } : {}) };
+      const { at, runId, pid, host, sha, flow, resumedFrom, spec } = event;
+      const run: RunSegment = { id: runId, startedAt: at, pid, host, sha, flow, ...(resumedFrom !== undefined ? { resumedFrom } : {}), ...(spec !== undefined ? { spec } : {}) };
       return { runs: [...runs, run], spans };
     }
     case "run.end":

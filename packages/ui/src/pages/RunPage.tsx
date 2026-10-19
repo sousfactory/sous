@@ -100,6 +100,7 @@ export const RunPage = ({ route, view, error }: { route: RunRoute; view: RunView
                     <ActionList.Description variant="block">
                       {OUTCOME_LABEL[a.outcome]} · run {a.runId} · {timeAgo(a.startedAt, now)}
                       {a.resumedFrom !== undefined ? ` · resumed at ${a.resumedFrom.step}` : ""}
+                      {a.spec === "issue" ? " · spec: issue" : ""}
                     </ActionList.Description>
                   </ActionList.Item>
                 ))}

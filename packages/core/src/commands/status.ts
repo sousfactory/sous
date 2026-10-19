@@ -86,7 +86,8 @@ const untrackedLine = (entry: HistoryEntry): string => `${MARKS.untracked} ${ent
 const runLine = (run: RunSegment, previous: RunSegment | undefined): string => {
   const idle = previous?.endedAt !== undefined ? between(previous.endedAt, run.startedAt) : undefined;
   const resumed = run.resumedFrom !== undefined ? `  resumed at ${run.resumedFrom.step}` : "";
-  return `run ${run.id}  ${clockTime(run.startedAt)}  ${run.outcome ?? "running"}${idle !== undefined ? `  (idle ${formatDuration(idle)})` : ""}${resumed}`;
+  const spec = run.spec === "issue" ? "  spec: issue" : "";
+  return `run ${run.id}  ${clockTime(run.startedAt)}  ${run.outcome ?? "running"}${idle !== undefined ? `  (idle ${formatDuration(idle)})` : ""}${resumed}${spec}`;
 };
 
 const lanes = (spans: Span[], timeline: Timeline, laneOf: ReadonlyMap<string, string>): string[] =>

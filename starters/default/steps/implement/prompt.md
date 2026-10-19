@@ -8,7 +8,9 @@ below. Nobody will answer questions: decide, do, and report.
 
 {{task}}
 
-Read `{{ctx.specDir}}/spec.md` first; it is the design of record.
+## Spec (the design of record)
+
+{{ctx.spec}}
 
 ## How to work
 

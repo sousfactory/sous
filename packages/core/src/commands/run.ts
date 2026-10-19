@@ -27,6 +27,7 @@ import type { EventLog } from "../ports/eventlog.js";
 import type { Tracker } from "../ports/tracker.js";
 import type { RunOutcome } from "../session/events.js";
 import { branchName, eventsFile, existingSpecDirName, runDir, sessionFile, specDirName } from "../session/paths.js";
+import { readSpec } from "../session/spec.js";
 import { filePersist, loadSession } from "../session/store.js";
 import { createSession, markClosed } from "../session/update.js";
 import { acquireLock, createRepoLock, describeLock, isProcessAlive, lockPath, repoLockPath } from "./lock.js";
@@ -313,6 +314,11 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     if (interruption !== undefined) return await interruption;
     out(`${existing === undefined ? "starting" : "resuming"} ${issue.ref} at ${session.current} in ${sandbox.worktreePath}`);
 
+    // Read on every start from the checkout as it stands, so an edited spec
+    // reaches the next run; the session's folder wins once a step has moved it.
+    const spec = readSpec(repoRoot, session.specDir, issue);
+    out(spec.source === "file" ? `spec: ${join(session.specDir, "spec.md")}` : `spec: no ${join(session.specDir, "spec.md")}; the issue is the spec`);
+
     const events = createFileEventLog(eventsFile(runs, issue.id));
     const runId = (deps.newId ?? randomId)();
     const resumedFrom = resumePoint(session, flow);
@@ -326,6 +332,7 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
       sha,
       flow: flow.name,
       ...(resumedFrom !== undefined ? { resumedFrom } : {}),
+      spec: spec.source,
     });
     segment = { events, runId, started };
     await started;
@@ -336,6 +343,7 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     try {
       final = await runFlow(flow, session, {
         issue: { id: issue.id, ref: issue.ref, title: issue.title, body: issue.body, labels: issue.labels },
+        spec: spec.text,
         work: await workOf(tracker, issue, session.work),
         sandbox,
         git,

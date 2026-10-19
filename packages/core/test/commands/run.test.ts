@@ -160,7 +160,7 @@ describe("runCommand", () => {
     expect(sandbox?.requests[0]?.logPath).toBe(join(root, "logs", "7", "r1-2-7-work-1.log"));
 
     const { runs: segments, spans } = foldTimeline(await savedEvents());
-    expect(segments).toEqual([{ id: "r1", startedAt: expect.any(String), endedAt: expect.any(String), outcome: "done", pid: 4242, host: "box", sha: "abc1234", flow: "walk" }]);
+    expect(segments).toEqual([{ id: "r1", startedAt: expect.any(String), endedAt: expect.any(String), outcome: "done", pid: 4242, host: "box", sha: "abc1234", flow: "walk", spec: "issue" }]);
     expect(spans.map((s) => [s.step, s.scope, s.next])).toEqual([
       ["start", "7", "work"],
       ["work", "7", "finish"],
@@ -399,9 +399,18 @@ describe("runCommand", () => {
 
   it("uses the spec folder already planned on main; the branch follows the settings template", async () => {
     await mkdir(join(repoRoot, "specs", "7-planned-slug"), { recursive: true });
+    await writeFile(join(repoRoot, "specs", "7-planned-slug", "spec.md"), "# Planned\n");
     await runCommand(["walk", "7"], deps());
     expect((await savedSession()).specDir).toBe("specs/7-planned-slug");
     expect(opened[0]?.branch).toBe(BRANCH);
+    expect(out).toContain("spec: specs/7-planned-slug/spec.md");
+    expect((await savedEvents())[0]).toMatchObject({ type: "run.start", spec: "file" });
+  });
+
+  it("is the issue's own spec when planning wrote none, and says so", async () => {
+    await runCommand(["walk", "7"], deps());
+    expect(out).toContain("spec: no specs/7-cap-asset-slug-length/spec.md; the issue is the spec");
+    expect((await savedEvents())[0]).toMatchObject({ type: "run.start", spec: "issue" });
   });
 
   it("validates the project first and exits 2 on errors, before taking the lock", async () => {

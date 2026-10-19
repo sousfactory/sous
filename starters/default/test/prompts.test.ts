@@ -119,7 +119,7 @@ const REQUIRED_SKILLS = [
   ".sous/skills/to-tickets/SKILL.md",
 ];
 
-/** The headings `init`'s spec stub writes; the plan prompt must list them in this order. */
+/** The standard spec headings the plan prompt asks for, in this order. */
 const SPEC_HEADINGS = ["Problem Statement", "Solution", "User Stories", "Implementation Decisions", "Testing Decisions", "Out of Scope", "Further Notes"];
 
 describe("step READMEs", () => {
@@ -164,7 +164,7 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     for (const path of referenced) expect(existsSync(join(root, path.replace(/^\.sous\//, ""))), `${path} does not exist`).toBe(true);
   });
 
-  it("lists the standard spec headings in the order init expects", () => {
+  it("lists the standard spec headings in order", () => {
     const positions = SPEC_HEADINGS.map((h) => text.indexOf(`## ${h}`));
     for (const [i, pos] of positions.entries()) expect(pos, `## ${SPEC_HEADINGS[i]} not found`).toBeGreaterThanOrEqual(0);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));

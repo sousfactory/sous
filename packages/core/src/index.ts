@@ -18,6 +18,7 @@ export { SousError } from "./exec/errors.js";
 export { isOutput } from "./session/events.js";
 export type { TrackerEnv, TrackerFactory } from "./tracker.js";
 export { existingSpecDirName, specDirName } from "./session/paths.js";
+export { readSpec, specFromIssue, type Spec, type SpecSource } from "./session/spec.js";
 
 /**
  * What a step hands back. An agent writes it as its final answer; a `run`
@@ -84,6 +85,12 @@ export type Ctx = {
   readonly worktree: string;
   /** The main repository checkout, for work that must happen outside the worktree, such as landing the branch. */
   readonly repoRoot: string;
+  /**
+   * The spec, as markdown: `spec.md` from the spec folder on the repository
+   * checkout, read at every `sous run` start, or the issue's title and body
+   * when the plan phase wrote none. The same text in every step of the run.
+   */
+  readonly spec: string;
   /** Spec folder, relative to the repository root. Assign it to point later steps at another folder. */
   specDir: string;
   /** Absolute path of the project's skills folder, for pointing an agent at a skill. */

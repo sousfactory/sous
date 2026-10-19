@@ -79,7 +79,7 @@ steps:
     agent: { kind: claude, model: claude-opus-5-5 }   # cross-model alternative: { kind: codex, model: gpt-5.5 }
     with:
       diffRange: main...HEAD
-      criteria:  ${{ ctx.readFile(ctx.specDir + "/spec.md") }}
+      criteria:  ${{ ctx.spec }}
     routes:
       - to: sync
         when: res.ok

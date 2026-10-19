@@ -37,7 +37,17 @@ export type RunSummary = {
 
 export type RunRow = { kind: "run"; updatedAt: string; summary: RunSummary } | { kind: "error"; updatedAt: string; issue: string; error: string };
 
-export type Attempt = { n: number; runId: string; startedAt: string; endedAt?: string; outcome: Outcome; sha: string; resumedFrom?: { step: string; iteration: number } };
+export type Attempt = {
+  n: number;
+  runId: string;
+  startedAt: string;
+  endedAt?: string;
+  outcome: Outcome;
+  sha: string;
+  resumedFrom?: { step: string; iteration: number };
+  /** Where `ctx.spec` came from; absent in logs written before it was recorded. */
+  spec?: "file" | "issue";
+};
 
 export type WorkItem = { key: string; id: string; isIssue: boolean; state: "open" | "done"; current: boolean };
 
@@ -453,6 +463,7 @@ export const deriveRun = (input: DeriveInput): RunView => {
     sha: run.sha,
     ...(run.endedAt !== undefined ? { endedAt: run.endedAt } : {}),
     ...(run.resumedFrom !== undefined ? { resumedFrom: run.resumedFrom } : {}),
+    ...(run.spec !== undefined ? { spec: run.spec } : {}),
   }));
 
   return {

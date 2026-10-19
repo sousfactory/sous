@@ -7,6 +7,7 @@
 import type { AgentKind } from "../config/flow.js";
 import type { Envelope, PrepareVerdict } from "../index.js";
 import type { SkillAudit } from "../skills.js";
+import type { SpecSource } from "./spec.js";
 
 export const RUN_OUTCOMES = ["done", "blocked", "crashed", "interrupted"] as const;
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
@@ -34,6 +35,8 @@ export type RunStartEvent = Base & {
   flow: string;
   /** Set when the run did not start at the flow's entry. */
   resumedFrom?: { step: string; iteration: number };
+  /** Where `ctx.spec` came from: the spec file on the checkout, or the issue itself. Absent in older logs. */
+  spec?: SpecSource;
 };
 
 /** `error` is set on a `crashed` outcome; absent in older logs. */

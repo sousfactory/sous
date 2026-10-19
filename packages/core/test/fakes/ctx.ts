@@ -7,6 +7,7 @@ import { buildCtx, type CtxDeps } from "../../src/exec/ctx.js";
 import type { Ctx, Work, WorkRecord } from "../../src/index.js";
 import type { Issue } from "../../src/ports/tracker.js";
 import type { Event } from "../../src/session/events.js";
+import { specFromIssue } from "../../src/session/spec.js";
 import { fakeEventLog, type FakeEventLog } from "./eventlog.js";
 import { fakeGit, type FakeGit } from "./git.js";
 import { fakeTracker, issue as issueOf, type FakeTracker } from "./tracker.js";
@@ -17,6 +18,8 @@ export type FakeCtxOptions = {
   issue?: Partial<Issue> & { id: string };
   /** The work on the bench; the run target itself by default. */
   work?: Work;
+  /** `ctx.spec`; the issue as a spec by default. */
+  spec?: string;
   specDir?: string;
   workProgress?: Record<string, WorkRecord>;
   git?: FakeGit;
@@ -54,6 +57,7 @@ export const ctxOf = (options: FakeCtxOptions = {}): FakeCtx => {
   const locked: FakeCtx["locked"] = [];
   const deps: CtxDeps = {
     issue: { id: target.id, ref: target.ref, title: target.title, body: target.body, labels: target.labels },
+    spec: options.spec ?? specFromIssue(target),
     flow: "feature",
     branch,
     repoRoot: options.repoRoot ?? REPO,

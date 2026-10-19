@@ -19,7 +19,7 @@ report.
 ## How to work
 
 - The change under discussion is `git diff {{diffRange}}`; its design is
-  `{{ctx.specDir}}/spec.md`.
+  the spec at the end of these instructions.
 - Follow `{{ctx.skillsDir}}/tdd/SKILL.md` for behaviour changes: a failing test
   first where a finding points at missing or wrong behaviour.
 - Do not run the full test suite.
@@ -36,3 +36,7 @@ report.
 - Commit on the current branch only. Never check out, rebase onto or merge
   another branch; never push; never create branches.
 - Commit everything you changed before answering; the working tree must be clean.
+
+## Spec (the design of record)
+
+{{ctx.spec}}

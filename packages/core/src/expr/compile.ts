@@ -47,7 +47,7 @@ export const compileTemplate = (str: string): Expression => {
 const PLACEHOLDER = /\{\{\s*([A-Za-z_][\w.]*)\s*\}\}/g;
 
 /** Context placeholders any prompt may use without declaring them. */
-export const CTX_PLACEHOLDERS = ["ctx.issue.id", "ctx.issue.ref", "ctx.work.id", "ctx.work.ref", "ctx.worktree", "ctx.specDir", "ctx.skillsDir"] as const;
+export const CTX_PLACEHOLDERS = ["ctx.issue.id", "ctx.issue.ref", "ctx.work.id", "ctx.work.ref", "ctx.worktree", "ctx.spec", "ctx.specDir", "ctx.skillsDir"] as const;
 export type CtxPlaceholder = (typeof CTX_PLACEHOLDERS)[number];
 export type CtxValues = Partial<Record<CtxPlaceholder, unknown>>;
 

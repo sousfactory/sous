@@ -9,7 +9,7 @@ and report.
 
 ## Where it stands
 
-- Spec of this branch: `{{ctx.specDir}}/spec.md` (the branch's intent).
+- Spec of this branch (its intent): at the end of these instructions.
 - A merge in progress (`git status`) stopped on conflicts:
   `git diff --name-only --diff-filter=U` and `git log --merge` show them.
   The checks have not run yet.
@@ -20,8 +20,8 @@ and report.
 
 - Conflicts: follow `{{ctx.skillsDir}}/resolving-merge-conflicts/SKILL.md`,
   with these overrides:
-  - Primary sources are the commit messages on both sides,
-    `{{ctx.specDir}}/spec.md` and the spec folders next to it of whatever
+  - Primary sources are the commit messages on both sides, this branch's
+    spec below and the spec folders beside `{{ctx.specDir}}/` of whatever
     landed on `{{baseBranch}}`. There is no issue tracker to consult; do not
     touch it.
   - Preserve both intents. Where they conflict, the behaviour already on
@@ -43,3 +43,7 @@ and report.
 - Every fix is its own commit after the merge commit.
 - The working tree must be clean and no merge may be in progress when you
   answer.
+
+## Spec of this branch
+
+{{ctx.spec}}

@@ -225,9 +225,10 @@ Then a real task. Label an issue `type:task`, and:
 ```
 
 What happens, in order: the issue is claimed (`sous:running` on GitHub),
-a worktree is opened on `feature/<id>-<slug>`, `init` makes sure a spec
-exists (a stub from the issue when `/sous-plan` did not write one),
-`implement` builds and commits, `review` judges the diff, `fix` addresses
+the spec is read from `specs/<id>-*/spec.md` on the checkout (the issue
+itself serves as the spec when `/sous-plan` did not write one), a
+worktree is opened on `feature/<id>-<slug>`, `init` checks the issue is
+open, `implement` builds and commits, `review` judges the diff, `fix` addresses
 findings, `sync` brings the base branch in, `review-full` judges the whole
 branch, `merge` squashes it onto the base branch, and the issue is closed.
 If the base branch moved after the last `sync` (another run merged in the
@@ -416,6 +417,7 @@ JavaScript, compiled once, not sandboxed.
 | `ctx.issue` | run target `{ id, ref, title, body, labels }`; `id` is the tracker's own, `ref` how it writes it in text (`#96`) | `{{ctx.issue.id}}`, `{{ctx.issue.ref}}` | ✓ | ✓ | ✓ |
 | `ctx.work` | work item `{ id, ref, title, body }` | `{{ctx.work.id}}`, `{{ctx.work.ref}}` | ✓ assignable | ✓ | ✓ |
 | `ctx.worktree` | absolute worktree path | `{{ctx.worktree}}` | ✓ | ✓ | ✓ |
+| `ctx.spec` | the spec as markdown: `spec.md` from the spec folder on the checkout, read at every `sous run` start, else the issue's title and body | `{{ctx.spec}}` | ✓ | ✓ | ✓ |
 | `ctx.specDir` | spec folder, relative to the repository | `{{ctx.specDir}}` | ✓ assignable | ✓ | ✓ |
 | `ctx.skillsDir` | absolute `skills/` path | `{{ctx.skillsDir}}` | ✓ | ✓ | ✓ |
 | `ctx.flow`, `ctx.branch`, `ctx.previous` | flow name, run branch, entry visited before | — | ✓ | ✓ | ✓ |
@@ -644,6 +646,9 @@ changes nothing). Everything else on the tracker, such as the
   was recorded; with neither, the agent runs again. Only a result the
   agent actually answered in this visit counts: a failed iteration records
   none, and a new visit starts without the previous visit's.
+- `ctx.spec` and `ctx.work` are read again at every start, from the
+  checkout and the tracker, so an edited spec or issue reaches the next
+  run without a restart.
 - A run that reached `done` but could not close its issue (the tracker
   was down) closes it on the next `sous run` of the issue, without
   redoing any work.
@@ -922,8 +927,7 @@ for a new flow the same way.
 **Files:** `prompts/plan.md` (the procedure `/sous-plan` follows; the
 starter ships it for GitHub and, as `prompts/plan.beads.md`, for bd),
 `skills/sous-plan/SKILL.md` and its installed copy
-`.claude/skills/sous-plan/SKILL.md` (which only starts the prompt),
-`steps/init/run.ts` (the spec headings and the stub).
+`.claude/skills/sous-plan/SKILL.md` (which only starts the prompt).
 
 The prompt carries `<!-- ADAPT: … -->` notes at every repository-specific
 point: the rule files to read, the `specs/` folder (the `specsDir`
@@ -933,10 +937,14 @@ blockers). Apply each and delete the note; `test/prompts.test.ts` only
 requires the file to exist and to name the vendored skills it sends the
 session to.
 
-The spec headings `init` writes when planning left none are the
-`SPEC_HEADINGS` list in `steps/init/run.ts`; `review-full` reads the whole
-`spec.md` as its criteria. Change the headings in both the prompt and
-`init` when you change the format.
+The spec format lives in the prompt alone. The plan session is the only
+writer of `spec.md`; a run reads it from the checkout at every start into
+`ctx.spec`, committed or not, and never writes one. When the plan phase
+wrote none, `ctx.spec` is the issue's title and body. `review-full` judges
+against `ctx.spec`, so a spec written in any format the prompt asks for
+reaches the reviewer unchanged. To change a spec, edit it on the checkout
+(or run `/sous-plan` again, which appends an amendment) and run the issue
+again.
 
 **Check:** `npx vitest run test/prompts.test.ts`; then plan one small
 issue with `/sous-plan` and read the spec it writes.
@@ -1072,6 +1080,7 @@ what to skip or change in the skill.
 | `validate: route to "…" names no step id` / `the last route must be an else` | Routes need an existing target and a fallthrough; see [chapter 6](#6-flows). |
 | `tracker: … the tracker lacks children, parent` | The tracker module's default export is missing port methods; [chapter 10](#10-trackers) lists them. |
 | The run stops `blocked` right after `implement` | The verify checks failed three times; the issue comment carries the last log. Fix the worktree by hand and run the same command; it re-enters at the eval. |
+| The run stops `blocked` at `review` and you disagree with a finding | Edit the spec on the checkout (`specs/<id>-*/spec.md`) or the issue body, then run the same command. Both are read again at start, the recorded findings fail the eval, and a fresh reviewer judges against the edited text; the old reviewer session is not resumed. |
 | `WARN: no checks configured` in every eval log | `CHECKS` in `steps/verify/eval.ts` is empty; [how-to 13](#13-change-the-check-commands). |
 | `another sous run holds .sous/locks/<id>.lock` | That issue is already running. If the pid is dead, the message says `stale`: delete the file. |
 | `session.json: /schemaVersion must be equal to constant` | A run folder from an older engine. Delete `runs/<id>/` (and the worktree) or `--restart`. |

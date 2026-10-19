@@ -33,6 +33,8 @@ export type Logger = { info: (line: string) => void; warn: (line: string) => voi
 
 export type ExecutorPorts = {
   issue: Issue;
+  /** `ctx.spec`: the spec markdown for the whole run. */
+  spec: string;
   /** `ctx.work` at start: the session's work item resolved to its issue. */
   work: Work;
   sandbox: Sandbox;
@@ -186,7 +188,7 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
   let spanCount = 0;
   let spanId = "";
 
-  const deps = { issue: ports.issue, flow: flow.name, branch: session.branch, repoRoot: ports.repoRoot, skillsDir, sandbox, git, tracker, events, repoLock: ports.repoLock };
+  const deps = { issue: ports.issue, spec: ports.spec, flow: flow.name, branch: session.branch, repoRoot: ports.repoRoot, skillsDir, sandbox, git, tracker, events, repoLock: ports.repoLock };
   const ctxFor = (iteration?: number, writes?: CtxWrites): Ctx =>
     buildCtx(deps, { work, specDir: session.specDir, workProgress: session.workProgress, previous: session.previous, ...(iteration !== undefined ? { iteration } : {}) }, writes);
   const scopeFor = (ctx: Ctx, res?: EvalResult, result?: Envelope, prepared?: Prepared): Scope => ({ ctx, steps: stepsOf(session), res, result, prepared });

@@ -12,10 +12,8 @@ the issue tracker.
 
 - Diff: `git diff {{diffRange}} -- . ':(exclude){{ctx.specDir}}'`
   (`git log {{diffRange}} --oneline` lists the commits).
-  Everything under `{{ctx.specDir}}/` is flow-managed input, never part
-  of the change under review: `spec.md` there is the design the acceptance
-  text below comes from (written by the plan phase or stubbed from the
-  issue). Do not report it as scope creep.
+  Everything under `{{ctx.specDir}}/` is the plan phase's input, never part
+  of the change under review. Do not report it as scope creep.
 - Judge the diff against the acceptance text below and the repository's
   documented standards, which the skill locates.
 

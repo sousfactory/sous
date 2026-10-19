@@ -5,7 +5,7 @@ const at = "2026-10-02T09:00:00.000Z";
 
 /** One of each event kind, with every optional field set. */
 export const everyEvent = (): Event[] => [
-  { type: "run.start", at, runId: "r1", pid: 42, host: "box", sha: "abc1234", flow: "feature", resumedFrom: { step: "build", iteration: 1 } },
+  { type: "run.start", at, runId: "r1", pid: 42, host: "box", sha: "abc1234", flow: "feature", resumedFrom: { step: "build", iteration: 1 }, spec: "file" },
   { type: "span.open", at, runId: "r1", spanId: "r1-1", step: "build", scope: "14" },
   { type: "prepare.start", at, spanId: "r1-1" },
   { type: "prepare.end", at, spanId: "r1-1", agent: "never", reason: "nothing came in" },

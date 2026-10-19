@@ -24,6 +24,7 @@ describe("ctx", () => {
     const gh = fakeTracker({ issues: [issue({ id: "12", title: "Some slug" })] });
     return {
       issue: issue({ id: "12", title: "Some slug" }),
+      spec: "# Some slug\n\nthe spec\n",
       flow: "feature",
       branch: "feature/12-some-slug",
       repoRoot: "/repo",
@@ -50,6 +51,7 @@ describe("ctx", () => {
     expect(ctx).toMatchObject({
       issue: { id: "12", ref: "#12", title: "Some slug" },
       flow: "feature",
+      spec: "# Some slug\n\nthe spec\n",
       work: { id: "14" },
       branch: "feature/12-some-slug",
       worktree,
@@ -103,7 +105,7 @@ describe("ctx", () => {
     expect(() => ctx.workDone(["a"])).toThrow("modules only");
   });
 
-  it("ctxPlaceholders carries the seven allowed values; the work is the issue itself until a module changes it", () => {
+  it("ctxPlaceholders carries the eight allowed values; the work is the issue itself until a module changes it", () => {
     const d = deps();
     expect(ctxPlaceholders(buildCtx(d, state({ work: { id: "14", ref: "#14", title: "w", body: "" } })))).toEqual({
       "ctx.issue.id": "12",
@@ -111,6 +113,7 @@ describe("ctx", () => {
       "ctx.work.id": "14",
       "ctx.work.ref": "#14",
       "ctx.worktree": worktree,
+      "ctx.spec": "# Some slug\n\nthe spec\n",
       "ctx.specDir": "specs/12-some-slug",
       "ctx.skillsDir": d.skillsDir,
     });
