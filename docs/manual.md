@@ -631,7 +631,15 @@ changes nothing). Everything else on the tracker, such as the
 - Running the same command again continues the run at `session.current`.
   After `blocked` the step re-enters at its **eval** with a fresh counter,
   so a manual fix in the worktree moves the run on without an agent call.
-  After a crash or Ctrl-C it re-enters the same way with the counter kept.
+  If that eval still fails, the visit starts over as a **new attempt**:
+  `prepare` runs again, the prompt is rendered again from the current
+  inputs (edited spec, edited issue body), and it goes to a fresh agent
+  session with `resume:` honoured as on a first visit. The old session and
+  its eval log are not reused; what that session believed is what blocked
+  the run. `visits` is not counted again.
+  After a crash or Ctrl-C the step re-enters with the counter kept and
+  continues the same attempt: eval first, then the recorded session gets
+  the retry prompt.
   A prompt step without an eval passes that check only when its result
   was recorded; with neither, the agent runs again. Only a result the
   agent actually answered in this visit counts: a failed iteration records
@@ -639,8 +647,8 @@ changes nothing). Everything else on the tracker, such as the
 - A run that reached `done` but could not close its issue (the tracker
   was down) closes it on the next `sous run` of the issue, without
   redoing any work.
-- A recorded `prepare` result is reused on re-entry, never run twice in
-  one visit.
+- A recorded `prepare` result is reused after a crash, never run twice in
+  one attempt. Re-entry after `blocked` forgets it and prepares again.
 - Ctrl-C or SIGTERM stops the agent and any running command with it,
   writes `run.end` (`interrupted`), releases the lock and exits 130 / 143.
 - `--restart` deletes run record, worktree and branch after a

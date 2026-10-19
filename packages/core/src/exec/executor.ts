@@ -149,6 +149,14 @@ export const checkPrepared = (id: string, schema: Record<string, unknown>, value
   return { agent, ...(reason !== undefined ? { reason } : {}), output: shape?.["output"] };
 };
 
+/**
+ * How a visit starts. `first`: the step's first run in this visit.
+ * `continue`: a rerun after a crash mid-visit, the same attempt picked up
+ * where it stopped. `reentry`: after `blocked`, a new attempt on what a
+ * human changed in between.
+ */
+type VisitMode = "first" | "continue" | "reentry";
+
 type VisitResult = {
   res: EvalResult;
   envelope?: Envelope;
@@ -341,30 +349,38 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
   };
 
   /**
-   * A continuing visit (re-entry after `blocked`, or a rerun after a crash)
-   * evals the recorded result first, as iteration 0, so work a human fixed
-   * by hand is not redone. A step without an eval passes that check only on
-   * a recorded result: with neither, nothing shows the work was done, so the
-   * agent runs again with the original prompt. Only an envelope the agent
-   * actually answered is recorded; a failed iteration leaves the record
-   * empty, since its placeholder envelope would otherwise count as the work
-   * on re-entry. Without a session to resume, a failed eval cannot be sent
-   * as a retry prompt, which would reach an agent that never saw the task;
-   * the agent gets the original prompt with the eval log appended instead.
+   * A visit that is not the first run of its step (re-entry after `blocked`,
+   * or a rerun after a crash) evals the recorded result first, as iteration
+   * 0, so work a human fixed by hand is not redone. A step without an eval
+   * passes that check only on a recorded result: with neither, nothing shows
+   * the work was done, so the agent runs again with the original prompt.
+   * Only an envelope the agent actually answered is recorded; a failed
+   * iteration leaves the record empty, since its placeholder envelope would
+   * otherwise count as the work on re-entry.
+   *
+   * When that eval fails, the two cases part. A `continue` after a crash is
+   * the same attempt: the recorded session gets the retry prompt, or, with
+   * no session to resume, the original prompt with the eval log appended,
+   * since a retry prompt would reach an agent that never saw the task. A
+   * `reentry` after `blocked` is a new attempt: a human changed the
+   * worktree, the spec or the issue in between, so the prompt is rendered
+   * again from the current inputs and sent to a fresh session, with
+   * `resume:` honoured as on a first visit and the old eval log left out.
+   * Whatever the old session believed is what blocked the run.
    *
    * `prepare` decides when the agent runs. `always`: now. `on-fail`: the
    * eval runs first as iteration 0, and the agent starts only when it fails,
    * with the log appended to its prompt. `never`: the eval runs once with no
    * result and the visit routes on it; there is nothing to retry.
    */
-  const runAgentic = async (entry: LoadedEntry, c: CompiledEntry, key: string, inputs: Inputs, continuing: boolean): Promise<VisitResult> => {
+  const runAgentic = async (entry: LoadedEntry, c: CompiledEntry, key: string, inputs: Inputs, mode: VisitMode): Promise<VisitResult> => {
     const { step } = entry;
     const max = entry.maxIterations ?? step.maxIterations;
     const loop = entry.loop ?? step.loop;
     const prepared = await prepareVisit(entry, key, inputs);
     const withPrepared = prepared !== undefined ? { prepared } : {};
     if (prepared?.agent === "never") {
-      const n = continuing ? 0 : 1;
+      const n = mode === "first" ? 1 : 0;
       return { res: await evaluate(step, inputs, n, undefined, prepared), ...withPrepared, iteration: n, exhausted: false };
     }
     const record = session.scopes[key]?.[entry.id];
@@ -372,17 +388,18 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     const prompt = promptAfter();
     const skills = skillAudit(prompt, skillsDir);
     let iteration = iterationOf(session, entry.id);
-    let resumeSession = continuing ? record?.session : sessionIdOf(c.resume?.(scopeFor(ctxFor())));
+    let resumeSession = mode === "continue" ? record?.session : sessionIdOf(c.resume?.(scopeFor(ctxFor())));
     let nextPrompt = prompt;
     let last: VisitResult | undefined;
 
-    const recorded: Envelope | undefined = continuing && record?.output !== undefined ? { summary: "", commits: record.commits, output: record.output } : undefined;
-    const evalFirst = continuing ? step.eval !== undefined || recorded !== undefined : prepared?.agent === "on-fail";
+    const recorded: Envelope | undefined = mode !== "first" && record?.output !== undefined ? { summary: "", commits: record.commits, output: record.output } : undefined;
+    const evalFirst = mode !== "first" ? step.eval !== undefined || recorded !== undefined : prepared?.agent === "on-fail";
     if (evalFirst) {
       const res = await evaluate(step, inputs, 0, recorded, prepared);
       last = { res, ...(recorded !== undefined ? { envelope: recorded } : {}), ...withPrepared, iteration: 0, exhausted: false };
       if (res.ok) return last;
-      nextPrompt = resumeSession !== undefined ? retryPrompt(res.log) : promptAfter(res.log);
+      if (mode === "continue") nextPrompt = resumeSession !== undefined ? retryPrompt(res.log) : promptAfter(res.log);
+      else if (mode === "first") nextPrompt = promptAfter(res.log);
     }
 
     while (iteration < max) {
@@ -422,25 +439,26 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     const c = compiled.get(session.current);
     if (entry === undefined || c === undefined) throw new SousError(`flow "${flow.name}" has no step "${session.current}"`);
 
-    // Re-entry after blocked and a rerun after a crash mid-visit continue the
+    // Re-entry after blocked and a rerun after a crash mid-visit stay in the
     // visit, so `visits` is not counted again. A recorded `prepare` result
     // always belongs to the current visit (the transition into a step forgets
     // it), so a crash after prepare continues the visit too, but without the
-    // eval-first of a visit whose agent has run.
-    const reentry = session.blocked;
-    const continuing = reentry || iterationOf(session, entry.id) > 0;
-    if (reentry) session = clearBlocked(session);
+    // eval-first of a visit whose agent has run. Re-entry after blocked
+    // forgets it: the visit starts over on a worktree a human has changed.
+    const mode: VisitMode = session.blocked ? "reentry" : iterationOf(session, entry.id) > 0 ? "continue" : "first";
+    if (mode === "reentry") session = forgetPrepared(clearBlocked(session), entry.id);
     const key = scopeKey(session.work);
-    const prepared = session.scopes[key]?.[entry.id]?.prepared !== undefined;
-    if (!(continuing || prepared) || session.scopes[key]?.[entry.id] === undefined) session = openVisit(session, entry.id, key);
-    log.info(`${entry.id}: start${continuing || prepared ? " (re-entry)" : ""}`);
+    const record = session.scopes[key]?.[entry.id];
+    const fresh = mode === "first" && record?.prepared === undefined;
+    if (fresh || record === undefined) session = openVisit(session, entry.id, key);
+    log.info(`${entry.id}: start${fresh ? "" : " (re-entry)"}`);
 
     spanId = `${runId === "" ? "span" : runId}-${++spanCount}`;
     await emit({ type: "span.open", runId, spanId, step: entry.id, scope: key });
     await persist(session);
 
     const inputs = evaluateWith(entry.id, c.with, scopeFor(ctxFor()));
-    const visit = isAgentic(entry.step) ? await runAgentic(entry, c, key, inputs, continuing) : await runDeterministic(entry, key, inputs);
+    const visit = isAgentic(entry.step) ? await runAgentic(entry, c, key, inputs, mode) : await runDeterministic(entry, key, inputs);
 
     session = updateVisit(session, entry.id, { ok: visit.res.ok, log: visit.res.log, output: visit.envelope?.output, commits: visit.envelope?.commits ?? [] }, key);
     const next = visit.exhausted ? BLOCKED : firstMatch(entry.id, c.routes, scopeFor(ctxFor(visit.iteration), visit.res, visit.envelope, visit.prepared));

@@ -13,6 +13,7 @@ import { fakeEventLog } from "../fakes/eventlog.js";
 import { answer, CODEX, entryOf, flowOf, portsOf, sessionOf, visit } from "../fakes/executor.js";
 import { fakeGit } from "../fakes/git.js";
 import { agentResult, fail, fakeSandbox, ok } from "../fakes/sandbox.js";
+import { issue } from "../fakes/tracker.js";
 
 const work14 = { id: "14", ref: "#14", title: "Work 14", body: "do 14" };
 
@@ -558,14 +559,30 @@ describe("runFlow: re-entry after blocked and resume after a crash", () => {
     expect(ports.events.of("output")).toEqual([]);
   });
 
-  it("re-enters at eval and, when it still fails, resumes the recorded session with a fresh counter", async () => {
+  it("re-enters at eval and, when it still fails, starts a fresh session with the prompt rendered again, not the old session with the old log", async () => {
     const sandbox = fakeSandbox({ agent: [answer("s4")] });
-    const { session, requests, next } = await visit(entryOf("build", "agent", { with: { task: "x" } }), blockedAt({ ok: false, log: "still broken" }), portsOf(sandbox));
+    const ports = portsOf(sandbox, { issue: issue({ id: "1", title: "Edited since" }) });
+    const { session, requests, next } = await visit(entryOf("build", "agent", { with: { task: "${{ ctx.issue.title }}" } }), blockedAt({ ok: false, log: "still broken" }), ports);
 
-    expect(requests).toEqual([expect.objectContaining({ resumeSession: "s3", prompt: retryPrompt("still broken") })]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).not.toHaveProperty("resumeSession");
+    expect(requests[0]?.prompt).toContain("Do Edited since in /tmp/worktree for #1.");
+    expect(requests[0]?.prompt).not.toContain(failedEvalSection("still broken"));
     expect(next).toBe("done");
     expect(session.scopes["1"]?.["build"]).toMatchObject({ visits: 1, ok: true, session: "s4" });
     expect(session.iterations["build"]).toBe(1);
+  });
+
+  it("re-entry after blocked honours resume: as a first visit does, so a fix step still joins the implementer's session", async () => {
+    const sandbox = fakeSandbox({ agent: [answer("f2")] });
+    const fix = entryOf("build", "agent", { with: { task: "x" }, resume: "${{ steps.plan.session }}" });
+    const stuck = recordVisit(blockedAt({ ok: false, log: "still broken" }), "plan", { ok: true, log: "", output: {}, commits: [], session: "p1" });
+
+    const { requests, next } = await visit(fix, stuck, portsOf(sandbox));
+
+    expect(requests).toEqual([expect.objectContaining({ resumeSession: "p1" })]);
+    expect(requests[0]?.prompt).not.toBe(retryPrompt("still broken"));
+    expect(next).toBe("done");
   });
 
   it("continues a crashed visit from its counter and session, eval first, then the agent", async () => {
@@ -602,6 +619,7 @@ describe("runFlow: re-entry after blocked and resume after a crash", () => {
 
     const blocked = await visit(entryOf("plain", "agent-plain", { with: { task: "x" } }), markBlocked(crashed), portsOf(fakeSandbox({ agent: [answer("s3")] })));
     expect(blocked.requests).toHaveLength(1);
+    expect(blocked.requests[0]).not.toHaveProperty("resumeSession");
     expect(blocked.next).toBe("done");
   });
 
@@ -748,12 +766,12 @@ describe("runFlow: prepare", () => {
     expect(requests[1]).toMatchObject({ resumeSession: "s1", prompt: retryPrompt("agent=on-fail note=on-fail for #1 result=some iteration=1") });
   });
 
-  it("re-entry without a session to resume appends the failed eval's log to the original prompt", async () => {
+  it("a crashed visit without a session to resume gets the failed eval's log appended to the original prompt", async () => {
     let stuck = bumpIteration(sessionOf("sync"), "sync");
     stuck = recordVisit(stuck, "sync", { ok: false, log: "red", output: { ok: false }, commits: [], prepared: { agent: "always", output: { note: "from before" } } });
     const sandbox = fakeSandbox({ agent: [answer("s2")] });
 
-    const { requests, next } = await visit(prepared(), markBlocked(stuck), portsOf(sandbox));
+    const { requests, next } = await visit(prepared(), stuck, portsOf(sandbox));
 
     expect(next).toBe("done");
     expect(requests[0]).not.toHaveProperty("resumeSession");
@@ -776,7 +794,7 @@ describe("runFlow: prepare", () => {
     expect(ports.events.types()).toEqual(["span.open", "prepare.start"]);
   });
 
-  it("reuses the recorded result on re-entry after blocked instead of preparing again", async () => {
+  it("prepares again on re-entry after blocked, evals the recorded result first, then starts the agent fresh without the old log", async () => {
     let stuck = bumpIteration(sessionOf("sync"), "sync");
     stuck = recordVisit(stuck, "sync", { ok: false, log: "red", output: { ok: false }, commits: [], session: "s1", prepared: { agent: "always", output: { note: "from before" } } });
     const sandbox = fakeSandbox({ agent: [answer("s2")] });
@@ -784,10 +802,14 @@ describe("runFlow: prepare", () => {
 
     const { session, requests, next } = await visit(prepared(), markBlocked(stuck), ports);
 
-    expect(ports.events.of("prepare.start")).toEqual([]);
-    expect(requests).toEqual([expect.objectContaining({ resumeSession: "s1", prompt: retryPrompt("agent=always note=from before result=some iteration=0") })]);
+    expect(ports.events.of("prepare.start")).toHaveLength(1);
+    expect(ports.events.types().slice(0, 5)).toEqual(["span.open", "prepare.start", "prepare.end", "iteration.eval.start", "iteration.eval.end"]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).not.toHaveProperty("resumeSession");
+    expect(requests[0]?.prompt).toContain("Do merge (). Note: always for #1. Extra: []");
+    expect(requests[0]?.prompt).not.toContain("## The evaluation already ran");
     expect(next).toBe("done");
-    expect(session.scopes["1"]?.["sync"]).toMatchObject({ visits: 1, prepared: { output: { note: "from before" } } });
+    expect(session.scopes["1"]?.["sync"]).toMatchObject({ visits: 1, session: "s2", prepared: { output: { note: "always for #1" } } });
   });
 
   it("continues a visit that crashed after prepare: no second visit count, no second prepare, the agent gets the original prompt", async () => {
