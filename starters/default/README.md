@@ -85,8 +85,9 @@ and `/sous-setup` in Claude Code. Four things are the project's to set:
 3. The flows: the agent and model per step, `allowedLabels`; on GitHub,
    create the `type:task`, `type:bug` and `type:feature` labels (bd derives
    them from the bead type).
-4. `prompts/plan.md`: follow its `ADAPT` notes. It speaks `gh`; for bd,
-   move `prompts/plan.beads.md` over it first.
+4. `prompts/plan.md`: follow its `ADAPT` notes. It speaks to the tracker
+   through `trackers/<tracker>.md` (`github`, `beads`, `local`); a tracker
+   module of your own needs a sheet beside it.
 
 Then:
 

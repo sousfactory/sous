@@ -54,14 +54,14 @@ Read the file, propose the edit, show the diff, write on a yes.
 2. `.sous/sous.yaml`: `tracker` (the answer from step 1), `baseBranch`
    (same as above), the `branch` template, `lifecycle` (`core`: runs
    claim, block and close the issue; `steps`: the project's steps do).
-   Keep the other defaults unless asked. Then pick the plan prompt for the
-   tracker: the starter ships `prompts/plan.md` for GitHub and
-   `prompts/plan.beads.md` for bd.
-   - `github`: delete `.sous/prompts/plan.beads.md`.
-   - `beads`: move `.sous/prompts/plan.beads.md` over `.sous/prompts/plan.md`.
-   - `local` or a module: delete `plan.beads.md` and say that the `gh`
-     commands in `plan.md` have no counterpart; the human adapts or
-     removes them in item 4.
+   Keep the other defaults unless asked. The plan prompt speaks to the
+   tracker through `.sous/trackers/<tracker>.md`; the starter ships
+   `github.md`, `beads.md` and `local.md`.
+   - `github`, `beads`, `local`: nothing to do; delete the two sheets the
+     project does not use if the human wants a lean folder.
+   - a module (`trackers/<name>.ts`): copy the closest shipped sheet to
+     `.sous/trackers/<name>.md` and replace its commands with the module's;
+     every verb under `## Verbs` must stay defined.
 3. `.sous/flows/*.yaml`: every `agent:` model (ask which Claude or Codex
    model to use; one answer for all is fine) and `allowedLabels`. The
    labels are what the tracker reports for an issue:

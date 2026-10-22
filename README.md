@@ -218,6 +218,7 @@ your-project/
     ├── steps/                    # init, next-work, implement, review, fix, verify, merge, …
     ├── skills/                   # vendored skills and sous-plan
     ├── prompts/plan.md           # what /sous-plan follows
+    ├── trackers/<tracker>.md     # the tracker's verbs for the plan prompt (github, beads, local)
     ├── test/                     # the project's step and flow tests
     ├── logs/<id>/                # agent logs            (gitignored)
     ├── runs/<id>/                # session.json, events.jsonl (gitignored)

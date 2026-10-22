@@ -100,13 +100,13 @@ describe("step prompts", () => {
 });
 
 const plan = readFileSync(join(root, "prompts", "plan.md"), "utf8");
-const planBeads = readFileSync(join(root, "prompts", "plan.beads.md"), "utf8");
+const sheet = (tracker: string): string => readFileSync(join(root, "trackers", `${tracker}.md`), "utf8");
 
-/** Both plan prompts; `ref` is how each writes the issue in text. */
-const PLANS: [string, string, string][] = [
-  ["plan.md", plan, "#<ISSUE>"],
-  ["plan.beads.md", planBeads, "<ISSUE>"],
-];
+/** The one plan prompt; `REF` stands for the issue as the tracker sheet writes it in text. */
+const PLANS: [string, string, string][] = [["plan.md", plan, "REF"]];
+
+/** The verbs the plan prompt uses in bold; every tracker sheet defines each of them. */
+const TRACKER_VERBS = ["Read the issue", "Parent of the issue", "List the children", "Create the issue", "Set the kind", "Update the body", "Create a child", "Add a blocker", "Set the acceptance criteria"];
 
 /** Vendored skill files the prompt must send the session to. */
 const REQUIRED_SKILLS = [
@@ -186,7 +186,7 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(text).toContain("the run phase's evals own the gate");
     const rule = text.indexOf("Criteria never name the repository's gate commands.");
     const tasks = text.indexOf("### Tasks and bugs");
-    expect(rule).toBeGreaterThan(text.indexOf("## Step 3: Slices"));
+    expect(rule).toBeGreaterThan(text.indexOf("### Features"));
     expect(tasks).toBeGreaterThan(rule);
     expect(text.slice(tasks)).toContain("never a gate command");
   });
@@ -196,13 +196,15 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(text).toContain("`sous:*` labels");
   });
 
-  it("has the GO gate before commit and push, without trailers or branches", () => {
+  it("has the GO gate before commit and push, without trailers or branches, for both targets", () => {
     const gate = text.indexOf("ask for an explicit GO");
     expect(gate).toBeGreaterThanOrEqual(0);
-    expect(text.indexOf("git push origin main")).toBeGreaterThan(gate);
+    expect(text.indexOf("git push origin <baseBranch>")).toBeGreaterThan(gate);
     expect(text).toContain(`git commit -m "spec(${ref}): spec"`);
     expect(text).toContain(`spec(${ref}): amend — <short title>`);
-    expect(text).toContain("git pull --rebase origin main");
+    expect(text).toContain("git pull --rebase origin <baseBranch>");
+    expect(text).toContain("git -C <worktree> commit");
+    expect(text).not.toMatch(/git -C <worktree> push/);
     expect(text).toContain("no `Co-Authored-By`");
     expect(text).toContain("never run `./sous`");
     expect(text).toContain("./sous run <flow> <ISSUE>");
@@ -210,43 +212,87 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(text).not.toMatch(/sous run (task|feature)\b/);
   });
 
+  it("decides the target from the run state: running refuses, blocked amends in the worktree here, no run amends the base", () => {
+    expect(text).toContain("## 3. Run state and target");
+    expect(text).toContain("<labelPrefix>:running");
+    expect(text).toContain("<labelPrefix>:blocked");
+    expect(text).toContain("git worktree list --porcelain");
+    expect(text).toContain("No worktree here:** stop");
+    expect(text).toContain("never pushed");
+  });
+
+  it("reconciles existing children before drafting, and leaves without a commit when nothing changed", () => {
+    expect(text).toContain("Reconcile the existing children");
+    expect(text).toContain("`## What to build` unchanged");
+    expect(text).toContain("Amend mode with nothing new");
+    expect(text).toContain("Nothing to commit:** skip the gate");
+    expect(text.indexOf("Reconcile the existing children")).toBeLessThan(text.indexOf("**Draft** tracer-bullet"));
+  });
+
+  it("speaks to the tracker only through the sheet's verbs: no gh, bd or file commands of its own", () => {
+    expect(text).toContain(".sous/trackers/<tracker>.md");
+    for (const verb of TRACKER_VERBS) expect(text.toLowerCase(), `uses **${verb}**`).toContain(`**${verb.toLowerCase()}**`);
+    expect(text).not.toMatch(/\bgh (issue|api|label)\b|\bbd (create|show|update|dep)\b|sub_issue/);
+  });
+
   it("contains no shell-expansion sequences", () => {
     expect(text).not.toMatch(/!`/);
   });
 });
 
-describe("prompts/plan.md speaks gh", () => {
-  it("has the sub-issue body template the GitHub tracker parses", () => {
-    expect(plan).toContain("## Parent");
-    expect(plan).toContain("## What to build");
-    expect(plan).toContain("## Acceptance criteria");
-    expect(plan).toContain("## Blocked by");
-    expect(plan).toContain("None — can start immediately");
-    expect(plan).toContain("--label type:task");
-    expect(plan).toContain("/sub_issues");
-    expect(plan).toContain('-F sub_issue_id="$cid"');
+describe.each(["github", "beads", "local"])("trackers/%s.md", (tracker) => {
+  const text = sheet(tracker);
+
+  it("defines REF, the kind, the state labels and the child shape", () => {
+    for (const heading of ["## Identity", "## Verbs", "## Child shape"]) expect(text).toContain(heading);
+    expect(text).toContain("**`REF`:**");
+    expect(text).toContain("**Kind:**");
+    expect(text).toContain("**State labels:**");
+    expect(text).toContain("<labelPrefix>:blocked");
   });
 
-  it("covers the issue-less entry", () => {
-    expect(plan).toContain("gh issue create");
-    expect(plan).not.toMatch(/\bbd (create|show|update|dep)\b/);
+  it("defines every verb the plan prompt uses", () => {
+    for (const verb of TRACKER_VERBS) expect(text, `defines **${verb}**`).toContain(`- **${verb}:**`);
+  });
+
+  it("contains no shell-expansion sequences", () => {
+    expect(text).not.toMatch(/!`/);
   });
 });
 
-describe("prompts/plan.beads.md speaks bd", () => {
+describe("trackers/github.md speaks gh", () => {
+  const text = sheet("github");
+
+  it("has the sub-issue body template the GitHub tracker parses", () => {
+    expect(text).toContain("## Parent");
+    expect(text).toContain("## What to build");
+    expect(text).toContain("## Acceptance criteria");
+    expect(text).toContain("## Blocked by");
+    expect(text).toContain("None — can start immediately");
+    expect(text).toContain("--label type:task");
+    expect(text).toContain("/sub_issues");
+    expect(text).toContain('-F sub_issue_id="$cid"');
+    expect(text).toContain("gh issue create");
+    expect(text).not.toMatch(/\bbd (create|show|update|dep)\b/);
+  });
+});
+
+describe("trackers/beads.md speaks bd", () => {
+  const text = sheet("beads");
+
   it("creates the parent as an epic, the slices as children with blocks edges, and sets no label", () => {
-    expect(planBeads).toContain("bd create --title \"<title>\" --type epic");
-    expect(planBeads).toContain("--type task --parent <ISSUE>");
-    expect(planBeads).toContain("--acceptance");
-    expect(planBeads).toContain("bd dep add <child> --blocked-by <m>");
-    expect(planBeads).toContain("bd show <ISSUE> --json");
-    expect(planBeads).toContain("Never set a label");
-    expect(planBeads).not.toMatch(/\bgh\b|## Blocked by|sub_issue/);
+    expect(text).toContain("bd create --title \"<title>\" --type epic");
+    expect(text).toContain("--type task --parent <ISSUE>");
+    expect(text).toContain("--acceptance");
+    expect(text).toContain("bd dep add <child> --blocked-by <m>");
+    expect(text).toContain("bd show <id> --json");
+    expect(text).toContain("Never set a label");
+    expect(text).not.toMatch(/\bgh\b|## Blocked by|sub_issue/);
   });
 
   it("names the type-to-label mapping the beads tracker applies", () => {
-    for (const label of ["type:feature", "type:task", "type:bug"]) expect(planBeads).toContain(label);
-    expect(planBeads).toContain("epic or feature");
+    for (const label of ["type:feature", "type:task", "type:bug"]) expect(text).toContain(label);
+    expect(text).toContain("epic or feature");
   });
 });
 

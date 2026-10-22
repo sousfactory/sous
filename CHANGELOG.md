@@ -18,6 +18,21 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   The first run forks the branch from the local base, so pull before the
   first start when the spec was pushed from elsewhere. The starter's
   implement prompt forbids edits under the spec folder.
+- **One plan prompt, a sheet per tracker.** `prompts/plan.md` speaks to the
+  tracker only through verbs that `trackers/<tracker>.md` defines; the
+  starter ships `github.md`, `beads.md` and `local.md`, and a tracker
+  module gets a sheet beside it. `prompts/plan.beads.md` is gone: a
+  project that moved it over `plan.md` takes the new `plan.md` and keeps
+  `tracker: beads` in `sous.yaml`. The local tracker can be planned
+  against for the first time.
+- **`/sous-plan` follows the run state.** A running issue is refused. A
+  blocked issue whose worktree is on this machine is amended there and
+  committed on the branch without a push; blocked elsewhere is refused.
+  With no run, the spec is committed and pushed on the base branch as
+  before. The skill reconciles a feature's existing children into the
+  child shape before drafting the missing slices, and a rerun with no new
+  scope changes and commits nothing. `docs/PLAN-SKILL-FLOW.md` draws the
+  procedure.
 
 ## 0.4.0
 

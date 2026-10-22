@@ -127,7 +127,7 @@ your-project/
     │   └── tell-a-joke/
     ├── skills/                   # vendored skills (VENDORED.md names source and license) and sous-plan/
     ├── prompts/plan.md           # the procedure /sous-plan follows; ADAPT notes mark what to change
-    │   └── plan.beads.md         # the same for tracker: beads; keep the one your tracker needs
+    ├── trackers/<tracker>.md     # github, beads, local: the tracker's verbs for the plan prompt
     ├── test/                     # the project's step and flow tests, over sous-factory/testing
     ├── logs/<id>/                # one agent log per iteration             (gitignored)
     ├── runs/<id>/                # session.json and events.jsonl per issue (gitignored)
@@ -145,7 +145,7 @@ init: still to do by hand:
   1. .sous/steps/verify/eval.ts: set BASE_BRANCH and fill CHECKS
   2. .sous/sous.yaml: tracker, baseBranch, branch template, lifecycle
   3. .sous/flows/*.yaml: agent models and allowedLabels; create the labels on the tracker
-  4. .sous/prompts/plan.md: follow its ADAPT notes (tracker beads: move plan.beads.md over it first)
+  4. .sous/prompts/plan.md: follow its ADAPT notes; it speaks to the tracker through .sous/trackers/<tracker>.md
   5. cd .sous && ./sous validate && npx vitest run; then ./sous run bench <issue>
 ```
 
@@ -165,9 +165,10 @@ init: still to do by hand:
    and so on); bd needs none, the tracker derives them from the bead type.
 4. **`prompts/plan.md`.** The plan prompt carries `<!-- ADAPT: … -->`
    notes naming what is repository-specific: rule files, the spec folder,
-   the labels. Apply each and delete the note. The starter's `plan.md`
-   speaks `gh`; with `tracker: beads`, move `prompts/plan.beads.md` over it
-   first and delete the other one otherwise.
+   the kinds. Apply each and delete the note. The prompt speaks to the
+   tracker only through the verbs in `trackers/<tracker>.md`; the starter
+   ships a sheet for `github`, `beads` and `local`, and a tracker module
+   of your own gets a sheet beside it.
 5. **Verify.** `./sous validate` checks every flow and step; the tests
    walk the flows over fakes; `bench` is a flow that runs one module step
    and one agent step without touching the issue or the code.
@@ -924,18 +925,33 @@ for a new flow the same way.
 
 **When:** after `init`, and when the repository's rules or layout change.
 
-**Files:** `prompts/plan.md` (the procedure `/sous-plan` follows; the
-starter ships it for GitHub and, as `prompts/plan.beads.md`, for bd),
-`skills/sous-plan/SKILL.md` and its installed copy
+**Files:** `prompts/plan.md` (the procedure `/sous-plan` follows, the
+same for every tracker), `trackers/<tracker>.md` (the tracker sheet: how
+each verb the prompt uses in bold is done on that tracker, how the issue
+is written in text, where the kind lives, and the child shape the run
+phase parses), `skills/sous-plan/SKILL.md` and its installed copy
 `.claude/skills/sous-plan/SKILL.md` (which only starts the prompt).
+[`PLAN-SKILL-FLOW.md`](PLAN-SKILL-FLOW.md) draws the procedure as one
+diagram, step by step.
 
 The prompt carries `<!-- ADAPT: … -->` notes at every repository-specific
 point: the rule files to read, the `specs/` folder (the `specsDir`
-setting), the type labels and what they mean for the landing commit, the
-sub-issue format (`## Blocked by` is what the GitHub tracker reads as
-blockers). Apply each and delete the note; `test/prompts.test.ts` only
-requires the file to exist and to name the vendored skills it sends the
-session to.
+setting), the kinds and what they mean for the landing commit, the body
+sections the steps parse. Apply each and delete the note;
+`test/prompts.test.ts` requires the prompt to name the vendored skills it
+sends the session to, to speak to the tracker through the sheet's verbs
+only, and every sheet to define every verb.
+
+What the procedure does, in order: resolve the issue (or create it), check
+the preconditions, decide the target from the run state (a running issue
+refuses, a blocked one with its worktree here amends on the branch, no run
+amends the base), pick create or amend mode from the spec folder in the
+target, clarify, write or amend the spec, reconcile a feature's existing
+children into the child shape and draft the missing slices (or set a task's
+acceptance criteria), then the GO gate and the commit. A rerun on a planned
+issue with no new scope changes nothing and commits nothing, which is what
+makes the skill safe to call twice and lets it bring a hand-filed feature
+into shape.
 
 The spec format lives in the prompt alone. The plan session is the only
 writer of `spec.md`; a run reads it from its worktree at every start into
@@ -961,11 +977,13 @@ not ship.
 tracker: beads                      # bd; run as sous run <flow> <bead-id>
 ```
 
-With bd, the plan phase speaks `bd` too: move the starter's
-`prompts/plan.beads.md` over `prompts/plan.md`. It creates a feature as an
-epic with child beads, puts acceptance criteria into bd's own field, and
-wires blockers as `blocks` dependencies instead of a `## Blocked by`
-section.
+The plan phase follows the tracker too, through `trackers/<tracker>.md`:
+the starter's `beads.md` creates a feature as an epic with child beads,
+puts acceptance criteria into bd's own field, and wires blockers as
+`blocks` dependencies instead of a `## Blocked by` section; `local.md`
+edits the JSON files. A module tracker gets a sheet of its own beside it
+(`trackers/jira.md` next to `trackers/jira.ts`), written from one of the
+shipped ones: the same headings, the module's commands.
 
 ```yaml
 tracker: local                      # files under .sous/issues/
