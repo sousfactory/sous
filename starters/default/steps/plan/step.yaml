@@ -1,0 +1,26 @@
+name: plan
+description: "Derive a spec from the issue when the branch has none. Prepare skips the agent when spec.md is already in the worktree; otherwise the agent restates the issue into the spec headings, records the assumptions it had to make, lists the questions it may not decide, and commits the file. Eval: spec.md exists, is committed, and has no open questions."
+
+inputs:
+  issue: { required: true, description: "the issue as filed: ref, title and body; what the spec is derived from" }
+
+prepare:
+  module: ./prepare.ts
+  output:
+    type: object
+    required: [exists]
+    properties:
+      exists: { type: boolean, description: "spec.md was already in the worktree, so the agent did not run" }
+
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    required: [assumptions, openQuestions]
+    properties:
+      assumptions: { type: integer, description: "how many assumptions the spec lists" }
+      openQuestions: { type: integer, description: "how many questions the spec leaves to the human" }
+
+eval: ./eval.ts
+# A failed eval means open questions: another attempt would not answer them, the human does.
+loop: false

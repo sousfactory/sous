@@ -49,6 +49,25 @@ describe("runFlow: agentic steps", () => {
     expect(ports.transitions).toEqual([{ from: "build", to: "done", ok: true }]);
   });
 
+  it("resolves ctx.spec from the spec port when each visit starts, with the session's spec folder", async () => {
+    const sandbox = fakeSandbox({ agent: [answer("s1"), answer("s2")] });
+    const calls: string[] = [];
+    const ports = portsOf(sandbox, {
+      spec: (specDir) => {
+        calls.push(specDir);
+        return `spec v${calls.length}`;
+      },
+    });
+    const build = entryOf("build", "agent", { with: { task: "${{ ctx.spec }}" }, routes: [{ to: "again" }] });
+    const again = entryOf("again", "agent", { with: { task: "${{ ctx.spec }}" }, routes: [{ to: "done" }] });
+
+    await runFlow(flowOf(build, again), sessionOf("build"), ports);
+
+    expect(calls).toEqual(["specs/1-test-issue", "specs/1-test-issue", "specs/1-test-issue"]);
+    expect(sandbox.requests[0]?.prompt).toContain("Do spec v2 in");
+    expect(sandbox.requests[1]?.prompt).toContain("Do spec v3 in");
+  });
+
   it("goes to blocked without consulting the routes when the default cap of 3 is exhausted", async () => {
     const sandbox = fakeSandbox({ agent: [answer("s1", false, "nope"), answer("s2", false, "nope"), answer("s3", false, "nope"), answer("s4")] });
     const build = entryOf("build", "agent", { with: { task: "x" }, routes: [{ to: "done" }] });

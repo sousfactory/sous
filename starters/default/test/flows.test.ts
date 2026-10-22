@@ -3,7 +3,8 @@
  * Lifecycle steps and project evals run for real; only the agents and the
  * shell are scripted, so the flows' routing and wiring are what is tested.
  */
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +47,38 @@ const synced = (git: FakeGit, sha: string): AgentScript => () => {
 const reviewed = (session: string, findings: Finding[] = []): AgentScript =>
   agentResult(session, { summary: "reviewed", commits: [], output: { verdict: findings.length === 0 ? "clean" : "findings", findings } });
 
+const SPEC_DIR = `specs/${ISSUE}-some-feature`;
+const specText = (questions: string[]): string =>
+  [
+    "# Spec: Some feature",
+    "",
+    `- **Issue:** #${ISSUE}`,
+    "- **Status:** derived",
+    "",
+    "## User Stories",
+    "",
+    "1. It is so.",
+    "",
+    "## Assumptions",
+    "",
+    "- Make it so means make it so.",
+    "",
+    "## Open questions",
+    "",
+    ...questions.map((q) => `- ${q}`),
+    "",
+  ].join("\n");
+const writeSpec = async (worktree: string, questions: string[] = []): Promise<void> => {
+  await mkdir(join(worktree, SPEC_DIR), { recursive: true });
+  await writeFile(join(worktree, SPEC_DIR, "spec.md"), specText(questions));
+};
+/** A plan answer: the agent wrote and committed the spec, leaving `questions` open. */
+const planned = (worktree: string, questions: string[] = []): AgentScript => () => {
+  mkdirSync(join(worktree, SPEC_DIR), { recursive: true });
+  writeFileSync(join(worktree, SPEC_DIR, "spec.md"), specText(questions));
+  return agentResult("s-plan", { summary: "planned", commits: ["p1"], output: { assumptions: 1, openQuestions: questions.length } });
+};
+
 type Scenario = {
   labels: string[];
   /** How many syncs bring something in from main before it goes quiet (default 1); 0: main never has anything the branch lacks. */
@@ -55,16 +88,19 @@ type Scenario = {
   /** How many merge attempts find main moved since the last sync (another run landed); each such sync brings something in. */
   stale?: number;
   subIssues?: string[];
-  agent: AgentScript[] | ((git: FakeGit) => AgentScript[]);
+  /** The branch carries a spec (`/sous-plan` ran), so `plan` never calls its agent; false: the task flow has to derive one. */
+  spec?: boolean;
+  agent: AgentScript[] | ((git: FakeGit, worktree: string) => AgentScript[]);
   exec?: FakeSandboxOptions["exec"];
 };
 
 const worktrees: string[] = [];
 afterEach(() => Promise.all(worktrees.splice(0).map((w) => rm(w, { recursive: true, force: true }))));
 
-const setup = async ({ labels, moves = 1, conflict = false, stale = 0, subIssues = [], agent, exec = {} }: Scenario): Promise<FakePorts> => {
+const setup = async ({ labels, moves = 1, conflict = false, stale = 0, subIssues = [], spec = true, agent, exec = {} }: Scenario): Promise<FakePorts> => {
   const worktree = await mkdtemp(join(tmpdir(), "sous-project-"));
   worktrees.push(worktree);
+  if (spec) await writeSpec(worktree);
   const target = issue({ id: ISSUE, title: "Some feature", body: "Make it so.", labels });
   const tracker = fakeTracker({ issues: [target, ...subIssues.map((id) => issue({ id }))], subIssues: { [ISSUE]: subIssues } });
   const git = fakeGit({ existing: ["main", BRANCH], branches: { [worktree]: BRANCH }, trees: { main: "t-main", [BRANCH]: "t-branch" }, ancestors: new Set([`main..${BRANCH}`]), upToDate: moves === 0, conflict });
@@ -86,7 +122,7 @@ const setup = async ({ labels, moves = 1, conflict = false, stale = 0, subIssues
     git.state.upToDate = false;
     return false;
   };
-  const sandbox = fakeSandbox({ worktreePath: worktree, branch: BRANCH, agent: typeof agent === "function" ? agent(git) : agent, exec });
+  const sandbox = fakeSandbox({ worktreePath: worktree, branch: BRANCH, agent: typeof agent === "function" ? agent(git, worktree) : agent, exec });
   return portsOf(sandbox, { skillsDir: join(root, "skills"), repoRoot: dirname(root), tracker, git, issue: { id: target.id, ref: target.ref, title: target.title, body: target.body, labels: target.labels } });
 };
 
@@ -100,11 +136,15 @@ describe("validate", () => {
     expect(report.note).toBeUndefined();
   });
 
-  it("wires the same agents everywhere: Claude builds, fixes, resolves and reviews", () => {
-    for (const name of ["feature", "task"]) {
+  it("wires the same agents everywhere: Claude plans, builds, fixes, resolves and reviews", () => {
+    const shared = ["implement", "review", "fix", "sync", "review-full", "fix-review-full"];
+    for (const [name, agentic] of [
+      ["feature", shared],
+      ["task", ["plan", ...shared]],
+    ] as const) {
       const flow = loadFlow(flowFile(name), { stepsDir: shippedSteps });
       const agents = flow.steps.filter((e) => e.agent !== undefined).map((e) => [e.id, e.agent?.kind, e.agent?.model]);
-      expect(agents.map((a) => a[0])).toEqual(["implement", "review", "fix", "sync", "review-full", "fix-review-full"]);
+      expect(agents.map((a) => a[0])).toEqual(agentic);
       for (const [, kind, model] of agents) expect([kind, model]).toEqual(["claude", "claude-opus-5-5"]);
     }
   });
@@ -188,8 +228,8 @@ describe("feature", () => {
 
     const prompts = ports.sandbox.requests.map((r) => r.prompt);
     expect(prompts[0]).toContain("#14 Issue #14");
-    // The spec and skills folder come from ctx; rule files are never quoted into the prompt.
-    expect(prompts[0]).toContain("## Spec (the design of record)\n\n# Some feature\n\nMake it so.\n");
+    // The spec (the file on the branch) and the skills folder come from ctx; rule files are never quoted into the prompt.
+    expect(prompts[0]).toContain("## Spec (the design of record)\n\n# Spec: Some feature\n");
     expect(prompts[0]).toContain(`${join(root, "skills")}/implement/SKILL.md`);
     expect(prompts[0]).not.toContain("### CODING_STANDARDS.md");
     expect(prompts[0]).not.toMatch(/gradle/i);
@@ -197,7 +237,7 @@ describe("feature", () => {
     expect(prompts[2]).toContain("#15 Issue #15");
     expect(prompts[4]).toContain("main...HEAD");
     // No spec file on the checkout: the issue is the spec review-full judges against.
-    expect(prompts[4]).toContain("### Acceptance text\n\n# Some feature\n\nMake it so.\n");
+    expect(prompts[4]).toContain("### Acceptance text\n\n# Spec: Some feature\n");
     expect(prompts[4]).toContain(`${join(root, "skills")}/code-review/SKILL.md`);
 
     // The verify checks run three times: after each implement, and in sync's eval after the merge brought main in.
@@ -215,6 +255,38 @@ describe("feature", () => {
 
 describe("task", () => {
   const task = (): Flow => loadFlow(flowFile("task"), { stepsDir });
+
+  it("derives a spec when the branch has none: plan's agent writes it, and implement and review-full get it as ctx.spec", async () => {
+    const ports = await setup({ labels: ["type:task"], spec: false, agent: (_git, worktree) => [planned(worktree), built("b1"), reviewed("r1"), reviewed("rf")] });
+
+    const session = await walk(task(), ports);
+
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "merge"]);
+    expect(session.current).toBe("done");
+    expect(session.scopes["12"]?.["plan"]).toMatchObject({ ok: true, log: `plan: ${SPEC_DIR}/spec.md is on the branch with 1 assumption and no open questions` });
+    const prompts = ports.sandbox.requests.map((r) => r.prompt);
+    expect(prompts[0]).toContain("# Derive the spec for issue #12");
+    expect(prompts[1]).toContain("- Make it so means make it so.");
+    expect(prompts[3]).toContain("- Make it so means make it so.");
+  });
+
+  it("stops at plan with the open questions as the blocked comment, and passes them eval-first once the file is answered", async () => {
+    const ports = await setup({ labels: ["type:task"], spec: false, agent: (_git, worktree) => [planned(worktree, ["CSV or JSON? I would pick CSV."]), built("b1"), reviewed("r1"), reviewed("rf")] });
+
+    const blocked = await walk(task(), ports);
+
+    expect(sequence(ports)).toEqual(["init", "plan"]);
+    expect(blocked.current).toBe("plan");
+    expect(blocked.blocked).toBe(true);
+    expect(blocked.scopes["12"]?.["plan"]?.log).toContain("- CSV or JSON? I would pick CSV.");
+    expect(ports.transitions.at(-1)).toEqual({ from: "plan", to: "blocked", ok: false });
+
+    await writeSpec(ports.sandbox.worktreePath);
+    const session = await walk(task(), ports, { session: blocked });
+
+    expect(session.current).toBe("done");
+    expect(ports.sandbox.requests.map((r) => r.prompt.split("\n")[0])).toEqual(["# Derive the spec for issue #12", "# Build for issue #12", "# Review for issue #12", "# Review for issue #12"]);
+  });
   const BUILD = "npm test";
 
   it("goes init -> implement -> review -> sync -> review-full -> sync -> merge; a clean merge whose checks pass never reaches the sync agent", async () => {
@@ -222,11 +294,12 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "merge"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "merge"]);
     expect(session.current).toBe("done");
     expect(Object.keys(session.scopes)).toEqual(["12"]);
     expect(session.workProgress).toEqual({ "12": { state: "done", commits: ["sha1"] } });
     expect(ports.events.of("prepare.end").map((e) => [e.agent, e.reason])).toEqual([
+      ["never", `${SPEC_DIR}/spec.md is on the branch`],
       ["on-fail", "merged main cleanly"],
       ["never", `${BRANCH} is already up to date with main`],
     ]);
@@ -243,7 +316,7 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "merge", "sync", "review-full", "sync", "merge"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "merge", "sync", "review-full", "sync", "merge"]);
     expect(session.current).toBe("done");
     expect(session.scopes["12"]?.["merge"]).toMatchObject({ visits: 2, ok: true, output: { stale: false, sha: "sha1" } });
     // Only one squash landed; the stale visit merged and cleaned up nothing.
@@ -267,7 +340,7 @@ describe("task", () => {
 
     const session = await walk(loadFlow(flowFile("task"), { stepsDir: shippedSteps }), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "merge"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "merge"]);
     expect(session.current).toBe("done");
     expect(session.scopes["12"]?.["implement"]).toMatchObject({ ok: true, log: NO_CHECKS_WARNING });
     expect(ports.sandbox.execs).toEqual([]);
@@ -278,7 +351,7 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "merge"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "merge"]);
     expect(session.current).toBe("done");
     expect(ports.sandbox.execs).toEqual([DIFF_COMMAND, BUILD]);
   });
@@ -293,9 +366,9 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "merge"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "merge"]);
     expect(session.current).toBe("done");
-    expect(ports.events.of("prepare.end").map((e) => e.agent)).toEqual(["on-fail", "never"]);
+    expect(ports.events.of("prepare.end").map((e) => e.agent)).toEqual(["never", "on-fail", "never"]);
     const prompts = ports.sandbox.requests.map((r) => r.prompt);
     expect(prompts[2]).toContain("# Bring main into the branch of issue #12");
     expect(prompts[2]).toContain("## The evaluation already ran");
@@ -310,9 +383,9 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "merge"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "merge"]);
     expect(session.current).toBe("done");
-    expect(ports.events.of("prepare.end").map((e) => e.agent)).toEqual(["always", "never"]);
+    expect(ports.events.of("prepare.end").map((e) => e.agent)).toEqual(["never", "always", "never"]);
     expect(ports.sandbox.requests[2]?.prompt).toContain("A merge in progress (`git status`) stopped on conflicts");
     // implement's eval, then sync's eval after the agent; prepare ran no checks on a conflict.
     expect(ports.sandbox.execs).toEqual([DIFF_COMMAND, BUILD, DIFF_COMMAND, BUILD]);
@@ -323,7 +396,7 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "review-full", "sync", "merge"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "review-full", "sync", "merge"]);
     expect(session.current).toBe("done");
     expect(session.scopes["12"]?.["review-full"]).toMatchObject({ visits: 2, ok: true, session: "rf2" });
     expect(session.scopes["12"]?.["sync"]).toMatchObject({ visits: 3 });
@@ -338,7 +411,7 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "fix", "review", "fix", "review"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "fix", "review", "fix", "review"]);
     expect(ports.transitions.at(-1)).toEqual({ from: "review", to: "blocked", ok: false });
     expect(session).toMatchObject({ current: "review", blocked: true });
     expect(session.scopes["12"]?.["review"]).toMatchObject({ visits: 3, ok: false, log: "major src/A.kt:3 wrong", session: "r3" });
@@ -363,7 +436,7 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports).slice(3)).toEqual(["sync", "review-full", "fix-review-full", "review-full", "fix-review-full", "review-full", "fix-review-full", "review-full"]);
+    expect(sequence(ports).slice(4)).toEqual(["sync", "review-full", "fix-review-full", "review-full", "fix-review-full", "review-full", "fix-review-full", "review-full"]);
     expect(ports.transitions.at(-1)).toEqual({ from: "review-full", to: "blocked", ok: false });
     expect(session.scopes["12"]?.["review-full"]).toMatchObject({ visits: 4, ok: false });
   });
@@ -377,7 +450,7 @@ describe("task", () => {
 
     const session = await walk(task(), ports);
 
-    expect(sequence(ports)).toEqual(["init", "implement", "review", "sync", "review-full", "sync", "merge"]);
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "sync", "merge"]);
     expect(session.current).toBe("done");
     expect(session.iterations).toMatchObject({ implement: 2 });
     expect(session.scopes["12"]?.["implement"]).toMatchObject({ visits: 1, ok: true, session: "s-b2", log: "$ npm test (exit 0)\nBUILD SUCCESSFUL" });

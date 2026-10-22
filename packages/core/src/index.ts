@@ -87,8 +87,9 @@ export type Ctx = {
   readonly repoRoot: string;
   /**
    * The spec, as markdown: `spec.md` from the spec folder in the run's
-   * worktree, read at every `sous run` start, or the issue's title and body
-   * when the plan phase wrote none. The same text in every step of the run.
+   * worktree as it stands when the step starts, or the issue's title and
+   * body when there is no file. A step that writes the file (the starter's
+   * `plan`) is seen by every step after it; nothing else may write it.
    */
   readonly spec: string;
   /** Spec folder, relative to the repository root. Assign it to point later steps at another folder. */

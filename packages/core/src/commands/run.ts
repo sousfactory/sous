@@ -352,7 +352,8 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     try {
       final = await runFlow(flow, session, {
         issue: { id: issue.id, ref: issue.ref, title: issue.title, body: issue.body, labels: issue.labels },
-        spec: spec.text,
+        // One file read per step, never a tracker call: the fallback is built from the issue fetched above.
+        spec: (specDir) => readSpec(sandbox.worktreePath, specDir, issue).text,
         work: await workOf(tracker, issue, session.work),
         sandbox,
         git,

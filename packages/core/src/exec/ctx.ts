@@ -16,7 +16,7 @@ import type { Sandbox } from "../ports/sandbox.js";
 /** Fixed for the whole run. */
 export type CtxDeps = {
   issue: Issue;
-  /** `ctx.spec`: the spec markdown, read once at the run's start. */
+  /** `ctx.spec`: the spec markdown as resolved when the current visit started. */
   spec: string;
   flow: string;
   branch: string;

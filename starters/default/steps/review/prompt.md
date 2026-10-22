@@ -28,6 +28,11 @@ Follow `{{ctx.skillsDir}}/code-review/SKILL.md` with these overrides:
 - The fixed point is `{{diffRange}}` (already pinned; do not ask).
 - The spec source is the acceptance text above; do not look for an issue
   tracker and do not run any `/setup-*` command.
+- An `## Assumptions` section in the acceptance text lists choices the plan
+  made where the issue left them open. An assumption is not a criterion;
+  judge the diff against the stories and testing decisions. An assumption
+  that contradicts the issue's own words or a documented rule is a
+  `blocker`.
 - Run both axes yourself, in sequence, if you cannot spawn sub-agents.
 - On the Standards axis, also report tests that are tautological,
   implementation-coupled, weakened or deleted.

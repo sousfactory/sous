@@ -109,7 +109,7 @@ your-project/
     ├── tsconfig.json             # for the steps and tests
     ├── vitest.config.ts
     ├── flows/
-    │   ├── task.yaml             # one issue: init → implement → review ⇄ fix → sync → review-full → merge
+    │   ├── task.yaml             # one issue: init → plan → implement → review ⇄ fix → sync → review-full → merge
     │   ├── feature.yaml          # an issue with sub-issues: the same, per sub-issue, then as a whole
     │   └── bench.yaml            # smoke test: hello-world → tell-a-joke; writes nothing
     ├── steps/
@@ -228,8 +228,9 @@ Then a real task. Label an issue `type:task`, and:
 What happens, in order: the issue is claimed (`sous:running` on GitHub), a
 worktree is opened on `feature/<id>-<slug>`, the spec is read from
 `specs/<id>-*/spec.md` in that worktree (the issue itself serves as the
-spec when `/sous-plan` did not write one), `init` checks the issue is
-open, `implement` builds and commits, `review` judges the diff, `fix` addresses
+spec until one is written), `init` checks the issue is open, `plan`
+derives a spec from the issue when the branch has none and stops with its
+open questions when it may not decide alone, `implement` builds and commits, `review` judges the diff, `fix` addresses
 findings, `sync` brings the base branch in, `review-full` judges the whole
 branch, `merge` squashes it onto the base branch, and the issue is closed.
 If the base branch moved after the last `sync` (another run merged in the
@@ -418,7 +419,7 @@ JavaScript, compiled once, not sandboxed.
 | `ctx.issue` | run target `{ id, ref, title, body, labels }`; `id` is the tracker's own, `ref` how it writes it in text (`#96`) | `{{ctx.issue.id}}`, `{{ctx.issue.ref}}` | ✓ | ✓ | ✓ |
 | `ctx.work` | work item `{ id, ref, title, body }` | `{{ctx.work.id}}`, `{{ctx.work.ref}}` | ✓ assignable | ✓ | ✓ |
 | `ctx.worktree` | absolute worktree path | `{{ctx.worktree}}` | ✓ | ✓ | ✓ |
-| `ctx.spec` | the spec as markdown: `spec.md` from the spec folder in the worktree, read at every `sous run` start, else the issue's title and body | `{{ctx.spec}}` | ✓ | ✓ | ✓ |
+| `ctx.spec` | the spec as markdown: `spec.md` from the spec folder in the worktree as it stands when the step starts, else the issue's title and body | `{{ctx.spec}}` | ✓ | ✓ | ✓ |
 | `ctx.specDir` | spec folder, relative to the repository | `{{ctx.specDir}}` | ✓ assignable | ✓ | ✓ |
 | `ctx.skillsDir` | absolute `skills/` path | `{{ctx.skillsDir}}` | ✓ | ✓ | ✓ |
 | `ctx.flow`, `ctx.branch`, `ctx.previous` | flow name, run branch, entry visited before | — | ✓ | ✓ | ✓ |
@@ -647,9 +648,10 @@ changes nothing). Everything else on the tracker, such as the
   was recorded; with neither, the agent runs again. Only a result the
   agent actually answered in this visit counts: a failed iteration records
   none, and a new visit starts without the previous visit's.
-- `ctx.spec` and `ctx.work` are read again at every start, from the
-  worktree and the tracker, so a spec edited on the branch or an edited
-  issue reaches the next run without a restart.
+- `ctx.spec` is resolved from the worktree when each step starts (one
+  file read, no tracker call), and `ctx.work` from the tracker at every
+  start, so a spec written by the `plan` step or edited on the branch,
+  and an edited issue, reach the next step or run without a restart.
 - A run that reached `done` but could not close its issue (the tracker
   was down) closes it on the next `sous run` of the issue, without
   redoing any work.

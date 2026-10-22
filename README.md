@@ -215,7 +215,7 @@ your-project/
     ├── sous                      # wrapper: npx sous
     ├── package.json              # depends on sous-factory; node_modules/ lives here
     ├── flows/                    # task.yaml, feature.yaml, bench.yaml
-    ├── steps/                    # init, next-work, implement, review, fix, verify, merge, …
+    ├── steps/                    # init, plan, next-work, implement, review, fix, verify, merge, …
     ├── skills/                   # vendored skills and sous-plan
     ├── prompts/plan.md           # what /sous-plan follows
     ├── trackers/<tracker>.md     # the tracker's verbs for the plan prompt (github, beads, local)

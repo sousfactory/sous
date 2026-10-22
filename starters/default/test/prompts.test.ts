@@ -20,10 +20,10 @@ const stepDirs = (flows: readonly string[]): string[] => [...new Set(flows.flatM
 
 const LIFECYCLE_STEPS = ["close-work", "init", "merge", "next-work", "sync-resolve"];
 // verify is not a flow step: its eval judges implement, fix and sync-resolve.
-const WORK_STEPS = ["fix", "implement", "review"];
+const WORK_STEPS = ["fix", "implement", "plan", "review"];
 
 describe("step prompts", () => {
-  it("the delivery flows use the five lifecycle steps and the three work steps; bench uses the two sample steps", () => {
+  it("the delivery flows use the five lifecycle steps and the four work steps; bench uses the two sample steps", () => {
     expect(stepDirs(["feature", "task"]).map((d) => d.replace(`${root}/`, ""))).toEqual([...LIFECYCLE_STEPS, ...WORK_STEPS].sort().map((n) => `steps/${n}`));
     expect(stepDirs(["bench"]).map((d) => d.replace(`${root}/`, ""))).toEqual(["steps/hello-world", "steps/tell-a-joke"]);
   });

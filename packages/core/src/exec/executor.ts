@@ -33,8 +33,12 @@ export type Logger = { info: (line: string) => void; warn: (line: string) => voi
 
 export type ExecutorPorts = {
   issue: Issue;
-  /** `ctx.spec`: the spec markdown for the whole run. */
-  spec: string;
+  /**
+   * `ctx.spec`: resolves the spec markdown for a visit, called with the
+   * session's spec folder when each visit starts. The worktree as it stands
+   * is the source, so a step that writes the spec is seen by the next one.
+   */
+  spec: (specDir: string) => string;
   /** `ctx.work` at start: the session's work item resolved to its issue. */
   work: Work;
   sandbox: Sandbox;
@@ -188,7 +192,7 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
   let spanCount = 0;
   let spanId = "";
 
-  const deps = { issue: ports.issue, spec: ports.spec, flow: flow.name, branch: session.branch, repoRoot: ports.repoRoot, skillsDir, sandbox, git, tracker, events, repoLock: ports.repoLock };
+  const deps = { issue: ports.issue, spec: ports.spec(session.specDir), flow: flow.name, branch: session.branch, repoRoot: ports.repoRoot, skillsDir, sandbox, git, tracker, events, repoLock: ports.repoLock };
   const ctxFor = (iteration?: number, writes?: CtxWrites): Ctx =>
     buildCtx(deps, { work, specDir: session.specDir, workProgress: session.workProgress, previous: session.previous, ...(iteration !== undefined ? { iteration } : {}) }, writes);
   const scopeFor = (ctx: Ctx, res?: EvalResult, result?: Envelope, prepared?: Prepared): Scope => ({ ctx, steps: stepsOf(session), res, result, prepared });
@@ -454,6 +458,9 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     const fresh = mode === "first" && record?.prepared === undefined;
     if (fresh || record === undefined) session = openVisit(session, entry.id, key);
     log.info(`${entry.id}: start${fresh ? "" : " (re-entry)"}`);
+    // The spec is the worktree's at the moment the visit starts: a step that
+    // wrote it, or a human during `blocked`, is seen by the steps after.
+    deps.spec = ports.spec(session.specDir);
 
     spanId = `${runId === "" ? "span" : runId}-${++spanCount}`;
     await emit({ type: "span.open", runId, spanId, step: entry.id, scope: key });

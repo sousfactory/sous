@@ -24,6 +24,7 @@ export const STARTER = [
   "flows/bench.yaml",
   "steps/_shared.ts",
   "steps/init",
+  "steps/plan",
   "steps/next-work",
   "steps/close-work",
   "steps/merge",

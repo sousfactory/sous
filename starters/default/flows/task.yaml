@@ -1,13 +1,27 @@
 # task: a single issue without sub-issues (type:task or type:bug); the
-# feature flow minus next-work and close-work. The issue is the work from the
-# start, so the shared steps read ctx.work as they do in feature.
+# feature flow minus next-work and close-work, plus `plan`, which derives a
+# spec from the issue when /sous-plan wrote none. The issue is the work from
+# the start, so the shared steps read ctx.work as they do in feature.
 allowedLabels: [type:task, type:bug]
 entry: init
 steps:
   - id: init
     uses: init
     routes:
+      - to: plan
+
+  # The agent runs only when the branch has no spec.md; open questions it
+  # may not decide stop the run, with the questions as the blocked comment.
+  - id: plan
+    uses: plan
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      issue: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+    routes:
       - to: implement
+        when: res.ok
+      - to: blocked
+        else: true
 
   - id: implement
     uses: implement

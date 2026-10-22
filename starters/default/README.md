@@ -22,7 +22,7 @@ Three flows:
 
 | Flow | Accepts | What it does |
 | --- | --- | --- |
-| `task` | `type:task`, `type:bug` | One issue: init → implement → review ⇄ fix → sync → review-full ⇄ fix → merge. |
+| `task` | `type:task`, `type:bug` | One issue: init → plan → implement → review ⇄ fix → sync → review-full ⇄ fix → merge. `plan` derives a spec from the issue when the branch has none. |
 | `feature` | `type:feature` | A parent issue delivered sub-issue by sub-issue (next-work → implement → review ⇄ fix → close-work, repeated), then synced, reviewed as a whole and merged. |
 | `bench` | any issue | A smoke test: one module step, one agent step, nothing committed, the issue untouched. |
 
@@ -45,11 +45,12 @@ flowchart LR
 
 ![The feature flow mid-run in sous ui](https://raw.githubusercontent.com/sousfactory/sous/main/docs/images/feature-flow.png)
 
-Eleven steps, each with its own `README.md`:
+Twelve steps, each with its own `README.md`:
 
 | Step | Kind | Does |
 | --- | --- | --- |
 | `init` | module | Checks the issue is open and the worktree is on the run's branch. |
+| `plan` | prompt with prepare | Derives a spec from the issue when the branch has none; records assumptions, stops on questions it may not decide. |
 | `next-work` | module | Puts the next open child with no open blockers on the bench. |
 | `implement` | prompt | Implements the work item following the `implement` and `tdd` skills, commits. |
 | `review` | prompt | Judges the diff cold and read-only against the criteria, following `code-review`. |

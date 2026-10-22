@@ -7,7 +7,27 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ## Unreleased
 
+### Added
+
+- **The `plan` step.** The task flow derives a spec from the issue when
+  the branch has none: `init → plan → implement`. Prepare finds
+  `spec.md` in the worktree and skips the agent; otherwise the agent
+  restates the issue into the spec headings, decides what the issue left
+  open by the simplest reading and lists each choice under
+  `## Assumptions`, and leaves a question open only when the readings
+  differ in observable behaviour or the choice is expensive to reverse.
+  Open questions fail the eval and the flow stops `blocked` with them as
+  the comment; answer them in the file or the issue and run again. The
+  review prompt treats an assumption as no criterion and one that
+  contradicts the issue as a blocker.
+
 ### Changed
+
+- **`ctx.spec` is resolved when each step starts**, from the worktree as
+  it stands (one file read, never a tracker call), instead of once per
+  run. A step that writes the spec is seen by the steps after it. The
+  executor port `spec` is a function of the spec folder now; fakes built
+  with `portsOf` follow.
 
 - **The spec is read from the worktree.** `sous run` reads
   `specs/<id>-<slug>/spec.md` from the run's worktree at every start, not

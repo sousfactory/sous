@@ -9,7 +9,7 @@ import { isAgentic, loadStep, type Step } from "../../src/config/step.js";
 import { runFlow, type ExecutorPorts } from "../../src/exec/executor.js";
 import type { Session } from "../../src/exec/scope.js";
 import type { AgentRequest } from "../../src/ports/sandbox.js";
-import { specFromIssue } from "../../src/session/spec.js";
+import { readSpec } from "../../src/session/spec.js";
 import { createSession } from "../../src/session/update.js";
 import { fixture } from "../helpers.js";
 import { fakeEventLog, type FakeEventLog } from "./eventlog.js";
@@ -88,7 +88,8 @@ export const portsOf = (sandbox: FakeSandbox = fakeSandbox(), overrides: FakePor
   const git = overrides.git ?? fakeGit();
   return {
     issue: target,
-    spec: specFromIssue(target),
+    // Like the run command: the spec file in the sandbox's worktree if there is one, else the issue.
+    spec: (specDir) => readSpec(sandbox.worktreePath, specDir, target).text,
     work: { id: target.id, ref: target.ref, title: target.title, body: target.body },
     clock: fakeClock(),
     skillsDir: join(execRoot, "skills"),
