@@ -5,6 +5,20 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
+## Unreleased
+
+### Changed
+
+- **The spec is read from the worktree.** `sous run` reads
+  `specs/<id>-<slug>/spec.md` from the run's worktree at every start, not
+  from the primary checkout, so the spec travels with the branch: an
+  amendment committed on the branch while the run was blocked reaches the
+  next start, and a run on another machine sees the same text. A new run
+  whose checkout has no planned folder looks for one on the branch too.
+  The first run forks the branch from the local base, so pull before the
+  first start when the spec was pushed from elsewhere. The starter's
+  implement prompt forbids edits under the spec folder.
+
 ## 0.4.0
 
 ### Breaking

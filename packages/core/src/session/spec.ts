@@ -1,8 +1,9 @@
 /**
- * The spec a run works from. The plan phase writes `spec.md` into the spec
- * folder on the base branch; a run reads it from the repository checkout at
- * every start and never writes one. Without a file the issue itself is the
- * spec: its title and body, nothing invented.
+ * The spec a run works from. The plan phase commits `spec.md` into the spec
+ * folder on the base branch, or on the issue's branch while its run is
+ * blocked; a run reads it from its worktree at every start and never writes
+ * one. Without a file the issue itself is the spec: its title and body,
+ * nothing invented.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,13 +23,13 @@ export const specFromIssue = (issue: { ref: string; title: string; body: string 
 };
 
 /**
- * `<repoRoot>/<specDir>/spec.md` as it is on disk, committed or not, else
- * the issue. The checkout is read as it stands, like `sous.yaml` and the
- * steps are.
+ * `<worktree>/<specDir>/spec.md` as it is on disk, committed or not, else
+ * the issue. The worktree is read as it stands, so an edit made there while
+ * the run was blocked counts.
  */
-export const readSpec = (repoRoot: string, specDir: string, issue: { ref: string; title: string; body: string }): Spec => {
+export const readSpec = (worktree: string, specDir: string, issue: { ref: string; title: string; body: string }): Spec => {
   try {
-    return { text: readFileSync(join(repoRoot, specDir, "spec.md"), "utf8"), source: "file" };
+    return { text: readFileSync(join(worktree, specDir, "spec.md"), "utf8"), source: "file" };
   } catch {
     return { text: specFromIssue(issue), source: "issue" };
   }

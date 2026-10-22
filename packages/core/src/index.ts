@@ -86,8 +86,8 @@ export type Ctx = {
   /** The main repository checkout, for work that must happen outside the worktree, such as landing the branch. */
   readonly repoRoot: string;
   /**
-   * The spec, as markdown: `spec.md` from the spec folder on the repository
-   * checkout, read at every `sous run` start, or the issue's title and body
+   * The spec, as markdown: `spec.md` from the spec folder in the run's
+   * worktree, read at every `sous run` start, or the issue's title and body
    * when the plan phase wrote none. The same text in every step of the run.
    */
   readonly spec: string;

@@ -397,14 +397,34 @@ describe("runCommand", () => {
     expect(opened[0]?.signal?.aborted).toBe(false);
   });
 
-  it("uses the spec folder already planned on main; the branch follows the settings template", async () => {
+  it("uses the spec folder already planned on the checkout and reads the spec from the worktree; the branch follows the settings template", async () => {
     await mkdir(join(repoRoot, "specs", "7-planned-slug"), { recursive: true });
     await writeFile(join(repoRoot, "specs", "7-planned-slug", "spec.md"), "# Planned\n");
+    await mkdir(join(worktree, "specs", "7-planned-slug"), { recursive: true });
+    await writeFile(join(worktree, "specs", "7-planned-slug", "spec.md"), "# Planned\n");
     await runCommand(["walk", "7"], deps());
     expect((await savedSession()).specDir).toBe("specs/7-planned-slug");
     expect(opened[0]?.branch).toBe(BRANCH);
     expect(out).toContain("spec: specs/7-planned-slug/spec.md");
     expect((await savedEvents())[0]).toMatchObject({ type: "run.start", spec: "file" });
+  });
+
+  it("finds a spec folder that exists only on the branch", async () => {
+    await mkdir(join(worktree, "specs", "7-on-branch"), { recursive: true });
+    await writeFile(join(worktree, "specs", "7-on-branch", "spec.md"), "# On the branch\n");
+    await runCommand(["walk", "7"], deps());
+    expect((await savedSession()).specDir).toBe("specs/7-on-branch");
+    expect(out).toContain("spec: specs/7-on-branch/spec.md");
+    expect((await savedEvents())[0]).toMatchObject({ type: "run.start", spec: "file" });
+  });
+
+  it("does not read a spec the checkout has but the branch does not carry", async () => {
+    await mkdir(join(repoRoot, "specs", "7-planned-slug"), { recursive: true });
+    await writeFile(join(repoRoot, "specs", "7-planned-slug", "spec.md"), "# Planned\n");
+    await runCommand(["walk", "7"], deps());
+    expect((await savedSession()).specDir).toBe("specs/7-planned-slug");
+    expect(out).toContain("spec: no specs/7-planned-slug/spec.md; the issue is the spec");
+    expect((await savedEvents())[0]).toMatchObject({ type: "run.start", spec: "issue" });
   });
 
   it("is the issue's own spec when planning wrote none, and says so", async () => {

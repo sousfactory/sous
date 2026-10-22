@@ -29,7 +29,7 @@ import type { RunOutcome } from "../session/events.js";
 import { branchName, eventsFile, existingSpecDirName, runDir, sessionFile, specDirName } from "../session/paths.js";
 import { readSpec } from "../session/spec.js";
 import { filePersist, loadSession } from "../session/store.js";
-import { createSession, markClosed } from "../session/update.js";
+import { createSession, markClosed, setSpecDir } from "../session/update.js";
 import { acquireLock, createRepoLock, describeLock, isProcessAlive, lockPath, repoLockPath } from "./lock.js";
 import { formatError } from "./validate.js";
 
@@ -263,9 +263,10 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
       err(`sous run: ${issue.ref} has none of the labels flow "${flow.name}" accepts (${flow.allowedLabels?.join(", ")}); label the issue or run another flow`);
       return 2;
     }
-    const dirName = existingSpecDirName(await specEntries(dirs.specs), issue.id) ?? specDirName(issue.id, issue.title);
     // Relative to the repository root: the worktree holds the same tree.
-    const specDir = relative(repoRoot, join(dirs.specs, dirName));
+    const specDirOf = (dirName: string): string => relative(repoRoot, join(dirs.specs, dirName));
+    const planned = existingSpecDirName(await specEntries(dirs.specs), issue.id);
+    const specDir = specDirOf(planned ?? specDirName(issue.id, issue.title));
     const branch = branchName(settings.branch, issue);
     const runs = dirs.runs;
     const run = runDir(runs, issue.id);
@@ -289,7 +290,7 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
       err(`sous run: ${issue.ref} was started with flow "${existing.flow}"; run that flow or pass --restart`);
       return 1;
     }
-    const session = existing ?? createSession({ flow: flow.name, issue: issue.id, title: issue.title, branch, specDir, entry: flow.entry });
+    let session = existing ?? createSession({ flow: flow.name, issue: issue.id, title: issue.title, branch, specDir, entry: flow.entry });
     const persist = filePersist(sessionFile(runs, issue.id));
     const lifecycle = createLifecycle({ tracker, issue: issue.id, mode: flow.lifecycle ?? settings.lifecycle });
     // The executor records `done` before the issue is closed, so the close
@@ -314,9 +315,17 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     if (interruption !== undefined) return await interruption;
     out(`${existing === undefined ? "starting" : "resuming"} ${issue.ref} at ${session.current} in ${sandbox.worktreePath}`);
 
-    // Read on every start from the checkout as it stands, so an edited spec
-    // reaches the next run; the session's folder wins once a step has moved it.
-    const spec = readSpec(repoRoot, session.specDir, issue);
+    // The spec travels with the branch: it is read from the worktree on every
+    // start, so an amendment committed there reaches the next run, and a run
+    // on another machine sees the same text. A new run whose checkout has no
+    // planned folder looks for one on the branch too, since the plan phase may
+    // have written it there while the run was blocked. The session's folder
+    // wins once a step has moved it.
+    if (existing === undefined && planned === undefined) {
+      const onBranch = existingSpecDirName(await specEntries(join(sandbox.worktreePath, relative(repoRoot, dirs.specs))), issue.id);
+      if (onBranch !== undefined) session = setSpecDir(session, specDirOf(onBranch));
+    }
+    const spec = readSpec(sandbox.worktreePath, session.specDir, issue);
     out(spec.source === "file" ? `spec: ${join(session.specDir, "spec.md")}` : `spec: no ${join(session.specDir, "spec.md")}; the issue is the spec`);
 
     const events = createFileEventLog(eventsFile(runs, issue.id));

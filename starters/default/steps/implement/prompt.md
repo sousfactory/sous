@@ -26,6 +26,8 @@ Follow the skill in `{{ctx.skillsDir}}/implement/SKILL.md`, with these overrides
   report that criterion as covered by the evaluation, not as unconfirmed.
 - Run single test classes for the red → green loop.
 - Do not touch the issue tracker.
+- Never edit anything under `{{ctx.specDir}}/`: the spec is the plan phase's
+  input, and the next start reads it from this worktree as it stands.
 - Keep the change to this task. Out-of-scope improvements go in the summary,
   not in the diff.
 
