@@ -8,8 +8,9 @@ report.
 ## What came back: {{inputKind}}
 
 - `review`: the blocking findings of an independent reviewer. Address every
-  one of them. If a finding is wrong, explain why in the summary and leave the
-  code; the next review decides.
+  one of them. If a finding is wrong, leave the code and record why as a
+  line under `## Decisions` in the spec (see below); the next review judges
+  the decision.
 - `verify`: the output of the verification that failed. Make it pass.
 
 ```
@@ -30,6 +31,16 @@ report.
 - Do not run `/code-review`; a separate reviewer runs after you. Do not touch
   the issue tracker.
 - Fix the cause, not the symptom. Keep the change to what the input asks for.
+
+## Decisions you make while fixing
+
+Under `{{ctx.specDir}}/` you may do one thing only: append lines to the
+`## Decisions` section of `spec.md` (create the section at the end of the
+file when there is none). One line per decision a reviewer could read as a
+departure from the acceptance criteria, the user stories or the testing
+decisions, and one per finding you refute: what you chose, and why,
+written like a line of a commit body. Nothing else in the folder changes.
+Commit the line with the code it explains.
 
 ## Commit rules
 

@@ -26,10 +26,20 @@ Follow the skill in `{{ctx.skillsDir}}/implement/SKILL.md`, with these overrides
   report that criterion as covered by the evaluation, not as unconfirmed.
 - Run single test classes for the red → green loop.
 - Do not touch the issue tracker.
-- Never edit anything under `{{ctx.specDir}}/`: the spec is the plan phase's
-  input, and the next start reads it from this worktree as it stands.
 - Keep the change to this task. Out-of-scope improvements go in the summary,
   not in the diff.
+
+## Decisions you make while building
+
+The spec is the plan phase's input; under `{{ctx.specDir}}/` you may do
+one thing only: append lines to the `## Decisions` section of `spec.md`
+(create the section at the end of the file when there is none). One line
+per decision a reviewer could read as a departure from the acceptance
+criteria, the user stories or the testing decisions: what you chose, and
+why, written like a line of a commit body. The reviewer judges the
+decision instead of flagging the diff, and the next run start reads the
+file from this worktree as it stands. Nothing else in the folder changes.
+Commit the line with the code it explains.
 
 ## Commit rules
 

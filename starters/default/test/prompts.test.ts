@@ -88,8 +88,14 @@ describe("step prompts", () => {
       expect(text, `${name}: no test command; the eval runs it`).not.toMatch(/gradle/i);
       expect(text, `${name}: no commit-message rules; CONTRIBUTING has them`).not.toMatch(/Conventional subject|Co-Authored-By|Refs #/);
       expect(text, `${name}: no quoted rule files; CLAUDE.md links them`).not.toMatch(/CODING_STANDARDS|Repository rules/);
-      if (name === "review") expect(text, "review is read-only").toMatch(/Read-only/);
-      else {
+      expect(text, `${name}: knows the spec's ## Decisions section`).toContain("## Decisions");
+      if (name === "review") {
+        expect(text, "review is read-only").toMatch(/Read-only/);
+        expect(text, "review judges a decision instead of the departure it explains").toMatch(/judge the decision, not\s+the diff/);
+        expect(text, "review treats an assumption as no criterion").toMatch(/An assumption is not a criterion/);
+      } else {
+        expect(text, `${name}: the decisions section is the only edit under the spec folder`).toMatch(/Nothing else in the folder changes/);
+        expect(text, `${name}: a decision carries its reason`).toMatch(/what you chose, and\s+why/);
         expect(text, `${name}: the branch rule the executor relies on`).toMatch(/never push/);
         expect(text, `${name}: no full test suite run; the eval runs it`).toMatch(/[Dd]o not run the full test suite/);
         expect(text, `${name}: a criterion naming the build or the suite defers to the eval`).toMatch(/criterion names a full build or the test suite, this\s+step's evaluation is the authority/);

@@ -78,8 +78,13 @@ order; an empty section stays as a heading with "None." under it.
 
 - <one per item: the readings, and the one you would pick; omit the list when there are none>
 
+## Decisions
+
 ## Further Notes
 ```
+
+`## Decisions` stays empty here: the implement and fix steps append to
+it what they decide while building, and the reviewer judges those lines.
 
 The user stories and the testing decisions are what the reviewer judges
 the build against, so write them as behaviour that can be checked from

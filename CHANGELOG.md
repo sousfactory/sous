@@ -9,6 +9,16 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Added
 
+- **`## Decisions` in the spec.** The `implement` and `fix` steps may
+  append one line per decision they make while building to a
+  `## Decisions` section at the end of `spec.md`, with its reason, and
+  may touch nothing else under the spec folder: a departure from a story
+  or a testing decision, or a review finding the fix refutes. The review
+  prompt judges the decision instead of flagging the departure, and a
+  decision whose reason does not hold is a finding as the departure would
+  be. The `plan` step writes the section empty; a spec from `/sous-plan`
+  gets it on the first decision.
+
 - **The `plan` step.** The task flow derives a spec from the issue when
   the branch has none: `init → plan → implement`. Prepare finds
   `spec.md` in the worktree and skips the agent; otherwise the agent

@@ -33,6 +33,15 @@ Follow `{{ctx.skillsDir}}/code-review/SKILL.md` with these overrides:
   judge the diff against the stories and testing decisions. An assumption
   that contradicts the issue's own words or a documented rule is a
   `blocker`.
+- A `## Decisions` section in the acceptance text lists choices made while
+  building or fixing, each with its reason: a departure from a story or a
+  testing decision, or a finding of an earlier review the author refutes.
+  Where a decision line covers what the diff does, judge the decision, not
+  the diff: it holds when its reason stands against the issue's own words,
+  the documented rules and the assumptions, and the departure is then no
+  finding; a decision whose reason does not hold is a `blocker` or `major`
+  as the departure itself would be. A departure no decision line explains
+  is judged as before.
 - Run both axes yourself, in sequence, if you cannot spawn sub-agents.
 - On the Standards axis, also report tests that are tautological,
   implementation-coupled, weakened or deleted.

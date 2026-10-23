@@ -955,15 +955,25 @@ issue with no new scope changes nothing and commits nothing, which is what
 makes the skill safe to call twice and lets it bring a hand-filed feature
 into shape.
 
-The spec format lives in the prompt alone. The plan session is the only
-writer of `spec.md`; a run reads it from its worktree at every start into
-`ctx.spec`, committed or not, and never writes one. The first run forks
-the branch from the local base, so a spec pushed from another machine
-reaches it only after a pull. When the plan phase wrote none, `ctx.spec`
-is the issue's title and body. `review-full` judges against `ctx.spec`,
-so a spec written in any format the prompt asks for reaches the reviewer
-unchanged. To change a spec of a blocked run, edit it in the worktree (or
-run `/sous-plan` again, which amends it there) and run the issue again.
+The spec format lives in the prompt alone. The plan session writes
+`spec.md`; a run reads it from its worktree at the start of every step into
+`ctx.spec`, committed or not. The first run forks the branch from the
+local base, so a spec pushed from another machine reaches it only after a
+pull. When the plan phase wrote none, the task flow's `plan` step derives
+one from the issue; a feature's `ctx.spec` is then the issue's title and
+body. `review-full` judges against `ctx.spec`, so a spec written in any
+format the prompt asks for reaches the reviewer unchanged. To change a
+spec of a blocked run, edit it in the worktree (or run `/sous-plan` again,
+which amends it there) and run the issue again.
+
+The run adds one section of its own: `## Decisions`, at the end of the
+file. The `implement` and `fix` steps may append lines there and may
+touch nothing else under the spec folder: one line per choice a reviewer
+could read as a departure from the spec, or per finding the fix refutes,
+with its reason, committed with the code. The reviewer judges the line
+instead of the departure, so the trace of what the run decided travels
+with the branch and lands with the merge. Everything above that section
+stays the plan session's.
 
 **Check:** `npx vitest run test/prompts.test.ts`; then plan one small
 issue with `/sous-plan` and read the spec it writes.
