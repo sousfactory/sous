@@ -5,7 +5,7 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
-## Unreleased
+## 0.5.0
 
 ### Added
 
@@ -45,6 +45,14 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   contradicts the issue as a blocker.
 
 ### Changed
+
+- **Upgrading a project from 0.4.0.** Copy `templates/`, `trackers/` and
+  `steps/plan/` from the starter into `.sous/`, replace `prompts/plan.md`
+  with the starter's (`prompts/plan.beads.md` is gone: the one prompt
+  speaks to every tracker through its sheet), put `plan` between `init`
+  and `implement` in the task flow, and take the implement, fix and
+  review prompts' new `## Decisions` rules. `templatesDir` defaults to
+  `templates`, so `sous.yaml` needs no new key.
 
 - **`ctx.spec` is resolved when each step starts**, from the worktree as
   it stands (one file read, never a tracker call), instead of once per
