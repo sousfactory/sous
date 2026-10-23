@@ -115,5 +115,8 @@ same nine verbs (read the issue, parent of the issue, list the children,
 create the issue, set the kind, update the body, create a child, add a
 blocker, set the acceptance criteria) and four conventions: how the issue is
 written in text (`REF`), where the kind lives, which state labels the run
-phase sets, and the child shape the run phase parses. A tracker module of a
-project gets a sheet beside it with the same headings.
+phase sets, and how a child's parent and blockers are expressed. The shapes
+themselves are `starters/default/templates/`: `spec.md` and
+`spec-amendment.md` for step 7, `child.md` and `task.md` for step 8, with
+the parsing contract of the trackers in their comments. A tracker module of
+a project gets a sheet beside it with the same headings.

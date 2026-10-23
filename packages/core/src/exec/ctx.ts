@@ -24,6 +24,8 @@ export type CtxDeps = {
   repoRoot: string;
   /** Absolute `.sous/skills`. */
   skillsDir: string;
+  /** Absolute `.sous/templates`. */
+  templatesDir: string;
   sandbox: Sandbox;
   git: Git;
   tracker: Tracker;
@@ -89,6 +91,7 @@ export const buildCtx = (deps: CtxDeps, state: CtxState, writes?: CtxWrites): Ct
     repoRoot: deps.repoRoot,
     specDir: state.specDir,
     skillsDir: deps.skillsDir,
+    templatesDir: deps.templatesDir,
     previous: state.previous,
     ...(state.iteration !== undefined ? { iteration: state.iteration } : {}),
     workProgress: state.workProgress,
@@ -118,4 +121,5 @@ export const ctxPlaceholders = (ctx: Ctx): CtxValues => ({
   "ctx.spec": ctx.spec,
   "ctx.specDir": ctx.specDir,
   "ctx.skillsDir": ctx.skillsDir,
+  "ctx.templatesDir": ctx.templatesDir,
 });

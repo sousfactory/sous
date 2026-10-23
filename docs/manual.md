@@ -128,6 +128,7 @@ your-project/
     ├── skills/                   # vendored skills (VENDORED.md names source and license) and sous-plan/
     ├── prompts/plan.md           # the procedure /sous-plan follows; ADAPT notes mark what to change
     ├── trackers/<tracker>.md     # github, beads, local: the tracker's verbs for the plan prompt
+    ├── templates/                # spec.md, spec-amendment.md, child.md, task.md: the shapes the prompts write
     ├── test/                     # the project's step and flow tests, over sous-factory/testing
     ├── logs/<id>/                # one agent log per iteration             (gitignored)
     ├── runs/<id>/                # session.json and events.jsonl per issue (gitignored)
@@ -145,7 +146,7 @@ init: still to do by hand:
   1. .sous/steps/verify/eval.ts: set BASE_BRANCH and fill CHECKS
   2. .sous/sous.yaml: tracker, baseBranch, branch template, lifecycle
   3. .sous/flows/*.yaml: agent models and allowedLabels; create the labels on the tracker
-  4. .sous/prompts/plan.md: follow its ADAPT notes; it speaks to the tracker through .sous/trackers/<tracker>.md
+  4. .sous/prompts/plan.md: follow its ADAPT notes; it speaks to the tracker through .sous/trackers/<tracker>.md and writes the shapes in .sous/templates/
   5. cd .sous && ./sous validate && npx vitest run; then ./sous run bench <issue>
 ```
 
@@ -168,7 +169,8 @@ init: still to do by hand:
    the kinds. Apply each and delete the note. The prompt speaks to the
    tracker only through the verbs in `trackers/<tracker>.md`; the starter
    ships a sheet for `github`, `beads` and `local`, and a tracker module
-   of your own gets a sheet beside it.
+   of your own gets a sheet beside it. The shapes it writes, the spec and
+   the issue bodies, are the files under `templates/`.
 5. **Verify.** `./sous validate` checks every flow and step; the tests
    walk the flows over fakes; `bench` is a flow that runs one module step
    and one agent step without touching the issue or the code.
@@ -422,6 +424,7 @@ JavaScript, compiled once, not sandboxed.
 | `ctx.spec` | the spec as markdown: `spec.md` from the spec folder in the worktree as it stands when the step starts, else the issue's title and body | `{{ctx.spec}}` | ✓ | ✓ | ✓ |
 | `ctx.specDir` | spec folder, relative to the repository | `{{ctx.specDir}}` | ✓ assignable | ✓ | ✓ |
 | `ctx.skillsDir` | absolute `skills/` path | `{{ctx.skillsDir}}` | ✓ | ✓ | ✓ |
+| `ctx.templatesDir` | absolute `templates/` path: the shapes a prompt writes (`spec.md`, `child.md`, `task.md`) | `{{ctx.templatesDir}}` | ✓ | ✓ | ✓ |
 | `ctx.flow`, `ctx.branch`, `ctx.previous` | flow name, run branch, entry visited before | — | ✓ | ✓ | ✓ |
 | `ctx.iteration` | iteration of the visit (0: re-entry eval) | — | — | ✓ | `when` |
 | `ctx.readFile(path)`, `ctx.repoFiles(paths)` | worktree files; `repoFiles` gives `### <path>` + content | — | ✓ | ✓ | ✓ |
@@ -504,6 +507,7 @@ specsDir: ../specs                                # spec folders: <specsDir>/<is
 flowsDir: flows
 stepsDir: steps
 skillsDir: skills
+templatesDir: templates                           # the shapes the prompts write: spec.md, child.md, task.md
 logsDir: logs                                     # gitignored
 runsDir: runs                                     # gitignored
 ```
@@ -930,9 +934,13 @@ for a new flow the same way.
 **Files:** `prompts/plan.md` (the procedure `/sous-plan` follows, the
 same for every tracker), `trackers/<tracker>.md` (the tracker sheet: how
 each verb the prompt uses in bold is done on that tracker, how the issue
-is written in text, where the kind lives, and the child shape the run
-phase parses), `skills/sous-plan/SKILL.md` and its installed copy
-`.claude/skills/sous-plan/SKILL.md` (which only starts the prompt).
+is written in text, where the kind lives, and how the parent and the
+blockers of a child are expressed), `templates/` (`spec.md` and
+`spec-amendment.md`, the headings every step reads by name; `child.md`
+and `task.md`, the issue bodies the run phase parses, with the parsing
+contract in their comments), `skills/sous-plan/SKILL.md` and its
+installed copy `.claude/skills/sous-plan/SKILL.md` (which only starts
+the prompt).
 [`PLAN-SKILL-FLOW.md`](PLAN-SKILL-FLOW.md) draws the procedure as one
 diagram, step by step.
 
@@ -955,7 +963,11 @@ issue with no new scope changes nothing and commits nothing, which is what
 makes the skill safe to call twice and lets it bring a hand-filed feature
 into shape.
 
-The spec format lives in the prompt alone. The plan session writes
+The spec format is `templates/spec.md`: the headings, and under each a
+placeholder saying what the section holds and who writes it. The plan
+prompt, the `plan` step (through `ctx.templatesDir`) and the tests all
+read it and explain no section of their own, so a section changes there
+and nowhere else. The plan session writes
 `spec.md`; a run reads it from its worktree at the start of every step into
 `ctx.spec`, committed or not. The first run forks the branch from the
 local base, so a spec pushed from another machine reaches it only after a

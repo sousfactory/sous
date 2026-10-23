@@ -51,6 +51,7 @@ export type ExecutorPorts = {
   clock: () => Date;
   /** Absolute paths. */
   skillsDir: string;
+  templatesDir: string;
   logsDir: string;
   /** Fallback for the span's head sha once a step has removed the worktree. */
   repoRoot: string;
@@ -185,14 +186,14 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
   const runId = ports.runId ?? "";
   const byId = new Map(flow.steps.map((e) => [e.id, e]));
   const compiled = new Map(flow.steps.map((e) => [e.id, compileEntry(e)]));
-  const { skillsDir } = ports;
+  const { skillsDir, templatesDir } = ports;
 
   let session = initial;
   let work = ports.work;
   let spanCount = 0;
   let spanId = "";
 
-  const deps = { issue: ports.issue, spec: ports.spec(session.specDir), flow: flow.name, branch: session.branch, repoRoot: ports.repoRoot, skillsDir, sandbox, git, tracker, events, repoLock: ports.repoLock };
+  const deps = { issue: ports.issue, spec: ports.spec(session.specDir), flow: flow.name, branch: session.branch, repoRoot: ports.repoRoot, skillsDir, templatesDir, sandbox, git, tracker, events, repoLock: ports.repoLock };
   const ctxFor = (iteration?: number, writes?: CtxWrites): Ctx =>
     buildCtx(deps, { work, specDir: session.specDir, workProgress: session.workProgress, previous: session.previous, ...(iteration !== undefined ? { iteration } : {}) }, writes);
   const scopeFor = (ctx: Ctx, res?: EvalResult, result?: Envelope, prepared?: Prepared): Scope => ({ ctx, steps: stepsOf(session), res, result, prepared });

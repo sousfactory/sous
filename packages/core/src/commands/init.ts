@@ -28,7 +28,7 @@ export const setupChecklist = (project: string): string[] => [
   `  1. ${join(project, "steps", "verify", "eval.ts")}: set BASE_BRANCH and fill CHECKS (until then every verify passes with a WARN in the log)`,
   `  2. ${join(project, "sous.yaml")}: tracker, baseBranch, branch template, lifecycle`,
   `  3. ${join(project, "flows")}/*.yaml: agent models and allowedLabels; create the labels on the tracker (type:task, type:bug, type:feature)`,
-  `  4. ${join(project, "prompts", "plan.md")}: follow its ADAPT notes; it speaks to the tracker through ${join(project, "trackers", "<tracker>.md")}`,
+  `  4. ${join(project, "prompts", "plan.md")}: follow its ADAPT notes; it speaks to the tracker through ${join(project, "trackers", "<tracker>.md")} and writes the shapes in ${join(project, "templates")}/`,
   `  5. cd ${project} && ./sous validate && npx vitest run; then ./sous run bench <issue> as a smoke test`,
 ];
 

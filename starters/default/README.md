@@ -88,7 +88,9 @@ and `/sous-setup` in Claude Code. Four things are the project's to set:
    them from the bead type).
 4. `prompts/plan.md`: follow its `ADAPT` notes. It speaks to the tracker
    through `trackers/<tracker>.md` (`github`, `beads`, `local`); a tracker
-   module of your own needs a sheet beside it.
+   module of your own needs a sheet beside it. The spec and the issue
+   bodies it writes are the files under `templates/`, which the steps and
+   the tests read too.
 
 Then:
 

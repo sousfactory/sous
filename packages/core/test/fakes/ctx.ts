@@ -62,6 +62,7 @@ export const ctxOf = (options: FakeCtxOptions = {}): FakeCtx => {
     branch,
     repoRoot: options.repoRoot ?? REPO,
     skillsDir: "/repo/.sous/skills",
+    templatesDir: "/repo/.sous/templates",
     sandbox,
     git,
     tracker,

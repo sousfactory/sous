@@ -9,6 +9,19 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Added
 
+- **`templates/`.** The shapes the prompts write live in one folder:
+  `spec.md` (the headings every step reads by name, each with a
+  placeholder saying what it holds and who writes it; the prompts explain
+  no section of their own) with `spec-amendment.md`, `child.md` (the body of a slice, with the parsing
+  contract of the GitHub and bd trackers in its comment) and `task.md`
+  (a lone issue). The plan prompt and the tracker sheets point at them
+  instead of inlining headings; the sheets keep only how the parent and
+  the blockers are expressed. The `plan` step reaches the folder through
+  `ctx.templatesDir`, a new ctx value and prompt placeholder backed by
+  the `templatesDir` setting (default `templates`). The starter tests
+  read the templates and hold the prompts and the plan step's eval to
+  them.
+
 - **`## Decisions` in the spec.** The `implement` and `fix` steps may
   append one line per decision they make while building to a
   `## Decisions` section at the end of `spec.md`, with its reason, and

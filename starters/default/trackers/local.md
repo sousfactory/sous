@@ -56,20 +56,9 @@ they are and the file pretty-printed.
 ## Child shape
 
 A child is in shape when its `labels` hold `type:task`, the parent's
-`children` lists it, its blockers are in `blockedBy`, and its body has:
-
-```markdown
-## What to build
-
-The end-to-end behaviour this slice makes work, from the user's
-perspective, not a layer-by-layer list.
-
-## Acceptance criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-```
-
-The body is handed to the implement and review steps verbatim. A task or
-bug keeps whatever the author wrote plus the `## Acceptance criteria`
-checklist.
+`children` lists it, its blockers are in `blockedBy`, and its body is
+`.sous/templates/child.md` without the `## Parent` and `## Blocked by`
+sections, which are fields here: `## What to build`, then
+`## Acceptance criteria`. The body is handed to the implement and review
+steps verbatim. A task or bug is `.sous/templates/task.md`: whatever the
+author wrote plus the `## Acceptance criteria` checklist.

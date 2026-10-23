@@ -52,15 +52,14 @@ Everything goes through the `bd` CLI in the repository.
 ## Child shape
 
 A child is in shape when it is a task under the parent, its description
-says what to build from the user's perspective, its `acceptance_criteria`
-field holds the checklist, and its blockers are `blocks` dependencies. The
-run phase hands the implement and review steps one body: the description,
+is the `## What to build` text of `.sous/templates/child.md` (what to
+build from the user's perspective, without the heading), its
+`acceptance_criteria` field holds the checklist, and its blockers are
+`blocks` dependencies. The parent and the blockers are fields here, so
+the body carries neither the parent section nor the blockers section of
+the template. The run
+phase hands the implement and review steps one body: the description,
 then the criteria under `## Acceptance Criteria`.
 
-```markdown
-The end-to-end behaviour this slice makes work, from the user's
-perspective, not a layer-by-layer list.
-```
-
-A task or bug keeps its description and carries the checklist in
-`acceptance_criteria`.
+A task or bug (`.sous/templates/task.md`) keeps its description and
+carries the checklist in `acceptance_criteria`.

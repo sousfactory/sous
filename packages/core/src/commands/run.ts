@@ -363,6 +363,7 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
         repoLock: createRepoLock(repoLockPath(root), { pid: deps.pid ?? process.pid, issue: parsed.issue }, deps.isAlive ?? isProcessAlive),
         clock,
         skillsDir: dirs.skills,
+        templatesDir: dirs.templates,
         logsDir: dirs.logs,
         repoRoot,
         onTransition: (s, to) => (to === BLOCKED ? lifecycle.block(s, sandbox.worktreePath) : Promise.resolve()),

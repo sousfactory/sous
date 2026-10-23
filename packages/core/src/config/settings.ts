@@ -13,6 +13,8 @@ export type Settings = {
   flowsDir: string;
   stepsDir: string;
   skillsDir: string;
+  /** The shapes the prompts write: `spec.md`, `child.md`, `task.md`; `ctx.templatesDir` for the steps. */
+  templatesDir: string;
   logsDir: string;
   runsDir: string;
   /** `sous` of `sous:running`, `sous:blocked` and the `sous:merged` a step sets. */
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   flowsDir: "flows",
   stepsDir: "steps",
   skillsDir: "skills",
+  templatesDir: "templates",
   logsDir: "logs",
   runsDir: "runs",
   labelPrefix: "sous",
@@ -58,6 +61,7 @@ const check = checker<Partial<Settings>>({
     flowsDir: { type: "string", minLength: 1 },
     stepsDir: { type: "string", minLength: 1 },
     skillsDir: { type: "string", minLength: 1 },
+    templatesDir: { type: "string", minLength: 1 },
     logsDir: { type: "string", minLength: 1 },
     runsDir: { type: "string", minLength: 1 },
     labelPrefix: { type: "string", minLength: 1 },
@@ -76,13 +80,14 @@ export const parseSettings = (doc: unknown, file: string = SETTINGS_FILE): Setti
 
 export const loadSettings = (file: string): Settings => parseSettings(readYaml(file, true), file);
 
-export type ProjectDirs = Record<"specs" | "flows" | "steps" | "skills" | "logs" | "runs", string>;
+export type ProjectDirs = Record<"specs" | "flows" | "steps" | "skills" | "templates" | "logs" | "runs", string>;
 
 export const projectDirs = (root: string, settings: Settings): ProjectDirs => ({
   specs: resolve(root, settings.specsDir),
   flows: resolve(root, settings.flowsDir),
   steps: resolve(root, settings.stepsDir),
   skills: resolve(root, settings.skillsDir),
+  templates: resolve(root, settings.templatesDir),
   logs: resolve(root, settings.logsDir),
   runs: resolve(root, settings.runsDir),
 });

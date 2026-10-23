@@ -125,8 +125,12 @@ const REQUIRED_SKILLS = [
   ".sous/skills/to-tickets/SKILL.md",
 ];
 
-/** The standard spec headings the plan prompt asks for, in this order. */
-const SPEC_HEADINGS = ["Problem Statement", "Solution", "User Stories", "Implementation Decisions", "Testing Decisions", "Out of Scope", "Further Notes"];
+const template = (name: string): string => readFileSync(join(root, "templates", `${name}.md`), "utf8");
+
+/** The spec headings of `templates/spec.md`, in this order; the plan session fills the first six, the run's steps the last three before Further Notes. */
+const SPEC_HEADINGS = ["Problem Statement", "Solution", "User Stories", "Implementation Decisions", "Testing Decisions", "Out of Scope", "Assumptions", "Open questions", "Decisions", "Further Notes"];
+/** The templates the plan prompt sends the session to. */
+const REQUIRED_TEMPLATES = [".sous/templates/spec.md", ".sous/templates/spec-amendment.md", ".sous/templates/child.md", ".sous/templates/task.md"];
 
 describe("step READMEs", () => {
   const stepNames = readdirSync(join(root, "steps"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
@@ -170,14 +174,16 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     for (const path of referenced) expect(existsSync(join(root, path.replace(/^\.sous\//, ""))), `${path} does not exist`).toBe(true);
   });
 
-  it("lists the standard spec headings in order", () => {
-    const positions = SPEC_HEADINGS.map((h) => text.indexOf(`## ${h}`));
-    for (const [i, pos] of positions.entries()) expect(pos, `## ${SPEC_HEADINGS[i]} not found`).toBeGreaterThanOrEqual(0);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  it("writes the spec, the children and a task's criteria in the shape of the templates, and names no heading list of its own", () => {
+    for (const path of REQUIRED_TEMPLATES) expect(text, `missing reference to ${path}`).toContain(path);
+    const referenced = [...new Set([...text.matchAll(/\.sous\/templates\/[\w./-]+/g)].map((m) => m[0]))];
+    for (const path of referenced) expect(existsSync(join(root, path.replace(/^\.sous\//, ""))), `${path} does not exist`).toBe(true);
+    expect(text).not.toContain("# Spec: <issue title>");
+    for (const h of SPEC_HEADINGS) expect(text, `does not explain ## ${h}; the template does`).not.toContain(`## ${h}`);
+    expect(text).not.toMatch(/numbered list of user stories|file paths or code snippets/);
   });
 
-  it("spells out the spec header block and the slug rule", () => {
-    expect(text).toContain("# Spec: <issue title>");
+  it("spells out the spec header values and the slug rule", () => {
     expect(text).toContain(`- **Issue:** ${ref}`);
     expect(text).toContain("- **Status:** draft");
     expect(text).toContain("specs/<ISSUE>-<slug>/spec.md");
@@ -299,6 +305,60 @@ describe("trackers/beads.md speaks bd", () => {
   it("names the type-to-label mapping the beads tracker applies", () => {
     for (const label of ["type:feature", "type:task", "type:bug"]) expect(text).toContain(label);
     expect(text).toContain("epic or feature");
+  });
+});
+
+describe("templates/", () => {
+  it("spec.md lists the spec headings in order, each with a placeholder saying what it holds, and the header block", () => {
+    const text = template("spec");
+    expect(text.startsWith("# Spec: <issue title>\n")).toBe(true);
+    expect(text).toContain("- **Issue:** <issue ref>");
+    expect(text).toMatch(/- \*\*Status:\*\* <draft .+ derived .+>/);
+    const positions = SPEC_HEADINGS.map((h) => text.indexOf(`## ${h}`));
+    for (const [i, pos] of positions.entries()) expect(pos, `## ${SPEC_HEADINGS[i]} not found`).toBeGreaterThanOrEqual(0);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    for (const h of SPEC_HEADINGS) expect(text, `## ${h} has a placeholder`).toMatch(new RegExp(`## ${h}\\n\\n(- |1\\. )?<[^\\n]+>\\n`));
+    expect(text).toMatch(/## Decisions\n\n<empty when the spec is written; implement and fix append/);
+    expect(text).toMatch(/## Open questions\n\n- <[^\n]*blocked while any is listed>/);
+    expect(text).toContain("Copy the headings, not this");
+  });
+
+  it("spec-amendment.md is the amend block: the same sections as ### headings with placeholders, no Assumptions, Open questions or Decisions", () => {
+    const text = template("spec-amendment");
+    expect(text.startsWith("## Amendment — <short title>\n")).toBe(true);
+    expect(text).toContain("- **Status:** draft");
+    for (const h of [...SPEC_HEADINGS.slice(0, 6), "Further Notes"]) expect(text).toMatch(new RegExp(`### ${h}\\n\\n(1\\. )?<[^\\n]+>\\n`));
+    for (const h of ["Assumptions", "Open questions", "Decisions"]) expect(text).not.toContain(`### ${h}`);
+  });
+
+  it("child.md has the four sections and names what the trackers parse; task.md is the same without parent and blockers", () => {
+    const child = template("child");
+    for (const h of ["## Parent", "## What to build", "## Acceptance criteria", "## Blocked by"]) expect(child).toContain(h);
+    expect(child).toContain("None — can start immediately");
+    expect(child).toMatch(/up to the next\s+`## ` heading/);
+    expect(child).toMatch(/never the\s+repository's build or test commands/);
+    const task = template("task");
+    for (const h of ["## What to build", "## Acceptance criteria"]) expect(task).toContain(h);
+    for (const h of ["## Parent", "## Blocked by"]) expect(task).not.toContain(h);
+    expect(task).toContain("**set the acceptance criteria**");
+  });
+
+  it("the plan step writes the spec in the template's shape and its eval reads sections the template has", () => {
+    const step = loadStep(join(root, "steps", "plan"));
+    if (step.run?.kind !== "prompt") throw new Error("plan is not a prompt step");
+    expect(step.run.prompt).toContain("{{ctx.templatesDir}}/spec.md");
+    expect(step.run.prompt).toContain("- **Status:** derived");
+    expect(step.run.prompt).toContain("replaced with what it asks for");
+    for (const h of SPEC_HEADINGS.filter((h) => !["Assumptions", "Open questions"].includes(h))) expect(step.run.prompt, `does not explain ## ${h}`).not.toContain(`## ${h}`);
+    const evalSource = readFileSync(join(root, "steps", "plan", "eval.ts"), "utf8");
+    for (const section of ["Open questions", "Assumptions"]) {
+      expect(evalSource).toContain(`"${section}"`);
+      expect(template("spec")).toContain(`## ${section}`);
+    }
+  });
+
+  it("every tracker sheet sends the child shape to the template", () => {
+    for (const tracker of ["github", "beads", "local"]) expect(sheet(tracker)).toContain(".sous/templates/child.md");
   });
 });
 

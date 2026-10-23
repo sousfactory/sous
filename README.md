@@ -219,6 +219,7 @@ your-project/
     ├── skills/                   # vendored skills and sous-plan
     ├── prompts/plan.md           # what /sous-plan follows
     ├── trackers/<tracker>.md     # the tracker's verbs for the plan prompt (github, beads, local)
+    ├── templates/                # the shapes the prompts write: spec.md, child.md, task.md
     ├── test/                     # the project's step and flow tests
     ├── logs/<id>/                # agent logs            (gitignored)
     ├── runs/<id>/                # session.json, events.jsonl (gitignored)

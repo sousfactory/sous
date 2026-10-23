@@ -49,35 +49,16 @@ from the checkout.
 
 ## Child shape
 
-What the run phase parses. A child is in shape when it has the `type:task`
-label and these four sections:
-
-```markdown
-## Parent
-
-#<parent>
-
-## What to build
-
-The end-to-end behaviour this slice makes work, from the user's
-perspective, not a layer-by-layer list.
-
-## Acceptance criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-
-## Blocked by
-
-- #<m>
-```
-
-A slice with no blockers writes `None — can start immediately` under
-`## Blocked by`; a missing section means the same. The run phase reads the
-lines under `## Blocked by` up to the next `## ` heading and treats every
-`#<number>` in them as a blocker. The whole body is handed to the implement
-and review steps verbatim, so `## Acceptance criteria` is their definition
-of done.
+A child is in shape when it has the `type:task` label and its body is
+`.sous/templates/child.md` as written, all four sections: `## Parent` with
+`#<parent>`, `## What to build`, `## Acceptance criteria`, `## Blocked by`
+with one `- #<m>` per blocker. A slice with no blockers writes
+`None — can start immediately` under `## Blocked by`; a missing section
+means the same. The run phase reads the lines under `## Blocked by` up to
+the next `## ` heading and treats every `#<number>` in them as a blocker.
+The whole body is handed to the implement and review steps verbatim, so
+`## Acceptance criteria` is their definition of done. A task or bug is
+`.sous/templates/task.md`: the author's text, then the checklist.
 
 A task or bug has no `## Parent` and no `## Blocked by`; its body keeps
 whatever the author wrote plus the `## Acceptance criteria` checklist.

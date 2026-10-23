@@ -43,53 +43,17 @@ this step; what you cannot decide alone you write down and stop.
    finds them, write-only: every place where two readings of the issue lead
    to different work is a candidate; apply the two tests above to sort each
    into an assumption or an open question.
-3. Write the spec with the format of `{{ctx.skillsDir}}/to-spec/SKILL.md`:
-   synthesis, no interview. Keep it short; a derived spec is a restatement
-   with structure, not a design document.
+3. Write the spec as `{{ctx.skillsDir}}/to-spec/SKILL.md` writes one:
+   synthesis, no interview.
 
 ## The file
 
-`{{ctx.specDir}}/spec.md`, with this header and these headings in this
-order; an empty section stays as a heading with "None." under it.
-
-```markdown
-# Spec: <issue title>
-
-- **Issue:** <issue ref>
-- **Status:** derived
-
-## Problem Statement
-
-## Solution
-
-## User Stories
-
-## Implementation Decisions
-
-## Testing Decisions
-
-## Out of Scope
-
-## Assumptions
-
-- <one choice per item: what the issue left open, what you assumed, why>
-
-## Open questions
-
-- <one per item: the readings, and the one you would pick; omit the list when there are none>
-
-## Decisions
-
-## Further Notes
-```
-
-`## Decisions` stays empty here: the implement and fix steps append to
-it what they decide while building, and the reviewer judges those lines.
-
-The user stories and the testing decisions are what the reviewer judges
-the build against, so write them as behaviour that can be checked from
-outside. Never write a criterion that names the repository's build or test
-commands; the run's checks own that gate.
+`{{ctx.specDir}}/spec.md`, in the shape of `{{ctx.templatesDir}}/spec.md`,
+which says what every section holds and who writes it: the headings in
+that order, every `<placeholder>` replaced with what it asks for, none of
+the template's comments, with `- **Issue:** {{ctx.issue.ref}}` and
+`- **Status:** derived`. Keep it short: a derived spec is a restatement
+with structure, not a design document.
 
 ## Commit rules
 

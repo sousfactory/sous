@@ -29,6 +29,7 @@ describe("ctx", () => {
       branch: "feature/12-some-slug",
       repoRoot: "/repo",
       skillsDir: "/repo/.sous/skills",
+      templatesDir: "/repo/.sous/templates",
       sandbox: fakeSandbox({ worktreePath: worktree, exec: { "git status": ok("clean") } }),
       git: fakeGit(),
       tracker: gh,
@@ -58,6 +59,7 @@ describe("ctx", () => {
       repoRoot: "/repo",
       specDir: "specs/12-some-slug",
       skillsDir: "/repo/.sous/skills",
+      templatesDir: "/repo/.sous/templates",
       previous: "build",
       iteration: 2,
       workProgress: { "14": { state: "open", commits: [] } },
@@ -105,7 +107,7 @@ describe("ctx", () => {
     expect(() => ctx.workDone(["a"])).toThrow("modules only");
   });
 
-  it("ctxPlaceholders carries the eight allowed values; the work is the issue itself until a module changes it", () => {
+  it("ctxPlaceholders carries the nine allowed values; the work is the issue itself until a module changes it", () => {
     const d = deps();
     expect(ctxPlaceholders(buildCtx(d, state({ work: { id: "14", ref: "#14", title: "w", body: "" } })))).toEqual({
       "ctx.issue.id": "12",
@@ -116,6 +118,7 @@ describe("ctx", () => {
       "ctx.spec": "# Some slug\n\nthe spec\n",
       "ctx.specDir": "specs/12-some-slug",
       "ctx.skillsDir": d.skillsDir,
+      "ctx.templatesDir": d.templatesDir,
     });
     expect(ctxPlaceholders(buildCtx(d, state()))["ctx.work.id"]).toBe("12");
   });

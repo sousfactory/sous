@@ -19,6 +19,7 @@ describe("parseSettings", () => {
       flowsDir: "flows",
       stepsDir: "steps",
       skillsDir: "skills",
+      templatesDir: "templates",
       logsDir: "logs",
       runsDir: "runs",
       labelPrefix: "sous",
@@ -42,6 +43,7 @@ describe("parseSettings", () => {
       flows: "/repo/.sous/flows",
       steps: "/repo/.sous/steps",
       skills: "/repo/.sous/skills",
+      templates: "/repo/.sous/templates",
       logs: "/repo/.sous/logs",
       runs: "/elsewhere/runs",
     });

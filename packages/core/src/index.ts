@@ -97,6 +97,8 @@ export type Ctx = {
   specDir: string;
   /** Absolute path of the project's skills folder, for pointing an agent at a skill. */
   readonly skillsDir: string;
+  /** Absolute path of the project's templates folder: the shapes a prompt writes (`spec.md`, `child.md`, `task.md`). */
+  readonly templatesDir: string;
   /** The entry visited before this one; `null` at the start. */
   readonly previous: string | null;
   /** Which attempt of the visit an eval judges; 0 when a resumed run re-checks earlier work. Absent outside evals and routes. */

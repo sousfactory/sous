@@ -93,6 +93,7 @@ export const portsOf = (sandbox: FakeSandbox = fakeSandbox(), overrides: FakePor
     work: { id: target.id, ref: target.ref, title: target.title, body: target.body },
     clock: fakeClock(),
     skillsDir: join(execRoot, "skills"),
+    templatesDir: join(execRoot, "templates"),
     logsDir: join(execRoot, "logs"),
     repoRoot: "/repo",
     log: silentLog,

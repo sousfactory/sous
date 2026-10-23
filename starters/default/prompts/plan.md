@@ -170,50 +170,17 @@ The spec is a file, not a tracker entry.
 
 **Spec path:** `specs/<ISSUE>-<slug>/spec.md` in the target, by the slug rule.
 
-<!-- ADAPT: The headings are yours to choose; the run hands the whole file to its steps as `ctx.spec`. -->
-**Create mode:** write the file with this header block and the standard
-headings in exactly this order (the run phase and the reviewer rely on them):
+<!-- ADAPT: The sections, what each holds and who writes it are `.sous/templates/spec.md`; the run hands the whole file to its steps as `ctx.spec`, and the `plan`, `implement`, `fix` and `review` steps read the sections by name. -->
+**Create mode:** write the file in the shape of `.sous/templates/spec.md`,
+which says what every section holds: the headings in that order, every
+`<placeholder>` replaced with what it asks for, none of the template's
+comments, with `- **Issue:** REF` and `- **Status:** draft`. Make the
+stories and the testing decisions concrete and complete: the final review
+judges against them.
 
-```markdown
-# Spec: <issue title>
-
-- **Issue:** REF
-- **Status:** draft
-
-## Problem Statement
-
-## Solution
-
-## User Stories
-
-## Implementation Decisions
-
-## Testing Decisions
-
-## Out of Scope
-
-## Further Notes
-```
-
-Fill each section per the to-spec template: the problem and the solution from
-the user's perspective; a long, numbered list of user stories; implementation
-decisions without file paths or code snippets (unless a prototype snippet
-encodes a decision more precisely than prose); testing decisions naming the
-seams and prior art; what is out of scope. The user stories and testing
-decisions are the acceptance yardstick of the final review, so make them
-concrete and complete.
-
-**Amend mode:** append
-
-```markdown
-## Amendment — <short title>
-
-- **Issue:** REF
-- **Status:** draft
-```
-
-followed by the same standard subsections as `###` headings, covering only the
-new scope. Existing text stays untouched.
+**Amend mode:** append the block of `.sous/templates/spec-amendment.md`
+the same way, `## Amendment — <short title>` with its sections covering
+only the new scope. Existing text stays untouched.
 
 ## 8. Children or criteria
 
@@ -225,8 +192,9 @@ gets published is defined here.
 1. **Reconcile the existing children.** **List the children** of the issue
    and read each one. A closed child, or one carrying a state label, is
    left as it is. For every other child whose body is not in the **child
-   shape** of the sheet: show the human the rewrite first, then **update
-   the body**: the author's text goes under `## What to build` unchanged,
+   shape** (`.sous/templates/child.md`, with the parent and the blockers
+   expressed as the sheet says): show the human the rewrite first, then
+   **update the body**: the author's text goes under `## What to build` unchanged,
    the acceptance criteria are derived from it, and the blockers it names
    become edges. **Set the kind** to task where it is missing. A child that
    is already in shape is left as it is.
@@ -246,7 +214,7 @@ gets published is defined here.
    the order the sheet describes, so publishing in dependency order also
    gives a sensible default order.
 
-<!-- ADAPT: The body sections your steps parse (here `## What to build` and `## Acceptance criteria`, which implement and review receive as one body) are the child shape in the tracker sheet. -->
+<!-- ADAPT: The body sections your steps parse (here `## What to build` and `## Acceptance criteria`, which implement and review receive as one body) are `.sous/templates/child.md`; the tracker sheet says how the parent and the blockers are expressed. -->
 The acceptance criteria of a slice are the implement agent's definition of done
 and the slice reviewer's yardstick; the slice body is passed to both verbatim.
 Write criteria that can be checked from outside: behaviour, not implementation.
@@ -265,12 +233,14 @@ or bug below.
 ### Tasks and bugs
 
 A task or bug has no children. The run phase builds and reviews it from the
-issue itself, so the issue must carry an acceptance criteria checklist,
-written to the same rules as a slice's criteria (behaviour or a named test,
-never a gate command). If the issue already has criteria that match the
-spec, leave them. Otherwise draft them from the spec, show them to the
-human, and after their approval **set the acceptance criteria**, which
-replaces the existing checklist rather than appending to it.
+issue itself, so the issue must carry an acceptance criteria checklist in
+the shape of `.sous/templates/task.md` (the author's text stays as filed,
+the checklist under `## Acceptance criteria`), written to the same rules
+as a slice's criteria (behaviour or a named test, never a gate command).
+If the issue already has criteria that match the spec, leave them.
+Otherwise draft them from the spec, show them to the human, and after
+their approval **set the acceptance criteria**, which replaces the
+existing checklist rather than appending to it.
 
 ## 9. GO gate
 
