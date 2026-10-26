@@ -85,7 +85,7 @@ npx sous init
 
 1. copies the starter bundled with the package into `.sous/` (refuses a
    non-empty `.sous/` unless `--force`);
-2. writes `.sous/.gitignore` with `logs/`, `runs/` and `node_modules/`;
+2. writes `.sous/.gitignore` with `logs/`, `runs/`, `locks/`, `worktrees/` and `node_modules/`;
 3. copies `.sous/skills/sous-plan` to `.claude/skills/sous-plan`, so
    `/sous-plan` is available in Claude Code;
 4. runs `npm install` in `.sous/`;
@@ -99,9 +99,8 @@ What the repository looks like afterwards:
 your-project/
 ├── .claude/skills/sous-plan/     # the planning skill, copied by init from .sous/skills/sous-plan
 ├── specs/<id>-<slug>/spec.md     # written by /sous-plan; the specsDir setting, ../specs from .sous
-├── .sandcastle/worktrees/        # the run's worktree, created by the sandbox at the first run
 └── .sous/
-    ├── .gitignore                # written by init: logs/, runs/, node_modules/
+    ├── .gitignore                # written by init: logs/, runs/, locks/, worktrees/, node_modules/
     ├── sous.yaml                 # settings: tracker, baseBranch, branch, lifecycle, dirs
     ├── sous                      # wrapper: cd here and `npx sous "$@"`
     ├── package.json              # depends on sous-factory; typecheck and test scripts
@@ -130,6 +129,7 @@ your-project/
     ├── trackers/<tracker>.md     # github, beads, local: the tracker's verbs for the plan prompt
     ├── templates/                # spec.md, spec-amendment.md, child.md, task.md: the shapes the prompts write
     ├── test/                     # the project's step and flow tests, over sous-factory/testing
+    ├── worktrees/<branch>/       # the run's worktree, created at the first run (gitignored)
     ├── logs/<id>/                # one agent log per iteration             (gitignored)
     ├── runs/<id>/                # session.json and events.jsonl per issue (gitignored)
     └── locks/<id>.lock           # pid and issue of a running sous run; removed when it ends (gitignored)
@@ -477,10 +477,17 @@ commits, output, skills }</result>` block, `output` matching the printed
 
 ### 8.3 Sandbox and logs
 
-`sous run` opens one sandbox per run: a worktree under
-`.sandcastle/worktrees/` on the run's branch, reused when it exists. Every
-agent call logs to `<logsDir>/<issue>/<spanId>-<scope>-<step>-<n>.log`;
-the event log records the path.
+`sous run` opens one sandbox per run: a git worktree under
+`.sous/worktrees/` on the run's branch (slashes become dashes), reused when
+the branch is already checked out there. A branch checked out anywhere else,
+the primary checkout say, is refused: sous never runs an agent outside its
+own worktree. There is no container: the agent CLI and the eval commands
+are host processes in the worktree, each in its own process group so an
+interrupt ends them with what they started. An agent call that prints
+nothing for `idleTimeoutSeconds` is terminated and counts as a failed
+process. Every agent call logs to
+`<logsDir>/<issue>/<spanId>-<scope>-<step>-<n>.log`: the agent's prose and
+one line per tool call, not the raw stream; the event log records the path.
 
 ### 8.4 Skills
 

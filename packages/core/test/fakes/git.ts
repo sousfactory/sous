@@ -19,6 +19,8 @@ export type FakeGitState = {
   commits: Commit[];
   /** `treeSha(cwd, ref)` per ref; unknown refs get `tree:<ref>`. */
   trees: Record<string, string>;
+  /** Where each branch is checked out, as `worktreeOf` reports it; `addWorktree` adds to it. */
+  worktrees: Record<string, string>;
 };
 
 export type FakeGit = Git & {
@@ -42,6 +44,7 @@ export const fakeGit = (overrides: Partial<FakeGitState> & { existing?: string[]
     ancestors: new Set(),
     commits: [],
     trees: {},
+    worktrees: {},
     ...overrides,
   };
   const existing = new Set(overrides.existing ?? ["main"]);
@@ -135,6 +138,16 @@ export const fakeGit = (overrides: Partial<FakeGitState> & { existing?: string[]
     async removeWorktree(cwd, path) {
       record("removeWorktree", cwd, path);
       removedWorktrees.push(path);
+      for (const [branch, at] of Object.entries(state.worktrees)) if (at === path) delete state.worktrees[branch];
+    },
+    async worktreeOf(cwd, branch) {
+      record("worktreeOf", cwd, branch);
+      return state.worktrees[branch];
+    },
+    async addWorktree(cwd, path, branch, base) {
+      record("addWorktree", cwd, path, branch, base);
+      existing.add(branch);
+      state.worktrees[branch] = path;
     },
   };
 };

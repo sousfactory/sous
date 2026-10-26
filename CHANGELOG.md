@@ -5,6 +5,39 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
+## Unreleased
+
+### Changed
+
+- **The sandbox is sous's own; `@ai-hero/sandcastle` is gone.** The
+  engine runs the agent CLI itself: one module per agent
+  (`adapters/agents/claude.ts`, `codex.ts`) builds the command line and
+  parses the streamed lines; the host runner spawns it with the prompt on
+  stdin in its own process group, applies the idle timeout and ends it on
+  interrupt; the worktree comes from `git worktree add` on the git port.
+  Behaviour that follows: the session id is carried by every provider, so
+  resume is a provider capability and no longer a reason to keep a CLI out
+  (sousfactory/planning#1 is closed); token usage is reported for Codex as
+  well as Claude; the skill audit sees every tool call with its full input;
+  Codex gets `--dangerously-bypass-approvals-and-sandbox` explicitly, as
+  Claude gets `--permission-mode bypassPermissions`; a run no longer
+  touches the host's global git config; Ctrl-C needs no listener juggling.
+  The agent log keeps the agent's prose and one line per tool call, as
+  before, under the same name.
+
+- **Worktrees live under `.sous/worktrees/<branch-with-dashes>/`**, not
+  `.sandcastle/worktrees/`. A run started before this release is found
+  where its branch is checked out and goes on there; `--restart` removes
+  it from there too. The worktree of a branch checked out anywhere else
+  (the primary checkout, say) is refused instead of adopted. `sous init`
+  writes `worktrees/` into `.sous/.gitignore`.
+
+- **Upgrading a project from 0.5.0.** Add `worktrees/` to
+  `.sous/.gitignore`. Nothing else: flows, steps, prompts and settings are
+  unchanged, and `idleTimeoutSeconds` means what it did. A reused clean
+  worktree is no longer fast-forwarded from `origin` on open; pull the
+  branch yourself when it moved elsewhere.
+
 ## 0.5.0
 
 ### Added

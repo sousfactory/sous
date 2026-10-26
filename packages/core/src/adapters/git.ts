@@ -1,5 +1,6 @@
 /** Git over the `git` CLI: one subprocess per call, no decisions beyond exit codes. */
-import { access } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { Commit, Git } from "../ports/git.js";
 import { exec as defaultExec, ExecError, must, type Exec } from "./exec.js";
 
@@ -80,5 +81,25 @@ export const createGit = (exec: Exec = defaultExec): Git => {
       if (await exists(path)) await run(cwd, ["worktree", "remove", "--force", path]);
       await run(cwd, ["worktree", "prune"]);
     },
+    async worktreeOf(cwd, branch) {
+      await run(cwd, ["worktree", "prune"]);
+      return worktreeList(await run(cwd, ["worktree", "list", "--porcelain"])).find((w) => w.branch === branch)?.path;
+    },
+    async addWorktree(cwd, path, branch, base) {
+      await mkdir(dirname(path), { recursive: true });
+      if (await succeeds(cwd, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`])) await run(cwd, ["worktree", "add", path, branch]);
+      else await run(cwd, ["worktree", "add", "-b", branch, path, base]);
+    },
   };
 };
+
+/** The blocks of `git worktree list --porcelain`: a `worktree <path>` line, then `branch refs/heads/<name>` for a checkout on a branch. */
+export const worktreeList = (porcelain: string): { path: string; branch?: string }[] =>
+  porcelain
+    .split("\n\n")
+    .map((block) => block.split("\n"))
+    .flatMap((lines) => {
+      const path = lines.find((l) => l.startsWith("worktree "))?.slice("worktree ".length);
+      const branch = lines.find((l) => l.startsWith("branch refs/heads/"))?.slice("branch refs/heads/".length);
+      return path === undefined ? [] : [{ path, ...(branch !== undefined ? { branch } : {}) }];
+    });

@@ -118,7 +118,7 @@ Look for an existing spec in the target: `ls -d specs/<ISSUE>-*/ 2>/dev/null`.
 <!-- ADAPT: The folders the session may write: spec folder, decision records, glossary. -->
 - You may edit files only under `specs/<ISSUE>-<slug>/`, `docs/adr/` and the
   glossary (`CONTEXT.md`) that the domain-modeling skill maintains. Never
-  create branches, never touch `.sandcastle/` beyond the target worktree,
+  create branches, never touch `.sous/worktrees/` beyond the target worktree,
   never run `./sous`.
 - Do not commit or push anything before the GO gate in step 9.
 

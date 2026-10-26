@@ -16,7 +16,7 @@ import { PROJECT_DIR } from "../root.js";
 export const USAGE = "usage: sous init [--starter <dir>] [--force]";
 
 /** What a run leaves behind and what `npm install` creates; never committed. */
-export const GITIGNORE = "logs/\nruns/\nlocks/\nnode_modules/\n";
+export const GITIGNORE = "logs/\nruns/\nlocks/\nworktrees/\nnode_modules/\n";
 
 /** The skill as the starter ships it, and where Claude Code looks for it. */
 export const SKILL_SOURCE = join("skills", "sous-plan");

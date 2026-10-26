@@ -2,7 +2,7 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createGit } from "./adapters/git.js";
-import { openSandbox } from "./adapters/sandcastle.js";
+import { createOpenSandbox } from "./adapters/sandbox.js";
 import { graphCommand } from "./commands/graph.js";
 import { initCommand } from "./commands/init.js";
 import { confirmOnStdin, runCommand } from "./commands/run.js";
@@ -58,8 +58,10 @@ const commands = (root: string): Record<string, Command> => {
   return {
     validate: (args) => validateCommand(args, { root, ...io }),
     graph: (args) => graphCommand(args, { root, ...io }),
-    run: async (args) =>
-      runCommand(args, { root, repoRoot, git: createGit(), tracker: await trackerOf(root, repoRoot), openSandbox, confirm: confirmOnStdin, ...io }),
+    run: async (args) => {
+      const git = createGit();
+      return runCommand(args, { root, repoRoot, git, tracker: await trackerOf(root, repoRoot), openSandbox: createOpenSandbox(git), confirm: confirmOnStdin, ...io });
+    },
     status: (args) => statusCommand(args, { root, ...io }),
     ui: (args) => uiCommand(args, root),
   };

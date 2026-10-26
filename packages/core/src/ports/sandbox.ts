@@ -1,6 +1,6 @@
 /**
- * Where agents and eval commands run: one issue worktree. Keeps sandcastle
- * behind a seam so tests can script it and steps never import it.
+ * Where agents and eval commands run: one issue worktree. A seam, so tests
+ * can script it and steps never see a process.
  *
  * The sandbox is opened with the run's abort signal. Once it aborts, the
  * agent process and any command in flight are terminated, and `runAgent`
@@ -29,7 +29,7 @@ export type AgentResult = {
   envelope: Envelope;
   /** Undefined for providers that do not expose session ids. */
   sessionId?: string;
-  /** Of the call that produced the envelope; Claude only. */
+  /** Of the call that produced the envelope, when the provider reports it. */
   usage?: TokenUsage;
   /** Of the call that produced the envelope: the retry's file after a retry. */
   logPath?: string;

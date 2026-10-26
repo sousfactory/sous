@@ -14,7 +14,7 @@ const blocked = (): Session => {
   return markBlocked(s);
 };
 
-const WT = "/repo/.sandcastle/worktrees/feature-1-test";
+const WT = "/repo/.sous/worktrees/feature-1-test";
 
 describe("blockedComment", () => {
   it("names the step, iteration, eval tail of the current scope, worktree and how to resume", () => {

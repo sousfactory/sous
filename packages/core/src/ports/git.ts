@@ -43,4 +43,8 @@ export type Git = {
   isAncestor(cwd: string, a: string, b: string): Promise<boolean>;
   /** Force-removes the worktree at `path`; a no-op when it is not a registered worktree. */
   removeWorktree(cwd: string, path: string): Promise<void>;
+  /** The path `branch` is checked out at, the primary checkout included; undefined when it is not. Prunes stale worktrees first. */
+  worktreeOf(cwd: string, branch: string): Promise<string | undefined>;
+  /** `git worktree add`: checks `branch` out at `path`, creating it from `base` when it does not exist. */
+  addWorktree(cwd: string, path: string, branch: string, base: string): Promise<void>;
 };

@@ -221,6 +221,7 @@ your-project/
     ├── trackers/<tracker>.md     # the tracker's verbs for the plan prompt (github, beads, local)
     ├── templates/                # the shapes the prompts write: spec.md, child.md, task.md
     ├── test/                     # the project's step and flow tests
+    ├── worktrees/<branch>/       # the run's worktree   (gitignored)
     ├── logs/<id>/                # agent logs            (gitignored)
     ├── runs/<id>/                # session.json, events.jsonl (gitignored)
     └── locks/<id>.lock           # one run per issue; runs on different issues go in parallel

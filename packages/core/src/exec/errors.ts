@@ -28,9 +28,9 @@ export class AgentOutputError extends SousError {
 }
 
 /**
- * The agent process itself failed: a non-zero exit, an idle timeout or any
- * other error sandcastle raised while running it. The executor records it as
- * a failed iteration and retries, resuming `sessionId` when one is known.
+ * The agent process itself failed: a non-zero exit, an idle timeout or a
+ * CLI that could not be started. The executor records it as a failed
+ * iteration and retries, resuming `sessionId` when one is known.
  */
 export class AgentProcessError extends SousError {
   readonly exitCode: number | undefined;

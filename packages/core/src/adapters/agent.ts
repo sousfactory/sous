@@ -1,24 +1,23 @@
 /**
- * Pure glue between an `AgentRequest` and a sandcastle run, kept free of I/O
- * so it is testable without an agent: provider selection, envelope
- * extraction and validation, option assembly. Prompt and retry texts belong
- * to the executor.
+ * Pure glue between an `AgentRequest` and an agent process, kept free of
+ * I/O so it is testable without an agent: provider selection, envelope
+ * extraction and validation. Prompt and retry texts belong to the executor.
  */
-import { claudeCode, codex, type AgentProvider, type AgentStreamEvent, type SandboxRunOptions } from "@ai-hero/sandcastle";
 import type { Agent } from "../config/flow.js";
 import { validator } from "../config/schema.js";
 import type { Envelope } from "../index.js";
-import type { AgentRequest } from "../ports/sandbox.js";
 import { skillsSchema } from "../skills.js";
+import { claude } from "./agents/claude.js";
+import { codex } from "./agents/codex.js";
+import type { Provider } from "./agents/provider.js";
 
 export const RESULT_TAG = "result";
 
-export const selectAgent = ({ kind, model }: Agent): AgentProvider =>
-  kind === "claude" ? claudeCode(model, { permissionMode: "bypassPermissions" }) : codex(model);
+export const selectAgent = ({ kind }: Agent): Provider => (kind === "claude" ? claude : codex);
 
 export type ParsedEnvelope = { ok: true; envelope: Envelope } | { ok: false; reason: string; rawMatched: string | undefined };
 
-/** Contents of the last `<tag>…</tag>` pair in `text`, or undefined (sandcastle's rule). */
+/** Contents of the last `<tag>…</tag>` pair in `text`, or undefined. */
 export const lastTagContent = (text: string, tag: string = RESULT_TAG): string | undefined => {
   const open = `<${tag}>`;
   const close = `</${tag}>`;
@@ -74,21 +73,3 @@ export const parseEnvelope = (stdout: string, outputSchema: Record<string, unkno
   if (problem !== undefined) return { ok: false, reason: `<${RESULT_TAG}> failed schema validation: ${problem}`, rawMatched: raw };
   return { ok: true, envelope: json as Envelope };
 };
-
-export type RunOptionsDeps = {
-  agent: AgentProvider;
-  idleTimeoutSeconds: number;
-  /** The tool call collector. */
-  onEvent?: (event: AgentStreamEvent) => void;
-  /** The run's interrupt: aborting it kills the agent process and rejects the run. */
-  signal?: AbortSignal;
-};
-
-export const buildRunOptions = (req: AgentRequest, deps: RunOptionsDeps): SandboxRunOptions => ({
-  agent: deps.agent,
-  prompt: req.prompt,
-  ...(req.resumeSession !== undefined ? { resumeSession: req.resumeSession } : {}),
-  idleTimeoutSeconds: deps.idleTimeoutSeconds,
-  logging: { type: "file", path: req.logPath, ...(deps.onEvent !== undefined ? { onAgentStreamEvent: deps.onEvent } : {}) },
-  ...(deps.signal !== undefined ? { signal: deps.signal } : {}),
-});

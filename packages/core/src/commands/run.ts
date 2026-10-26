@@ -12,7 +12,7 @@ import { join, relative } from "node:path";
 import { createInterface } from "node:readline";
 import { createFileEventLog } from "../adapters/eventlog.js";
 import { exec } from "../adapters/exec.js";
-import { worktreePathFor, type OpenSandbox } from "../adapters/sandcastle.js";
+import { worktreePathFor, type OpenSandbox } from "../adapters/sandbox.js";
 import { acceptsLabels, BLOCKED, DONE, loadFlow, type Flow } from "../config/flow.js";
 import { messageOf } from "../config/schema.js";
 import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
@@ -103,24 +103,10 @@ const STOP_SIGNALS = Object.keys(SIGNAL_EXIT_CODES) as StopSignal[];
 /**
  * `handler` runs once, then the process exits (after `graceMs` at the
  * latest); a second signal exits at once.
- *
- * sous owns both signals while this is installed: every other listener,
- * present or added later, is set aside until the uninstaller puts it back.
- * Reason: sandcastle's shutdown registry, attached when the sandbox opens,
- * calls `process.exit(1)` synchronously on either signal, which ended the
- * process before the handler's first await. Moving a late listener in a
- * microtask is safe because signals arrive from the event loop, never in
- * between.
  */
 export const onProcessSignal = (handler: SignalHandler, options: ProcessSignalOptions = {}): (() => void) => {
   const exit = options.exit ?? ((code: number) => process.exit(code));
   const graceMs = options.graceMs ?? SIGNAL_GRACE_MS;
-  const setAside: [StopSignal, (...args: unknown[]) => void][] = [];
-  const takeOver = (signal: StopSignal, other: (...args: unknown[]) => void) => {
-    if (other === listener || !process.listeners(signal).includes(other)) return;
-    process.off(signal, other);
-    setAside.push([signal, other]);
-  };
   let handling = false;
   const listener = (signal: StopSignal) => {
     const code = SIGNAL_EXIT_CODES[signal];
@@ -139,18 +125,9 @@ export const onProcessSignal = (handler: SignalHandler, options: ProcessSignalOp
       .catch(() => undefined)
       .finally(exitOnce);
   };
-  const onNewListener = (event: string | symbol, other: (...args: unknown[]) => void) => {
-    if (event === "SIGINT" || event === "SIGTERM") queueMicrotask(() => takeOver(event, other));
-  };
-  for (const signal of STOP_SIGNALS) {
-    for (const other of process.listeners(signal)) takeOver(signal, other as (...args: unknown[]) => void);
-    process.on(signal, listener);
-  }
-  process.on("newListener", onNewListener);
+  for (const signal of STOP_SIGNALS) process.on(signal, listener);
   return () => {
-    process.off("newListener", onNewListener);
     for (const signal of STOP_SIGNALS) process.off(signal, listener);
-    for (const [signal, other] of setAside.splice(0)) if (!process.listeners(signal).includes(other)) process.on(signal, other);
   };
 };
 
@@ -272,9 +249,10 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     const run = runDir(runs, issue.id);
 
     // Run folder, worktree and branch may each be missing already; removing
-    // what is not there is a no-op.
+    // what is not there is a no-op. The worktree is wherever the branch is
+    // checked out, so a run from before 0.6.0 is found under `.sandcastle/`.
     if (parsed.restart) {
-      const worktree = worktreePathFor(repoRoot, branch);
+      const worktree = (await git.worktreeOf(repoRoot, branch)) ?? worktreePathFor(repoRoot, branch);
       if (!(await deps.confirm(`Delete the run folder ${run}, worktree ${worktree} and branch ${branch} of ${issue.ref}? [y/N] `))) {
         err("sous run: restart cancelled");
         return 1;

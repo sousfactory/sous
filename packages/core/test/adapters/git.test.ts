@@ -1,8 +1,8 @@
-import { writeFile } from "node:fs/promises";
+import { realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { exec } from "../../src/adapters/exec.js";
-import { createGit } from "../../src/adapters/git.js";
+import { createGit, worktreeList } from "../../src/adapters/git.js";
 import type { Git } from "../../src/ports/git.js";
 import { tempRepo, type TempRepo } from "../helpers/repo.js";
 
@@ -164,6 +164,34 @@ describe("git adapter (real repository)", () => {
     await git.squashMerge(main, "feature/1-x", "feat(#1): a");
     expect(await git.treeSha(main, "feature/1-x")).toBe(await git.treeSha(main, "main"));
     await expect(git.treeSha(main, "nope")).rejects.toThrow(/git rev-parse failed/);
+  });
+
+  it("addWorktree checks a branch out at a path, creating it from the base when new; worktreeOf finds it, or the primary checkout", async () => {
+    const wt = join(repo.dir, ".sous", "worktrees", "feature-2-y");
+    expect(await git.worktreeOf(main, "feature/2-y")).toBeUndefined();
+    expect(await git.worktreeOf(main, "main")).toBe(await realpath(main));
+
+    await git.addWorktree(main, wt, "feature/2-y", "main");
+    expect(await git.branchExists(main, "feature/2-y")).toBe(true);
+    expect(await git.currentBranch(wt)).toBe("feature/2-y");
+    expect(await git.worktreeOf(main, "feature/2-y")).toBe(await realpath(wt));
+
+    // An existing branch is checked out where it stands, not recreated from the base.
+    const sha = await repo.commitFile("y.txt", "y\n", "feat: y", wt);
+    await git.removeWorktree(main, wt);
+    const again = join(repo.dir, ".sous", "worktrees", "again");
+    await git.addWorktree(main, again, "feature/2-y", "main");
+    expect(await git.currentBranch(again)).toBe("feature/2-y");
+    expect(await git.headSha(again)).toBe(sha);
+  });
+
+  it("worktreeList reads the porcelain blocks", () => {
+    expect(worktreeList("worktree /r\nHEAD abc\nbranch refs/heads/main\n\nworktree /r/.sous/worktrees/f-1\nHEAD def\nbranch refs/heads/feature/1\n\nworktree /r/detached\nHEAD 123\ndetached\n")).toEqual([
+      { path: "/r", branch: "main" },
+      { path: "/r/.sous/worktrees/f-1", branch: "feature/1" },
+      { path: "/r/detached" },
+    ]);
+    expect(worktreeList("")).toEqual([]);
   });
 
   it("removeWorktree removes a registered worktree and tolerates a missing path", async () => {

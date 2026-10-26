@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFileEventLog } from "../../src/adapters/eventlog.js";
-import { worktreePathFor, type OpenSandbox, type OpenSandboxOptions } from "../../src/adapters/sandcastle.js";
+import { worktreePathFor, type OpenSandbox, type OpenSandboxOptions } from "../../src/adapters/sandbox.js";
 import { lockPath, locksDir } from "../../src/commands/lock.js";
 import { existingSpecDirName, onProcessSignal, parseRunArgs, runCommand, type RunDeps, type SignalHandler, type StopSignal } from "../../src/commands/run.js";
 import { AgentProcessError } from "../../src/exec/errors.js";
@@ -77,7 +77,7 @@ describe("runCommand", () => {
   });
   afterEach(() => rm(repoRoot, { recursive: true, force: true }));
 
-  /** Like sandcastle: creates the branch when missing, reuses it otherwise. */
+  /** Like the real one: creates the branch when missing, reuses it otherwise. */
   const openSandbox: OpenSandbox = async (options) => {
     opened.push(options);
     git.existing.add(options.branch);
@@ -257,11 +257,11 @@ describe("runCommand", () => {
   });
 
   it("closes the segment as crashed when the run throws, keeping the session where it was", async () => {
-    agent = [new Error("sandcastle exploded")];
+    agent = [new Error("agent exploded")];
 
-    await expect(runCommand(["walk", "7"], deps())).rejects.toThrow("sandcastle exploded");
+    await expect(runCommand(["walk", "7"], deps())).rejects.toThrow("agent exploded");
 
-    expect((await savedEvents()).at(-1)).toMatchObject({ type: "run.end", runId: "r1", outcome: "crashed", error: "sandcastle exploded" });
+    expect((await savedEvents()).at(-1)).toMatchObject({ type: "run.end", runId: "r1", outcome: "crashed", error: "agent exploded" });
     expect((await savedSession()).current).toBe("work");
     expect(await lockExists()).toBe(false);
   });
@@ -498,12 +498,15 @@ describe("runCommand", () => {
     confirmed = false;
     expect(await runCommand(["walk", "7", "--restart"], deps())).toBe(1);
     expect(err).toEqual(["sous run: restart cancelled"]);
-    expect(git.calls).toEqual([]);
+    // Only the lookup of where the branch is checked out, to name the worktree in the question.
+    expect(git.calls).toEqual([`worktreeOf(${repoRoot}, ${BRANCH})`]);
     expect((await savedSession()).current).toBe("finish");
 
     confirmed = true;
+    git.calls.length = 0;
     expect(await runCommand(["walk", "7", "--restart"], deps())).toBe(0);
-    expect(git.calls.slice(0, 3)).toEqual([
+    expect(git.calls.slice(0, 4)).toEqual([
+      `worktreeOf(${repoRoot}, ${BRANCH})`,
       `removeWorktree(${repoRoot}, ${worktreePathFor(repoRoot, BRANCH)})`,
       `branchExists(${repoRoot}, ${BRANCH})`,
       `deleteBranch(${repoRoot}, ${BRANCH}, true)`,
@@ -532,14 +535,11 @@ describe("onProcessSignal", () => {
   /** Like Node's own delivery: the signal name is the listener's argument. */
   const deliver = (signal: StopSignal) => process.emit(signal, signal);
 
-  it("runs the handler, then exits with 130/143; other listeners, before or after, are set aside and put back", async () => {
-    // Stands in for sandcastle's shutdown registry: process.exit(1) at once.
-    const before = vi.fn();
-    const after = vi.fn();
-    process.on("SIGTERM", before);
+  it("runs the handler, then exits with 130/143; the uninstaller takes both listeners off", async () => {
     const exits: number[] = [];
     let release!: () => void;
     const handled: StopSignal[] = [];
+    const listenersBefore = SIGNALS.map((s) => process.listeners(s).length);
     uninstall = onProcessSignal(
       (signal) => {
         handled.push(signal);
@@ -547,8 +547,7 @@ describe("onProcessSignal", () => {
       },
       { exit: (code) => exits.push(code) },
     );
-    process.on("SIGTERM", after);
-    await Promise.resolve();
+    for (const [i, signal] of SIGNALS.entries()) expect(process.listeners(signal)).toHaveLength((listenersBefore[i] ?? 0) + 1);
 
     deliver("SIGTERM");
     await new Promise((r) => setTimeout(r, 5));
@@ -556,14 +555,10 @@ describe("onProcessSignal", () => {
     expect(exits).toEqual([]);
     release();
     await vi.waitFor(() => expect(exits).toEqual([143]));
-    expect(before).not.toHaveBeenCalled();
-    expect(after).not.toHaveBeenCalled();
 
     uninstall();
     uninstall = undefined;
-    for (const signal of SIGNALS) expect(process.listeners(signal).filter((l) => l === before || l === after)).toHaveLength(signal === "SIGTERM" ? 2 : 0);
-    process.off("SIGTERM", before);
-    process.off("SIGTERM", after);
+    for (const [i, signal] of SIGNALS.entries()) expect(process.listeners(signal)).toHaveLength(listenersBefore[i] ?? 0);
   });
 
   it("exits after the grace period when the handler does not settle, and at once on a second signal", async () => {

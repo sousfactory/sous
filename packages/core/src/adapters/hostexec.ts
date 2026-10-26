@@ -1,27 +1,30 @@
 /**
- * Host commands that an abort can stop. sandcastle's `noSandbox()` cannot:
- * an aborted `run()` rejects, but the agent process keeps running (sandcastle
- * only stops awaiting it). `killableNoSandbox` swaps in an `exec` that runs
- * each command in its own process group and sends SIGTERM to every group
- * still running on abort. The group holds the shell, the agent and what it
- * started (a `./gradlew test` and its JVMs); only a process that starts its
- * own session or group escapes.
+ * Host commands that an abort can stop. Each command runs in its own process
+ * group and gets SIGTERM for the whole group on abort, so the group holds
+ * the shell, the agent and what it started (a `./gradlew test` and its
+ * JVMs); only a process that starts its own session or group escapes.
  *
- * Every command goes through it: the agent, sandcastle's own git calls in
- * the worktree, and `Sandbox.exec` (evals).
+ * Every command goes through it: the agent, and `Sandbox.exec` (evals).
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { constants } from "node:os";
 import { createInterface } from "node:readline";
-import type { SandboxProvider } from "@ai-hero/sandcastle";
-import { noSandbox } from "@ai-hero/sandcastle/sandboxes/no-sandbox";
 
-/** sandcastle's `NoSandboxHandle.exec` options and result. */
-export type HostExecOptions = { onLine?: (line: string) => void; cwd?: string; sudo?: boolean; stdin?: string };
-export type HostExecResult = { stdout: string; stderr: string; exitCode: number };
-export type HostExec = (command: string, options?: HostExecOptions) => Promise<HostExecResult>;
+export type HostExecOptions = {
+  /** Called with every stdout line as it arrives; the stdout kept for the result is then a bounded tail. */
+  onLine?: (line: string) => void;
+  cwd?: string;
+  stdin?: string;
+  /** Over the base environment. */
+  env?: Record<string, string>;
+  /** The command is terminated once it has printed nothing for this long; the result then says `timedOut`. */
+  idleTimeoutMs?: number;
+};
+export type HostExecResult = { stdout: string; stderr: string; exitCode: number; timedOut?: true };
+/** A string runs through `sh -c`; an argv runs the executable directly, no shell, no quoting. */
+export type HostExec = (command: string | readonly string[], options?: HostExecOptions) => Promise<HostExecResult>;
 
-/** As sandcastle's no-sandbox: the tail of streamed output kept for the result. */
+/** The tail of streamed output kept for the result. */
 export const MAX_TAIL_CHARS = 64 * 1024;
 
 const boundedTail = (max: number, separator: string) => {
@@ -68,51 +71,58 @@ export const createHostExec = ({ cwd, env, signal, maxTailChars = MAX_TAIL_CHARS
   return (command, options = {}) =>
     new Promise<HostExecResult>((resolve, reject) => {
       if (signal?.aborted) return reject(signal.reason);
-      const proc = spawn("sh", ["-c", command], {
+      const [file, args] = typeof command === "string" ? ["sh", ["-c", command]] : [command[0] ?? "", command.slice(1)];
+      const proc = spawn(file, args, {
         cwd: options.cwd ?? cwd,
-        env,
+        env: { ...env, ...options.env },
         stdio: [options.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
         detached: true,
       });
       running.add(proc);
       if (options.stdin !== undefined) proc.stdin?.end(options.stdin);
 
+      let timedOut = false;
+      let idle: NodeJS.Timeout | undefined;
+      const touch = () => {
+        if (options.idleTimeoutMs === undefined) return;
+        clearTimeout(idle);
+        idle = setTimeout(() => {
+          timedOut = true;
+          terminate(proc);
+        }, options.idleTimeoutMs);
+      };
+      touch();
+
       const stdout = boundedTail(options.onLine !== undefined ? maxTailChars : Infinity, options.onLine !== undefined ? "\n" : "");
       const stderr = boundedTail(options.onLine !== undefined ? maxTailChars : Infinity, "");
       const { onLine } = options;
       if (onLine !== undefined && proc.stdout !== null) {
         createInterface({ input: proc.stdout }).on("line", (line) => {
+          touch();
           stdout.push(line);
           onLine(line);
         });
-      } else proc.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk.toString()));
-      proc.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk.toString()));
+      } else {
+        proc.stdout?.on("data", (chunk: Buffer) => {
+          touch();
+          stdout.push(chunk.toString());
+        });
+      }
+      proc.stderr?.on("data", (chunk: Buffer) => {
+        touch();
+        stderr.push(chunk.toString());
+      });
 
       proc.on("error", (error) => {
+        clearTimeout(idle);
         running.delete(proc);
         reject(new Error(`exec failed: ${error.message}`));
       });
       proc.on("close", (code, exitSignal) => {
+        clearTimeout(idle);
         running.delete(proc);
         if (signal?.aborted) reject(signal.reason);
-        else resolve({ stdout: stdout.toString(), stderr: stderr.toString(), exitCode: exitCodeOf(code, exitSignal) });
+        else resolve({ stdout: stdout.toString(), stderr: stderr.toString(), exitCode: exitCodeOf(code, exitSignal), ...(timedOut ? { timedOut: true } : {}) });
       });
     });
-};
-
-/** `noSandbox()` underneath its public type: `create` returns the handle sandcastle runs every command through. */
-type NoSandboxInternals = {
-  create(options: { worktreePath: string; env?: Record<string, string> }): Promise<{ exec: HostExec }>;
-};
-
-export const killableNoSandbox = (signal?: AbortSignal): SandboxProvider => {
-  const base = noSandbox() as unknown as NoSandboxInternals;
-  const provider: NoSandboxInternals = {
-    ...base,
-    create: async (options) => {
-      const handle = await base.create(options);
-      return { ...handle, exec: createHostExec({ cwd: options.worktreePath, env: { ...process.env, ...options.env }, ...(signal !== undefined ? { signal } : {}) }) };
-    },
-  };
-  return provider as unknown as SandboxProvider;
 };

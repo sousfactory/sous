@@ -55,7 +55,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-hero/sandcastle": "^0.12.0",
     "ajv": "^8.17.0",
     "tsx": "^4.19.0",
     "yaml": "^2.8.0"

@@ -9,7 +9,7 @@ const core = join(dirname(fileURLToPath(import.meta.url)), "..");
 const starter = join(core, "..", "..", "starters", "default");
 const ui = join(core, "..", "ui");
 
-const skipped = new Set(["node_modules", "logs", "runs", "locks", ".lock"]);
+const skipped = new Set(["node_modules", "logs", "runs", "locks", "worktrees", ".lock"]);
 rmSync(join(core, "starter"), { recursive: true, force: true });
 cpSync(starter, join(core, "starter"), { recursive: true, filter: (src) => !skipped.has(src.split("/").at(-1) ?? "") });
 

@@ -241,8 +241,8 @@ describe("runFlow: agent failures", () => {
   });
 
   it("propagates any other error from the sandbox, leaving the span open", async () => {
-    const ports = portsOf(fakeSandbox({ agent: [new Error("sandcastle exploded")] }));
-    await expect(visit(entryOf("build", "agent", { with: { task: "x" } }), undefined, ports)).rejects.toThrow("sandcastle exploded");
+    const ports = portsOf(fakeSandbox({ agent: [new Error("agent exploded")] }));
+    await expect(visit(entryOf("build", "agent", { with: { task: "x" } }), undefined, ports)).rejects.toThrow("agent exploded");
     expect(ports.events.types()).toEqual(["span.open", "iteration.agent.start"]);
     expect(ports.persisted).toHaveLength(1);
   });

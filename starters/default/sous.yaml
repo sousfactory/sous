@@ -8,7 +8,7 @@ baseBranch: main                                  # runs fork from it; merge squ
 branch: feature/${{ issue.id }}-${{ slug }}       # run branch; slug = first four words of the issue title
 labelPrefix: sous                                  # sous:running / sous:blocked set by the run, sous:merged by the merge step
 lifecycle: core                                   # the run claims, blocks and closes its issue; steps: the core only reads the tracker
-idleTimeoutSeconds: 1800                          # agent idle timeout; a long build may need more than sandcastle's 600
+idleTimeoutSeconds: 1800                          # an agent call fails once it has printed nothing for this long
 tracker: github                                   # github, beads, local, or the path of a project module (see README)
 
 specsDir: ../specs                                # <specsDir>/<issue>-<slug>/spec.md, written by /sous-plan
