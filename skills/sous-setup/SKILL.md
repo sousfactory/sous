@@ -42,9 +42,7 @@ under `.claude/skills/`. Read its checklist output.
 
 Read the file, propose the edit, show the diff, write on a yes.
 
-1. `.sous/steps/verify/eval.ts`: `BASE_BRANCH` (the branch the checkout
-   is on, `git rev-parse --abbrev-ref HEAD` is the usual answer) and
-   `CHECKS`. Find candidates in the repository first and propose them:
+1. `.sous/steps/verify/eval.ts`: `CHECKS`. Find candidates in the repository first and propose them:
    `package.json` scripts (`test`, `typecheck`, `lint`, `build`),
    `gradlew` (`./gradlew build`), `Cargo.toml` (`cargo test`),
    `Makefile` targets, `pyproject.toml` (`pytest`). One `{ command }` per
@@ -52,7 +50,9 @@ Read the file, propose the edit, show the diff, write on a yes.
    Remove the TODO lines once filled. An empty list means every verify
    passes with a WARN in the log; say so if the human wants to defer it.
 2. `.sous/sous.yaml`: `tracker` (the answer from step 1), `baseBranch`
-   (same as above), the `branch` template, `lifecycle` (`core`: runs
+   (the branch the checkout is on, `git rev-parse --abbrev-ref HEAD` is
+   the usual answer; the flows and the verify eval read it as
+   `ctx.baseBranch`), the `branch` template, `lifecycle` (`core`: runs
    claim, block and close the issue; `steps`: the project's steps do).
    Keep the other defaults unless asked. The plan prompt speaks to the
    tracker through `.sous/trackers/<tracker>.md`; the starter ships

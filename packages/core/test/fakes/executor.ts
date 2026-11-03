@@ -92,6 +92,7 @@ export const portsOf = (sandbox: FakeSandbox = fakeSandbox(), overrides: FakePor
     spec: (specDir) => readSpec(sandbox.worktreePath, specDir, target).text,
     work: { id: target.id, ref: target.ref, title: target.title, body: target.body },
     clock: fakeClock(),
+    baseBranch: "main",
     skillsDir: join(execRoot, "skills"),
     templatesDir: join(execRoot, "templates"),
     logsDir: join(execRoot, "logs"),

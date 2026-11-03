@@ -56,7 +56,8 @@ describe("setupChecklist", () => {
     const lines = setupChecklist(".sous");
     expect(lines).toHaveLength(6);
     expect(lines[0]).toBe("init: still to do by hand:");
-    expect(lines[1]).toContain(".sous/steps/verify/eval.ts: set BASE_BRANCH and fill CHECKS");
+    expect(lines[1]).toContain(".sous/steps/verify/eval.ts: fill CHECKS (until then every verify passes with a WARN in the log)");
+    expect(lines[1]).not.toContain("BASE_BRANCH");
     expect(lines[2]).toContain(".sous/sous.yaml: tracker, baseBranch, branch template, lifecycle");
     expect(lines[3]).toContain(".sous/flows/*.yaml: agent models and allowedLabels");
     expect(lines[3]).toContain("type:task, type:bug, type:feature");

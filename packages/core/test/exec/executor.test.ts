@@ -261,6 +261,18 @@ describe("runFlow: deterministic steps", () => {
     expect(ports.sandbox.requests).toEqual([]);
   });
 
+  it("reads ctx.baseBranch, the base branch setting, in inputs and routes; main unless a run sets another", async () => {
+    const entry = entryOf("start", "echo", { with: { a: '${{ ctx.baseBranch + "...HEAD" }}', b: "lit" }, routes: [{ to: "blocked", when: "ctx.baseBranch !== 'dev'" }, { to: "done" }] });
+
+    const onDev = portsOf(fakeSandbox(), { baseBranch: "dev" });
+    expect((await visit(entry, undefined, onDev)).next).toBe("done");
+    expect(onDev.events.of("output")[0]).toMatchObject({ envelope: { output: { inputs: { a: "dev...HEAD" } } } });
+
+    const byDefault = portsOf();
+    expect((await visit(entry, undefined, byDefault)).next).toBe("blocked");
+    expect(byDefault.events.of("output")[0]).toMatchObject({ envelope: { output: { inputs: { a: "main...HEAD" } } } });
+  });
+
   it("evaluates once and routes a failed eval; a void module records no output", async () => {
     const check = entryOf("check", "echo-eval", {
       with: { pass: "no" },

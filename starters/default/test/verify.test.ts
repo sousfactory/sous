@@ -3,11 +3,11 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ctxOf, fail, fakeSandbox, ok, type FakeSandboxOptions } from "sous-factory/testing";
 import type { EvalFn } from "sous-factory";
-import verify, { BASE_BRANCH, CHECKS, checksFor, diffCommand, NO_CHECKS_WARNING, type Check } from "../steps/verify/eval.js";
+import verify, { CHECKS, checksFor, diffCommand, NO_CHECKS_WARNING, type Check } from "../steps/verify/eval.js";
 import { checkedSteps, type CheckedSteps } from "./checked-steps.js";
 
 const WORKTREE = "/tmp/wt";
-export const DIFF = diffCommand(BASE_BRANCH);
+export const DIFF = "git diff --name-only main...HEAD";
 
 const FULL: Check = { command: "npm test" };
 const INFRA: Check = { command: "./gradlew build", dir: "infra", when: "infra" };
@@ -18,15 +18,14 @@ const WEB: Check[] = [
 const FILLED = [FULL, INFRA, ...WEB];
 
 /** A ctx whose shell answers per command; the diff lists `changed`. */
-const setup = (changed: string[], exec: FakeSandboxOptions["exec"] = {}) => {
-  const sandbox = fakeSandbox({ worktreePath: WORKTREE, exec: { [DIFF]: ok(changed.map((c) => `${c}\n`).join("")), ...exec } });
-  return { ...ctxOf({ sandbox, worktree: WORKTREE }), sandbox };
+const setup = (changed: string[], exec: FakeSandboxOptions["exec"] = {}, baseBranch = "main") => {
+  const sandbox = fakeSandbox({ worktreePath: WORKTREE, exec: { [diffCommand(baseBranch)]: ok(changed.map((c) => `${c}\n`).join("")), ...exec } });
+  return { ...ctxOf({ sandbox, worktree: WORKTREE, baseBranch }), sandbox };
 };
 
 describe("the starter's list", () => {
-  it("is empty, diffs against main, and passes with a warning in the log until the project fills it in", async () => {
+  it("is empty and passes with a warning in the log until the project fills it in", async () => {
     expect(CHECKS).toEqual([]);
-    expect(BASE_BRANCH).toBe("main");
     const f = setup(["src/A.ts"]);
     expect(await verify(f.ctx, {})).toEqual({ ok: true, log: NO_CHECKS_WARNING });
     expect(f.sandbox.execs).toEqual([]);
@@ -83,6 +82,12 @@ describe("verify eval with a filled list", () => {
     const red = setup(["web/x.ts"], { "npx tsc --noEmit": fail("x.ts(1,1): error TS2322\n", 2) });
     expect(await filled(red.ctx, {})).toEqual({ ok: false, log: "$ npm test (exit 0)\n$ cd web && npx tsc --noEmit (exit 2)\nx.ts(1,1): error TS2322" });
     expect(red.sandbox.execs).toEqual([DIFF, "npm test", "npx tsc --noEmit"]);
+  });
+
+  it("diffs against ctx.baseBranch, the base branch setting", async () => {
+    const f = setup(["web/x.ts"], {}, "dev");
+    expect(await filled(f.ctx, {})).toMatchObject({ ok: true });
+    expect(f.sandbox.execs).toEqual(["git diff --name-only dev...HEAD", "npm test", "npx tsc --noEmit", "npx vitest run"]);
   });
 
   it("fails without running a check when the diff itself fails", async () => {

@@ -119,7 +119,7 @@ your-project/
     │   ├── implement/
     │   ├── review/               # with findings.ts, the review helpers
     │   ├── fix/
-    │   ├── verify/               # eval.ts: BASE_BRANCH and CHECKS, the project's commands
+    │   ├── verify/               # eval.ts: CHECKS, the project's commands
     │   ├── sync-resolve/
     │   ├── merge/
     │   ├── hello-world/
@@ -143,7 +143,7 @@ tree shows.
 
 ```
 init: still to do by hand:
-  1. .sous/steps/verify/eval.ts: set BASE_BRANCH and fill CHECKS
+  1. .sous/steps/verify/eval.ts: fill CHECKS
   2. .sous/sous.yaml: tracker, baseBranch, branch template, lifecycle
   3. .sous/flows/*.yaml: agent models and allowedLabels; create the labels on the tracker
   4. .sous/prompts/plan.md: follow its ADAPT notes; it speaks to the tracker through .sous/trackers/<tracker>.md and writes the shapes in .sous/templates/
@@ -151,8 +151,8 @@ init: still to do by hand:
 ```
 
 1. **`steps/verify/eval.ts`.** `CHECKS` is the list of commands that
-   decide whether an implementation passes; `BASE_BRANCH` is what the diff
-   is taken against. Until `CHECKS` is filled, every verify passes and
+   decide whether an implementation passes; the diff that selects them is
+   taken against `ctx.baseBranch`. Until `CHECKS` is filled, every verify passes and
    writes `WARN: no checks configured` into its log, so the gap is visible
    in `sous status` and the UI. See [how-to 13](#13-change-the-check-commands).
 2. **`sous.yaml`.** `tracker` (`github` by default, `beads` for bd),
@@ -426,6 +426,7 @@ JavaScript, compiled once, not sandboxed.
 | `ctx.skillsDir` | absolute `skills/` path | `{{ctx.skillsDir}}` | ✓ | ✓ | ✓ |
 | `ctx.templatesDir` | absolute `templates/` path: the shapes a prompt writes (`spec.md`, `child.md`, `task.md`) | `{{ctx.templatesDir}}` | ✓ | ✓ | ✓ |
 | `ctx.flow`, `ctx.branch`, `ctx.previous` | flow name, run branch, entry visited before | — | ✓ | ✓ | ✓ |
+| `ctx.baseBranch` | the `baseBranch` setting ([chapter 9](#9-settings-sousyaml)): the branch the worktree forks from, which the starter flows sync from, review against and merge onto | — | ✓ | ✓ | ✓ |
 | `ctx.iteration` | iteration of the visit (0: re-entry eval) | — | — | ✓ | `when` |
 | `ctx.readFile(path)`, `ctx.repoFiles(paths)` | worktree files; `repoFiles` gives `### <path>` + content | — | ✓ | ✓ | ✓ |
 | `ctx.exec(cmd, opts?)` | `{ code, stdout, stderr }` in the worktree; never throws | — | ✓ | ✓ | — |
@@ -522,6 +523,12 @@ runsDir: runs                                     # gitignored
 
 Folders are relative to `.sous/`. Models, caps and commands live in flows
 and steps, not here.
+
+`baseBranch` is what every run's worktree forks from. Flows, modules and
+evals read it as `ctx.baseBranch` ([chapter 7](#7-variables-and-expressions)):
+the starter's sync, review-full and merge entries and the verify eval take
+it from there, so changing the setting is all a project on another base
+branch does.
 
 ## 10. Trackers
 
@@ -718,8 +725,6 @@ to check it. All paths are under `.sous/`.
 **Files:** `steps/verify/eval.ts`.
 
 ```ts
-export const BASE_BRANCH = "main";
-
 export const CHECKS: readonly Check[] = [
   { command: "npm test" },
   { command: "npx tsc --noEmit", dir: "web", when: "web" },
@@ -728,7 +733,7 @@ export const CHECKS: readonly Check[] = [
 ```
 
 A check runs in the worktree root, or in `dir`. A check with `when` runs
-only when `git diff --name-only <BASE_BRANCH>...HEAD` touches that folder,
+only when `git diff --name-only <ctx.baseBranch>...HEAD` touches that folder,
 so unrelated runs stay fast. Checks run in order and stop at the first
 failure; the eval's log is a transcript (`$ cmd (exit n)` and the
 output), which is what the agent gets back on a retry.
@@ -869,7 +874,7 @@ steps:
     uses: review
     agent: { kind: claude, model: claude-opus-5-5 }
     with:
-      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      diffRange: '${{ steps.implement.commits[0] ? steps.implement.commits[0] + "^..HEAD" : ctx.baseBranch + "...HEAD" }}'
       criteria:  ${{ ctx.work.body }}
     routes:
       - to: merge
@@ -885,13 +890,13 @@ steps:
     with:
       input:     ${{ steps.review.log }}
       inputKind: review
-      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      diffRange: '${{ steps.implement.commits[0] ? steps.implement.commits[0] + "^..HEAD" : ctx.baseBranch + "...HEAD" }}'
     routes:
       - to: review
   - id: merge
     uses: merge
     with:
-      baseBranch: main
+      baseBranch: ${{ ctx.baseBranch }}
       mergedLabel: sous:merged
     routes:
       - to: done

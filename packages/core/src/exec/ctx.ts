@@ -20,6 +20,8 @@ export type CtxDeps = {
   spec: string;
   flow: string;
   branch: string;
+  /** `ctx.baseBranch`: the `baseBranch` setting, the branch the worktree forked from. */
+  baseBranch: string;
   /** The repository checkout (`merge` squashes there). */
   repoRoot: string;
   /** Absolute `.sous/skills`. */
@@ -87,6 +89,7 @@ export const buildCtx = (deps: CtxDeps, state: CtxState, writes?: CtxWrites): Ct
     flow: deps.flow,
     work: state.work,
     branch: deps.branch,
+    baseBranch: deps.baseBranch,
     worktree,
     repoRoot: deps.repoRoot,
     specDir: state.specDir,

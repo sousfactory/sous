@@ -1,8 +1,8 @@
 /**
  * The project's checks, eval-only. This file is the project's own: put the
- * commands in `CHECKS` and the base branch in `BASE_BRANCH`, nothing else
- * needs to know them. A check with `when` runs only when the branch's diff
- * against the base branch touches that folder, to keep unrelated runs fast.
+ * commands in `CHECKS`, nothing else needs to know them. A check with `when`
+ * runs only when the branch's diff against the base branch (`ctx.baseBranch`,
+ * the `baseBranch` setting) touches that folder, to keep unrelated runs fast.
  * Stops at the first failure; the log is a transcript per command. An empty
  * list passes with a WARN line in the log, so a project that has not filled
  * it in yet sees that in `sous status` and the UI.
@@ -12,9 +12,6 @@ import type { Ctx, EvalFn, EvalResult } from "sous-factory";
 
 /** One command; `dir` is relative to the worktree (its root when absent); `when` is a folder the diff must touch for the check to run. */
 export type Check = { command: string; dir?: string; when?: string };
-
-// TODO: the branch runs fork from and the diff is taken against (the `baseBranch` setting).
-export const BASE_BRANCH = "main";
 
 // TODO: put the project's checks here, in the order to run them; examples:
 //   { command: "npm test" },
@@ -49,7 +46,7 @@ export const diffCommand = (baseBranch: string): string => `git diff --name-only
 
 const verify: EvalFn = async (ctx) => {
   if (CHECKS.length === 0) return { ok: true, log: NO_CHECKS_WARNING };
-  const diff = diffCommand(BASE_BRANCH);
+  const diff = diffCommand(ctx.baseBranch);
   const out = await ctx.exec(diff);
   if (out.code !== 0) return { ok: false, log: transcript({ command: diff }, out) };
   const changed = out.stdout

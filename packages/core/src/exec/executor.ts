@@ -49,6 +49,8 @@ export type ExecutorPorts = {
   /** `ctx.repoLock`: one run at a time on the shared repository checkout. */
   repoLock: Ctx["repoLock"];
   clock: () => Date;
+  /** `ctx.baseBranch`: the `baseBranch` setting. */
+  baseBranch: string;
   /** Absolute paths. */
   skillsDir: string;
   templatesDir: string;
@@ -193,7 +195,7 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
   let spanCount = 0;
   let spanId = "";
 
-  const deps = { issue: ports.issue, spec: ports.spec(session.specDir), flow: flow.name, branch: session.branch, repoRoot: ports.repoRoot, skillsDir, templatesDir, sandbox, git, tracker, events, repoLock: ports.repoLock };
+  const deps = { issue: ports.issue, spec: ports.spec(session.specDir), flow: flow.name, branch: session.branch, baseBranch: ports.baseBranch, repoRoot: ports.repoRoot, skillsDir, templatesDir, sandbox, git, tracker, events, repoLock: ports.repoLock };
   const ctxFor = (iteration?: number, writes?: CtxWrites): Ctx =>
     buildCtx(deps, { work, specDir: session.specDir, workProgress: session.workProgress, previous: session.previous, ...(iteration !== undefined ? { iteration } : {}) }, writes);
   const scopeFor = (ctx: Ctx, res?: EvalResult, result?: Envelope, prepared?: Prepared): Scope => ({ ctx, steps: stepsOf(session), res, result, prepared });

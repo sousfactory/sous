@@ -11,13 +11,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { loadFlow, loadStep, type EvalFn, type Prepared, type PrepareFn } from "sous-factory";
 import { agentResult, BRANCH, ctxOf, fail, fakeGit, fakeSandbox, ok, portsOf, walk, type FakeGit } from "sous-factory/testing";
 import type { SyncPrepared } from "../../steps/sync-resolve/prepare.js";
-import { BASE_BRANCH, diffCommand } from "../../steps/verify/eval.js";
+import { diffCommand } from "../../steps/verify/eval.js";
 import { checkedSteps, type CheckedSteps } from "../checked-steps.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const stepDir = join(root, "steps", "sync-resolve");
 const BUILD = "npm test";
-const DIFF_COMMAND = diffCommand(BASE_BRANCH);
+const DIFF_COMMAND = diffCommand("main");
 const work14 = { id: "14", ref: "#14", title: "Work 14", body: "do 14" };
 const inputs = { baseBranch: "main" };
 

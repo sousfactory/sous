@@ -1,5 +1,6 @@
 # feature: a parent issue delivered sub-issue by sub-issue, then reviewed as
-# a whole. Syncing repeats until main is quiet so only reviewed code lands.
+# a whole. Syncing repeats until the base branch is quiet so only reviewed
+# code lands.
 # Review rounds are capped per scope by `steps.<id>.visits`; an agent that
 # exhausts its iterations goes to blocked on its own.
 allowedLabels: [type:feature]
@@ -32,7 +33,7 @@ steps:
     uses: review
     agent: { kind: claude, model: claude-opus-5-5 }   # cross-model alternative: { kind: codex, model: gpt-5.5 }
     with:
-      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      diffRange: '${{ steps.implement.commits[0] ? steps.implement.commits[0] + "^..HEAD" : ctx.baseBranch + "...HEAD" }}'
       criteria:  ${{ ctx.work.body }}
     routes:
       - to: close-work
@@ -49,7 +50,7 @@ steps:
     with:
       input:     ${{ steps.review.log }}
       inputKind: review
-      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      diffRange: '${{ steps.implement.commits[0] ? steps.implement.commits[0] + "^..HEAD" : ctx.baseBranch + "...HEAD" }}'
     routes:
       - to: review
 
@@ -64,11 +65,11 @@ steps:
     uses: sync-resolve
     agent: { kind: claude, model: claude-opus-5-5 }
     with:
-      baseBranch: main
+      baseBranch: ${{ ctx.baseBranch }}
     routes:
       # Review the branch the first time, and again whenever this sync brought
-      # anything in from main (a conflict always did): only reviewed code lands.
-      # A quiet main after a passed review goes straight to merge.
+      # anything in from the base branch (a conflict always did): only reviewed code lands.
+      # A quiet base branch after a passed review goes straight to merge.
       - to: review-full
         when: 'steps["review-full"] === undefined || prepared.output.moved || prepared.output.conflict'
       - to: merge
@@ -78,7 +79,7 @@ steps:
     uses: review
     agent: { kind: claude, model: claude-opus-5-5 }   # cross-model alternative: { kind: codex, model: gpt-5.5 }
     with:
-      diffRange: main...HEAD
+      diffRange: ${{ ctx.baseBranch + "...HEAD" }}
       criteria:  ${{ ctx.spec }}
     routes:
       - to: sync
@@ -95,20 +96,20 @@ steps:
     with:
       input:     ${{ steps["review-full"].log }}
       inputKind: review
-      diffRange: main...HEAD
+      diffRange: ${{ ctx.baseBranch + "...HEAD" }}
     routes:
       - to: review-full
 
   - id: merge
     uses: merge
     with:
-      baseBranch: main
+      baseBranch: ${{ ctx.baseBranch }}
       mergedLabel: sous:merged
       resync: ${{ true }}
     routes:
-      # Another run merged into main since the last sync: sync again, so the
-      # new main is merged in, checked and reviewed before anything lands.
-      # A main that keeps moving under the merge stops the run.
+      # Another run merged into the base branch since the last sync: sync again,
+      # so its new commits are merged in, checked and reviewed before anything
+      # lands. A base branch that keeps moving under the merge stops the run.
       - to: blocked
         when: 'result.output.stale && steps.merge.visits >= 3'
       - to: sync

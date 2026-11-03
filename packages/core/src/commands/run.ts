@@ -340,6 +340,7 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
         persist,
         repoLock: createRepoLock(repoLockPath(root), { pid: deps.pid ?? process.pid, issue: parsed.issue }, deps.isAlive ?? isProcessAlive),
         clock,
+        baseBranch: settings.baseBranch,
         skillsDir: dirs.skills,
         templatesDir: dirs.templates,
         logsDir: dirs.logs,

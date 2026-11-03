@@ -81,6 +81,8 @@ export type Ctx = {
    */
   work: Work;
   readonly branch: string;
+  /** The `baseBranch` setting: the branch the run's worktree forked from and lands on. Not a prompt placeholder; a prompt that needs it declares an input. */
+  readonly baseBranch: string;
   /** Absolute path of the worktree the run works in. */
   readonly worktree: string;
   /** The main repository checkout, for work that must happen outside the worktree, such as landing the branch. */

@@ -11,10 +11,10 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { loadFlow, validateProject, type Flow } from "sous-factory";
 import { agentResult, fail, fakeGit, fakeTracker, fakeSandbox, issue, ok, portsOf, walk, type AgentScript, type FakeGit, type FakePorts, type FakeSandboxOptions } from "sous-factory/testing";
-import { BASE_BRANCH, diffCommand, NO_CHECKS_WARNING } from "../steps/verify/eval.js";
+import { diffCommand, NO_CHECKS_WARNING } from "../steps/verify/eval.js";
 import { checkedSteps, type CheckedSteps } from "./checked-steps.js";
 
-const DIFF_COMMAND = diffCommand(BASE_BRANCH);
+const DIFF_COMMAND = diffCommand("main");
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const flowFile = (name: string): string => join(root, "flows", `${name}.yaml`);
@@ -37,6 +37,8 @@ const MAJOR: Finding = { severity: "major", file: "src/A.kt", line: 3, message: 
 
 /** An implement or fix answer: one commit `sha`, session `s-<sha>`. */
 const built = (sha: string): AgentScript => agentResult(`s-${sha}`, { summary: "built", commits: [sha], output: { filesTouched: ["src/A.kt"], testsRun: ["npm test"] } });
+/** An implement answer that committed nothing: the work was already on the branch. */
+const unchanged = (session: string): AgentScript => agentResult(session, { summary: "already there", commits: [], output: { filesTouched: [], testsRun: ["npm test"] } });
 /** A sync-resolve answer: the merge concluded in the fake repository, one repair commit `sha`. */
 const synced = (git: FakeGit, sha: string): AgentScript => () => {
   git.state.conflict = false;
@@ -91,19 +93,22 @@ type Scenario = {
   /** The branch carries a spec (`/sous-plan` ran), so `plan` never calls its agent; false: the task flow has to derive one. */
   spec?: boolean;
   agent: AgentScript[] | ((git: FakeGit, worktree: string) => AgentScript[]);
+  /** The `baseBranch` setting the run is on (default `main`). */
+  baseBranch?: string;
   exec?: FakeSandboxOptions["exec"];
 };
 
 const worktrees: string[] = [];
 afterEach(() => Promise.all(worktrees.splice(0).map((w) => rm(w, { recursive: true, force: true }))));
 
-const setup = async ({ labels, moves = 1, conflict = false, stale = 0, subIssues = [], spec = true, agent, exec = {} }: Scenario): Promise<FakePorts> => {
+const setup = async ({ labels, moves = 1, conflict = false, stale = 0, subIssues = [], spec = true, agent, baseBranch = "main", exec = {} }: Scenario): Promise<FakePorts> => {
   const worktree = await mkdtemp(join(tmpdir(), "sous-project-"));
   worktrees.push(worktree);
   if (spec) await writeSpec(worktree);
   const target = issue({ id: ISSUE, title: "Some feature", body: "Make it so.", labels });
   const tracker = fakeTracker({ issues: [target, ...subIssues.map((id) => issue({ id }))], subIssues: { [ISSUE]: subIssues } });
-  const git = fakeGit({ existing: ["main", BRANCH], branches: { [worktree]: BRANCH }, trees: { main: "t-main", [BRANCH]: "t-branch" }, ancestors: new Set([`main..${BRANCH}`]), upToDate: moves === 0, conflict });
+  const repoRoot = dirname(root);
+  const git = fakeGit({ existing: [baseBranch, BRANCH], branches: { [worktree]: BRANCH, [repoRoot]: baseBranch }, trees: { [baseBranch]: "t-base", [BRANCH]: "t-branch" }, ancestors: new Set([`${baseBranch}..${BRANCH}`]), upToDate: moves === 0, conflict });
   const merge = git.mergeInto.bind(git);
   let merged = 0;
   git.mergeInto = async (cwd, source) => {
@@ -123,7 +128,7 @@ const setup = async ({ labels, moves = 1, conflict = false, stale = 0, subIssues
     return false;
   };
   const sandbox = fakeSandbox({ worktreePath: worktree, branch: BRANCH, agent: typeof agent === "function" ? agent(git, worktree) : agent, exec });
-  return portsOf(sandbox, { skillsDir: join(root, "skills"), repoRoot: dirname(root), tracker, git, issue: { id: target.id, ref: target.ref, title: target.title, body: target.body, labels: target.labels } });
+  return portsOf(sandbox, { baseBranch, skillsDir: join(root, "skills"), repoRoot, tracker, git, issue: { id: target.id, ref: target.ref, title: target.title, body: target.body, labels: target.labels } });
 };
 
 const sequence = (ports: FakePorts): string[] => ports.transitions.map((t) => t.from);
@@ -251,10 +256,59 @@ describe("feature", () => {
     expect(ports.git.committed.map((c) => c.message)).toEqual(["feat(#12): Some feature"]);
     expect(ports.sandbox.closed).toBe(true);
   });
+
+  it("reviews and fixes the whole branch against the base when a slice's implement committed nothing", async () => {
+    const ports = await setup({ labels: ["type:feature"], subIssues: ["14"], agent: [unchanged("u14"), reviewed("r14", [MAJOR]), built("f14"), reviewed("r14b"), reviewed("rf")] });
+
+    const session = await walk(feature(), ports);
+
+    expect(sequence(ports).slice(0, 7)).toEqual(["init", "next-work", "implement", "review", "fix", "review", "close-work"]);
+    expect(session.current).toBe("done");
+    const prompts = ports.sandbox.requests.map((r) => r.prompt);
+    expect(prompts[1]).toContain("main...HEAD");
+    expect(prompts[1]).not.toContain("undefined");
+    expect(prompts[2]).toContain("main...HEAD");
+    expect(prompts[2]).not.toContain("undefined");
+  });
 });
 
 describe("task", () => {
   const task = (): Flow => loadFlow(flowFile("task"), { stepsDir });
+
+  it("on a dev base, syncs from, reviews against and merges onto dev", async () => {
+    const ports = await setup({ labels: ["type:task"], baseBranch: "dev", agent: [built("b1"), reviewed("r1"), reviewed("rf1", [MAJOR]), built("f1"), reviewed("rf2")] });
+
+    const session = await walk(task(), ports);
+
+    expect(sequence(ports)).toEqual(["init", "plan", "implement", "review", "sync", "review-full", "fix-review-full", "review-full", "sync", "merge"]);
+    expect(session.current).toBe("done");
+    expect(ports.events.of("prepare.end").map((e) => e.reason)).toContain("merged dev cleanly");
+    expect(ports.git.calls.filter((c) => c.startsWith("mergeInto"))).toEqual([`mergeInto(${ports.sandbox.worktreePath}, dev)`, `mergeInto(${ports.sandbox.worktreePath}, dev)`]);
+    expect(ports.git.calls.filter((c) => c.startsWith("squashMerge"))).toEqual([`squashMerge(${dirname(root)}, ${BRANCH}, fix(#12): Some feature)`]);
+    expect(ports.tracker.comments.at(-1)?.body).toContain("Merged into `dev`");
+    const prompts = ports.sandbox.requests.map((r) => r.prompt);
+    expect(prompts[1]).toContain("b1^..HEAD");
+    for (const i of [2, 3, 4]) {
+      expect(prompts[i]).toContain("dev...HEAD");
+      expect(prompts[i]).not.toContain("main...HEAD");
+    }
+    expect(ports.sandbox.execs).toContain("git diff --name-only dev...HEAD");
+    expect(ports.sandbox.execs).not.toContain(DIFF_COMMAND);
+  });
+
+  it("reviews and fixes the branch against the base when implement committed nothing", async () => {
+    const ports = await setup({ labels: ["type:task"], baseBranch: "dev", agent: [unchanged("u1"), reviewed("r1", [MAJOR]), built("f1"), reviewed("r2"), reviewed("rf")] });
+
+    const session = await walk(task(), ports);
+
+    expect(sequence(ports).slice(0, 7)).toEqual(["init", "plan", "implement", "review", "fix", "review", "sync"]);
+    expect(session.current).toBe("done");
+    const prompts = ports.sandbox.requests.map((r) => r.prompt);
+    for (const i of [1, 2, 3]) {
+      expect(prompts[i]).toContain("dev...HEAD");
+      expect(prompts[i]).not.toContain("undefined");
+    }
+  });
 
   it("derives a spec when the branch has none: plan's agent writes it, and implement and review-full get it as ctx.spec", async () => {
     const ports = await setup({ labels: ["type:task"], spec: false, agent: (_git, worktree) => [planned(worktree), built("b1"), reviewed("r1"), reviewed("rf")] });

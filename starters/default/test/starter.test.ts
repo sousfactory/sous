@@ -2,7 +2,7 @@
  * The starter kit: the generic part of this project, what `sous init` copies
  * into a new repository. Pinned here so repository-specific knowledge stays
  * in `steps/verify/eval.ts` (the commands) and `sous.yaml` (the branch),
- * never in another step.
+ * never in another step; the flows read the branch as `ctx.baseBranch`.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -59,7 +59,7 @@ export const STARTER = [
 const filesUnder = (path: string): string[] => (statSync(path).isDirectory() ? readdirSync(path).flatMap((name) => filesUnder(join(path, name))) : [path]);
 
 const starterFiles = STARTER.flatMap((p) => filesUnder(join(root, p)));
-/** The one step file meant to hold the project's commands and base branch. */
+/** The one step file meant to hold the project's commands. */
 const CHECKS_FILE = join(root, "steps", "verify", "eval.ts");
 const stepFiles = starterFiles.filter((f) => f.startsWith(`${join(root, "steps")}/`) && f !== CHECKS_FILE);
 
@@ -84,7 +84,14 @@ describe("starter", () => {
     for (const file of starterFiles) expect(readFileSync(file, "utf8"), file).not.toMatch(REPO_NAMES);
   });
 
-  it("has the base branch in sous.yaml, the flows and verify/eval.ts only, never in another step module", () => {
-    for (const file of stepFiles.filter((f) => /\.(ts|yaml)$/.test(f))) expect(readFileSync(file, "utf8"), file).not.toMatch(/["'`]main["'`]/);
+  it("has the base branch in sous.yaml only: the flows and every step module read it as ctx.baseBranch", () => {
+    for (const file of [...stepFiles, CHECKS_FILE].filter((f) => /\.(ts|yaml)$/.test(f))) expect(readFileSync(file, "utf8"), file).not.toMatch(/["'`]main["'`]/);
+    // Built from parts so this file does not match itself: the removed verify constant.
+    const removed = ["BASE", "BRANCH"].join("_");
+    for (const file of starterFiles) expect(readFileSync(file, "utf8"), file).not.toContain(removed);
+    for (const name of ["task", "feature"]) {
+      const yaml = readFileSync(join(root, "flows", `${name}.yaml`), "utf8").split("\n").filter((line) => !line.trimStart().startsWith("#"));
+      expect(yaml.filter((line) => /\bmain\b/.test(line)), name).toEqual([]);
+    }
   });
 });

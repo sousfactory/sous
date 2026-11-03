@@ -27,6 +27,8 @@ export type FakeCtxOptions = {
   sandbox?: FakeSandbox;
   events?: Event[];
   branch?: string;
+  /** `ctx.baseBranch`; `main` by default. */
+  baseBranch?: string;
   repoRoot?: string;
   worktree?: string;
 };
@@ -60,6 +62,7 @@ export const ctxOf = (options: FakeCtxOptions = {}): FakeCtx => {
     spec: options.spec ?? specFromIssue(target),
     flow: "feature",
     branch,
+    baseBranch: options.baseBranch ?? "main",
     repoRoot: options.repoRoot ?? REPO,
     skillsDir: "/repo/.sous/skills",
     templatesDir: "/repo/.sous/templates",

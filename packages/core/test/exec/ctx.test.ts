@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCtx, ctxPlaceholders, repoFiles, type CtxDeps, type CtxState } from "../../src/exec/ctx.js";
+import { ctxOf } from "../fakes/ctx.js";
 import { fakeEventLog } from "../fakes/eventlog.js";
 import { fakeGit } from "../fakes/git.js";
 import { fakeTracker, issue } from "../fakes/tracker.js";
@@ -27,6 +28,7 @@ describe("ctx", () => {
       spec: "# Some slug\n\nthe spec\n",
       flow: "feature",
       branch: "feature/12-some-slug",
+      baseBranch: "dev",
       repoRoot: "/repo",
       skillsDir: "/repo/.sous/skills",
       templatesDir: "/repo/.sous/templates",
@@ -55,6 +57,7 @@ describe("ctx", () => {
       spec: "# Some slug\n\nthe spec\n",
       work: { id: "14" },
       branch: "feature/12-some-slug",
+      baseBranch: "dev",
       worktree,
       repoRoot: "/repo",
       specDir: "specs/12-some-slug",
@@ -121,5 +124,11 @@ describe("ctx", () => {
       "ctx.templatesDir": d.templatesDir,
     });
     expect(ctxPlaceholders(buildCtx(d, state()))["ctx.work.id"]).toBe("12");
+    expect(ctxPlaceholders(buildCtx(d, state()))).not.toHaveProperty("ctx.baseBranch");
+  });
+
+  it("ctxOf runs on main unless told another base branch", () => {
+    expect(ctxOf().ctx.baseBranch).toBe("main");
+    expect(ctxOf({ baseBranch: "dev" }).ctx.baseBranch).toBe("dev");
   });
 });

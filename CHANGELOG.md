@@ -16,8 +16,35 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   `sous ui: port <n> is in use (another sous ui, or another project?); set uiPort in sous.yaml or pass --port`,
   and exit status 1 instead of a stack trace. No upgrade step is needed:
   without the key `sous ui` listens on 4680 as before.
+- **`ctx.baseBranch`.** The `baseBranch` setting from `sous.yaml`, beside
+  `ctx.branch`, readable in `when:` and `${{ }}` expressions, in modules
+  and in evals; it is not a prompt placeholder. The starter's task and
+  feature flows pass it to the sync and merge entries and diff
+  `<baseBranch>...HEAD` in review-full and fix-review-full, and the verify
+  eval takes its diff scope from it: `BASE_BRANCH` is gone from
+  `steps/verify/eval.ts`. On a base other than `main`, setting
+  `baseBranch` is now the whole migration. `ctxOf` and `portsOf` in
+  `sous-factory/testing` take a `baseBranch` option, default `main`.
 
 ### Fixed
+
+- **The review range survives an implement that committed nothing.** The
+  starter's review and fix entries diffed
+  `steps.implement.commits[0] + "^..HEAD"`, which became
+  `undefined^..HEAD` when implement recorded no commits (the work was
+  already on the branch), and the reviewer's `git diff` failed. Both
+  flows now fall back to `<baseBranch>...HEAD`: the whole branch, which in
+  the feature flow is wider than the slice but never skips the gate.
+
+  To upgrade, copy `flows/task.yaml`, `flows/feature.yaml` and
+  `steps/verify/eval.ts` from the starter, keeping your filled `CHECKS`
+  in the eval. If your flows diverged, make three edits per flow instead:
+  `baseBranch: ${{ ctx.baseBranch }}` on sync and merge,
+  `diffRange: ${{ ctx.baseBranch + "...HEAD" }}` on review-full and
+  fix-review-full, and on review and fix
+  `diffRange: '${{ steps.implement.commits[0] ? steps.implement.commits[0] + "^..HEAD" : ctx.baseBranch + "...HEAD" }}'`
+  (quoted: the ` : ` is not allowed in a plain YAML value). The setup
+  checklist and the starter README no longer mention a base constant.
 
 - **`- None.` is not an open question.** The spec template suggests
   `None.` for an empty `## Assumptions` or `## Open questions` list, and
