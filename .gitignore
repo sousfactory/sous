@@ -14,3 +14,8 @@ locks/
 packages/core/starter/
 # check-filled copies of the starter steps made by its tests
 starters/default/test/.steps-*/
+
+# the factory that builds sous runs here, uncommitted (planning#13)
+/.sous/
+/specs/
+/.claude/skills/sous-plan/
