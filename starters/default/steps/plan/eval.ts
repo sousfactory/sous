@@ -9,7 +9,10 @@ import { readFile } from "node:fs/promises";
 import type { Ctx, Envelope, EvalFn, Inputs } from "sous-factory";
 import { specFile } from "./prepare.js";
 
-/** The list items of the `## <heading>` section, up to the next `## ` heading; none without the section. */
+/** The template's way of saying a list is empty, as an item or as prose: `None`, `None.`, `none`. */
+const isNone = (item: string): boolean => /^none\.?$/i.test(item);
+
+/** The list items of the `## <heading>` section, up to the next `## ` heading; none without the section, and `- None.` is no item. */
 export const sectionItems = (text: string, heading: string): string[] => {
   const pattern = new RegExp(`(?:^|\\n)##\\s*${heading}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)`, "i");
   const section = text.match(pattern)?.[1] ?? "";
@@ -17,7 +20,8 @@ export const sectionItems = (text: string, heading: string): string[] => {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => /^([-*]|\d+\.)\s+\S/.test(line))
-    .map((line) => line.replace(/^([-*]|\d+\.)\s+/, ""));
+    .map((line) => line.replace(/^([-*]|\d+\.)\s+/, ""))
+    .filter((item) => !isNone(item));
 };
 
 export default (async (ctx: Ctx, _inputs: Inputs = {}, result?: Envelope) => {

@@ -45,6 +45,14 @@ describe("plan", () => {
     expect(f.git.calls).toEqual([`isDirty(${worktree})`]);
   });
 
+  it("eval passes a spec whose lists say None., as the template suggests, and counts no assumption for it", async () => {
+    await written(spec("## Assumptions\n\n- None.\n\n## Open questions\n\n- None.\n\n## Further Notes\n\nNone.\n"));
+    const f = ctxOf({ worktree, specDir: SPEC_DIR });
+    expect(await evaluate(f.ctx, {})).toEqual({ ok: true, log: `plan: ${SPEC_DIR}/spec.md is on the branch with 0 assumptions and no open questions` });
+    await written(spec("## Assumptions\n\nNone.\n\n## Open questions\n\n* none\n"));
+    expect((await evaluate(f.ctx, {})).ok).toBe(true);
+  });
+
   it("eval fails with the open questions as the log, so the blocked comment carries them", async () => {
     await written(spec("## Assumptions\n\n- None.\n\n## Open questions\n\n1. Soft-delete or hard-delete? I would soft-delete.\n- Is the export per user or per tenant?\n"));
     const f = ctxOf({ worktree, specDir: SPEC_DIR });

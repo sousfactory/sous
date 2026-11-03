@@ -29,11 +29,11 @@
 
 ## Assumptions
 
-- <one per item, written by the plan step: what the issue left open, what it assumed, why; `None.` when the human decided everything in the plan session>
+- <one per item, written by the plan step: what the issue left open, what it assumed, why; `None.` as the only item when the human decided everything in the plan session>
 
 ## Open questions
 
-- <one per item, written by the plan step: the readings, and the one it would pick; `None.` or no list when there are none; the run stays blocked while any is listed>
+- <one per item, written by the plan step: the readings, and the one it would pick; `None.` as the only item, or no list, when there are none; the run stays blocked while any other item is listed>
 
 ## Decisions
 

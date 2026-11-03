@@ -17,6 +17,17 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   and exit status 1 instead of a stack trace. No upgrade step is needed:
   without the key `sous ui` listens on 4680 as before.
 
+### Fixed
+
+- **`- None.` is not an open question.** The spec template suggests
+  `None.` for an empty `## Assumptions` or `## Open questions` list, and
+  the starter's `plan` eval counted it as one item, so a spec with no open
+  questions blocked the run at `plan` with "leaves 1 question open: None.".
+  The eval now ignores an item that is only `None` or `None.`, in any
+  case, and counts no assumption for it; the template says `None.` is the
+  only item. Projects copy `steps/plan/eval.ts` and `templates/spec.md`
+  from the starter.
+
 ## 0.6.0
 
 ### Changed

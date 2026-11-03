@@ -319,7 +319,7 @@ describe("templates/", () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     for (const h of SPEC_HEADINGS) expect(text, `## ${h} has a placeholder`).toMatch(new RegExp(`## ${h}\\n\\n(- |1\\. )?<[^\\n]+>\\n`));
     expect(text).toMatch(/## Decisions\n\n<empty when the spec is written; implement and fix append/);
-    expect(text).toMatch(/## Open questions\n\n- <[^\n]*blocked while any is listed>/);
+    expect(text).toMatch(/## Open questions\n\n- <[^\n]*blocked while any other item is listed>/);
     expect(text).toContain("Copy the headings, not this");
   });
 
