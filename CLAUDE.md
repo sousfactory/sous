@@ -14,9 +14,7 @@ rules and procedures.
   section first; a change people would notice gets a line there.
 
 Work is tracked as GitHub issues in a separate private repository; a
-reference like `planning#10` is one of them. The factory runs on this
-repository too (see Contributing, "sous builds sous"); its folder is
-gitignored.
+reference like `planning#10` is one of them.
 
 ## Code map
 

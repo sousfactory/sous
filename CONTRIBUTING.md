@@ -18,21 +18,6 @@ npm run starter:install && npm run starter:test   # the starter against the core
 
 All five pass before a commit. CI runs the same sequence.
 
-### sous builds sous
-
-The maintainer runs the factory on this repository: `.sous/`, `specs/` and
-the installed `/sous-plan` skill are gitignored, so nothing of it is
-committed and the released `sous-factory` builds the next version. The
-issues live in the private planning repository; `gh` is pointed there:
-
-```
-GH_REPO=sousfactory/planning .sous/sous run task <issue>
-```
-
-The project's `init` step copies a planned `specs/<id>-<slug>/` from the
-checkout into the worktree, and its verify eval runs the five commands
-above. The planning issue for this is sousfactory/planning#13.
-
 ## Verification is unit tests
 
 Every change comes with the test that would have caught its absence, next to

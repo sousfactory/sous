@@ -15,7 +15,7 @@ packages/core/starter/
 # check-filled copies of the starter steps made by its tests
 starters/default/test/.steps-*/
 
-# the factory that builds sous runs here, uncommitted (planning#13)
+# a sous project set up in this repository stays local
 /.sous/
 /specs/
 /.claude/skills/sous-plan/
