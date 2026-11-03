@@ -25,6 +25,7 @@ describe("parseSettings", () => {
       labelPrefix: "sous",
       lifecycle: "core",
       idleTimeoutSeconds: 1800,
+      uiPort: 4680,
       tracker: "github",
       trackerOptions: {},
     });
@@ -59,7 +60,15 @@ describe("parseSettings", () => {
     expect(() => parseSettings({ lifecycle: "mirror" })).toThrow(/lifecycle/);
   });
 
+  it("takes a uiPort, so each project picks the port sous ui listens on", () => {
+    expect(parseSettings({ uiPort: 5001 })).toEqual({ ...DEFAULT_SETTINGS, uiPort: 5001 });
+  });
+
   it.each([
+    [{ uiPort: "4680a" }, "/uiPort must be integer"],
+    [{ uiPort: 46.8 }, "/uiPort must be integer"],
+    [{ uiPort: 0 }, "/uiPort must be >= 1"],
+    [{ uiPort: 65536 }, "/uiPort must be <= 65535"],
     [{ idleTimeoutSeconds: "soon" }, "/idleTimeoutSeconds must be integer"],
     [{ idleTimeoutSeconds: 0 }, "/idleTimeoutSeconds must be >= 1"],
     [{ unknownKey: 1 }, "must NOT have additional properties (unknownKey)"],

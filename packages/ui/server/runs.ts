@@ -37,12 +37,15 @@ export type Project = {
   logsRoot: string;
   flowsRoot: string;
   stepsRoot: string;
+  /** `uiPort` of `sous.yaml`: where `sous ui` listens unless `--port` says otherwise. */
+  uiPort: number;
   isAlive: (pid: number) => boolean;
 };
 
 export const openProject = (root: string, isAlive: (pid: number) => boolean = isProcessAlive): Project => {
-  const dirs = projectDirs(root, loadSettings(join(root, SETTINGS_FILE)));
-  return { root, runsRoot: dirs.runs, logsRoot: dirs.logs, flowsRoot: dirs.flows, stepsRoot: dirs.steps, isAlive };
+  const settings = loadSettings(join(root, SETTINGS_FILE));
+  const dirs = projectDirs(root, settings);
+  return { root, runsRoot: dirs.runs, logsRoot: dirs.logs, flowsRoot: dirs.flows, stepsRoot: dirs.steps, uiPort: settings.uiPort, isAlive };
 };
 
 /** The locks of the live `sous run`s, one per issue; a stale or unreadable lock is no live run. */

@@ -1,10 +1,11 @@
 /**
  * `sous ui [--port <n>]`: serves the app and the API on 127.0.0.1 until
- * interrupted. A dev checkout builds the app on first use; an installed
+ * interrupted, on `--port` or else the project's `uiPort`. A dev checkout builds the app on first use; an installed
  * package ships it prebuilt. Loaded by core's CLI by path.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import type { Server } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { repoRootOf } from "sous-factory/read";
@@ -13,7 +14,6 @@ import { createUiServer } from "./http.js";
 import { liveLocks, openProject } from "./runs.js";
 import { createFeed } from "./watch.js";
 
-export const DEFAULT_PORT = 4680;
 export const HOST = "127.0.0.1";
 export const USAGE = "usage: sous ui [--port <n>]";
 
@@ -23,13 +23,34 @@ export const DIST_DIR = join(UI_DIR, "dist");
 /** Only a checkout with the vite source can build; a published package has no such thing. */
 const canBuild = (): boolean => existsSync(join(UI_DIR, "vite.config.ts"));
 
-/** The port from `--port <n>`; undefined for anything else. */
-export const parseArgs = (args: readonly string[]): { port: number } | undefined => {
-  if (args.length === 0) return { port: DEFAULT_PORT };
+/** The port from `--port <n>`, none without arguments; undefined for anything else. */
+export const parseArgs = (args: readonly string[]): { port?: number } | undefined => {
+  if (args.length === 0) return {};
   if (args.length !== 2 || args[0] !== "--port" || !/^\d+$/.test(args[1] ?? "")) return undefined;
   const port = Number(args[1]);
   return port >= 1 && port <= 65535 ? { port } : undefined;
 };
+
+/** The flag wins for one start; otherwise the project's `uiPort`, which defaults to 4680. */
+export const resolvePort = (parsed: { port?: number }, uiPort: number): number => parsed.port ?? uiPort;
+
+/** Binds the server; a failure is the line to print and the exit status, a taken port named as such. */
+export const listenOn = (server: Server, port: number, host: string = HOST): Promise<{ status: 1; message: string } | undefined> =>
+  new Promise((resolve) => {
+    const failed = (error: NodeJS.ErrnoException) =>
+      resolve({
+        status: 1,
+        message:
+          error.code === "EADDRINUSE"
+            ? `sous ui: port ${port} is in use (another sous ui, or another project?); set uiPort in sous.yaml or pass --port`
+            : `sous ui: cannot listen on ${host}:${port}: ${error.message}`,
+      });
+    server.once("error", failed);
+    server.listen(port, host, () => {
+      server.off("error", failed);
+      resolve(undefined);
+    });
+  });
 
 const build = (): boolean => {
   console.log("sous ui: building the app (first start)…");
@@ -61,14 +82,14 @@ export const uiMain = async (args: string[], root: string): Promise<number> => {
     liveness: async () => JSON.stringify(await liveLocks(project)),
   });
   const server = createUiServer({ project, feed, distDir: DIST_DIR, github: createGitHubLookup(ghIn(repoRootOf(root))) });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(parsed.port, HOST, resolve);
-  }).catch((error: unknown) => {
+  const port = resolvePort(parsed, project.uiPort);
+  const failure = await listenOn(server, port);
+  if (failure !== undefined) {
     feed.close();
-    throw new Error(`sous ui: cannot listen on ${HOST}:${parsed.port}: ${error instanceof Error ? error.message : String(error)}`);
-  });
-  console.log(`sous ui: http://${HOST}:${parsed.port}  (runs from ${project.runsRoot}; ctrl-c stops)`);
+    console.error(failure.message);
+    return failure.status;
+  }
+  console.log(`sous ui: http://${HOST}:${port}  (runs from ${project.runsRoot}; ctrl-c stops)`);
   await new Promise<void>((resolve) => {
     const stop = () => resolve();
     process.once("SIGINT", stop);

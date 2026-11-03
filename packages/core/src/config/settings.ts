@@ -22,6 +22,8 @@ export type Settings = {
   /** `core`: the run claims, blocks and closes its issue; `steps`: the core only reads the tracker and steps write what they need. A flow may override it. */
   lifecycle: "core" | "steps";
   idleTimeoutSeconds: number;
+  /** The port `sous ui` listens on at 127.0.0.1; `--port` wins for one start. */
+  uiPort: number;
   /**
    * `github`, `beads`, `local`, or the path (relative to the project root) of a
    * module whose default export builds the tracker (`TrackerFactory`), so a
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   labelPrefix: "sous",
   lifecycle: "core",
   idleTimeoutSeconds: 1800,
+  uiPort: 4680,
   tracker: "github",
   trackerOptions: {},
 };
@@ -67,6 +70,7 @@ const check = checker<Partial<Settings>>({
     labelPrefix: { type: "string", minLength: 1 },
     lifecycle: { enum: ["core", "steps"] },
     idleTimeoutSeconds: { type: "integer", minimum: 1 },
+    uiPort: { type: "integer", minimum: 1, maximum: 65535 },
     tracker: { type: "string", minLength: 1 },
     trackerOptions: { type: "object" },
   },

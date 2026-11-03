@@ -9,6 +9,7 @@ branch: feature/${{ issue.id }}-${{ slug }}       # run branch; slug = first fou
 labelPrefix: sous                                  # sous:running / sous:blocked set by the run, sous:merged by the merge step
 lifecycle: core                                   # the run claims, blocks and closes its issue; steps: the core only reads the tracker
 idleTimeoutSeconds: 1800                          # an agent call fails once it has printed nothing for this long
+uiPort: 4680                                      # sous ui listens on 127.0.0.1:<uiPort>; give each project on one machine its own
 tracker: github                                   # github, beads, local, or the path of a project module (see README)
 
 specsDir: ../specs                                # <specsDir>/<issue>-<slug>/spec.md, written by /sous-plan

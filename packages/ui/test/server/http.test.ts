@@ -1,10 +1,11 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import type { AddressInfo } from "node:net";
+import { createServer as createHttpServer } from "node:http";
+import { createServer, type AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createUiServer } from "../../server/http";
 import type { GitHubLookup } from "../../server/github";
-import { parseArgs } from "../../server/main";
+import { listenOn, parseArgs, resolvePort, USAGE } from "../../server/main";
 import { openProject } from "../../server/runs";
 import type { Change, Feed } from "../../server/watch";
 import { Log, session, tempProject, writeRun } from "../fixtures";
@@ -148,8 +149,63 @@ describe("static app", () => {
 
 describe("parseArgs", () => {
   it("takes no arguments or --port <n>", () => {
-    expect(parseArgs([])).toEqual({ port: 4680 });
+    expect(parseArgs([])).toEqual({});
     expect(parseArgs(["--port", "5000"])).toEqual({ port: 5000 });
     for (const bad of [["--port"], ["--port", "x"], ["--port", "0"], ["--port", "70000"], ["5000"], ["--port", "1", "2"]]) expect(parseArgs(bad)).toBeUndefined();
+  });
+
+  it("keeps the usage line without the setting", () => {
+    expect(USAGE).toBe("usage: sous ui [--port <n>]");
+  });
+});
+
+describe("resolvePort", () => {
+  it("takes the flag over the project's uiPort", () => {
+    expect(resolvePort(parseArgs(["--port", "5002"])!, 5001)).toBe(5002);
+  });
+
+  it("takes the project's uiPort without a flag", () => {
+    const root = tempProject();
+    writeFileSync(join(root, "sous.yaml"), "uiPort: 5001\n");
+    expect(resolvePort(parseArgs([])!, openProject(root).uiPort)).toBe(5001);
+  });
+
+  it("listens on 4680 when sous.yaml sets nothing", () => {
+    expect(resolvePort(parseArgs([])!, openProject(tempProject()).uiPort)).toBe(4680);
+  });
+
+  it("names sous.yaml and uiPort when the setting is out of range", () => {
+    const root = tempProject();
+    writeFileSync(join(root, "sous.yaml"), "uiPort: 70000\n");
+    expect(() => openProject(root)).toThrow(/sous\.yaml: .*uiPort must be <= 65535/);
+  });
+});
+
+describe("listenOn", () => {
+  it("says the port is in use, and how out, when something holds it", async () => {
+    const holder = createServer();
+    await new Promise<void>((resolve) => holder.listen(0, "127.0.0.1", resolve));
+    const { port } = holder.address() as AddressInfo;
+    const server = createHttpServer();
+    try {
+      expect(await listenOn(server, port)).toEqual({
+        status: 1,
+        message: `sous ui: port ${port} is in use (another sous ui, or another project?); set uiPort in sous.yaml or pass --port`,
+      });
+    } finally {
+      await new Promise((resolve) => holder.close(resolve));
+    }
+  });
+
+  it("keeps the cannot-listen line for any other bind failure", async () => {
+    const result = await listenOn(createHttpServer(), 4680, "192.0.2.1");
+    expect(result).toMatchObject({ status: 1, message: expect.stringMatching(/^sous ui: cannot listen on 192\.0\.2\.1:4680: /) });
+  });
+
+  it("listens when the port is free", async () => {
+    const server = createHttpServer();
+    expect(await listenOn(server, 0)).toBeUndefined();
+    expect(server.listening).toBe(true);
+    await new Promise((resolve) => server.close(resolve));
   });
 });

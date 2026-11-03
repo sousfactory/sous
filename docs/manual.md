@@ -508,6 +508,7 @@ branch: feature/${{ issue.id }}-${{ slug }}       # JS over issue { id, title } 
 labelPrefix: sous                                 # sous:running / sous:blocked by the run, sous:merged by the merge step
 lifecycle: core                                   # core: the run claims, blocks and closes its issue; steps: steps do all writes
 idleTimeoutSeconds: 1800                          # agent idle timeout
+uiPort: 4680                                      # sous ui on 127.0.0.1:<uiPort>; one per project on a machine, --port wins
 tracker: github                                   # github, beads, local, or the path of a project module
 trackerOptions: {}                                # handed to the tracker; local takes { dir }
 specsDir: ../specs                                # spec folders: <specsDir>/<issue>-<slug>/
@@ -693,7 +694,7 @@ sous run <flow> <issue> [--restart]   # validate, then start or continue; <issue
 sous status <issue>                   # session facts and the timeline
 sous graph <flow>                     # Mermaid diagram from the YAML
 sous validate                         # sous.yaml, every flow and step, the tracker module
-sous ui [--port n]                    # the run viewer on 127.0.0.1:4680
+sous ui [--port n]                    # the run viewer on 127.0.0.1:4680, or the uiPort of sous.yaml
 ```
 
 The starter's `.sous/sous` wrapper runs the installed `sous` from any

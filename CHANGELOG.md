@@ -5,6 +5,18 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
+## Unreleased
+
+### Added
+
+- **`uiPort` in `sous.yaml`.** The port `sous ui` listens on at
+  127.0.0.1, default 4680, so two projects on one machine each keep their
+  own; `--port <n>` still wins for one start. The starter's `sous.yaml`
+  writes it out. A taken port now ends in one line,
+  `sous ui: port <n> is in use (another sous ui, or another project?); set uiPort in sous.yaml or pass --port`,
+  and exit status 1 instead of a stack trace. No upgrade step is needed:
+  without the key `sous ui` listens on 4680 as before.
+
 ## 0.6.0
 
 ### Changed

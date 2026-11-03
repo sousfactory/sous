@@ -10,8 +10,9 @@ before it ever ran. It reads only the run record on disk; nothing else.
 ![The feature flow mid-run](../../docs/images/feature-flow.png)
 
 ```
-./sous ui                 # http://127.0.0.1:4680
-./sous ui --port 5000
+./sous ui                 # http://127.0.0.1:4680, or uiPort in sous.yaml
+./sous ui --port 5000     # this start only; wins over uiPort
+uiPort: 5001              # in sous.yaml: this project's port, so two projects never collide
 ```
 
 `/runs?flow=<name>` previews a flow's graph, run or not; everything else is
