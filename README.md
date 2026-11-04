@@ -19,7 +19,66 @@ in YAML, like a GitHub Actions workflow, so the agents do the work and the
 graph decides what happens next.
 
 CLI first, with an optional live UI. Runs locally with the `claude` or
-`codex` CLI you already have.
+`codex` CLI you already have; not a hosted service.
+
+## What it looks like
+
+A flow is a graph of steps. This is the starter's `task` flow, shortened;
+the [full file](starters/default/flows/task.yaml) also brings main in and
+reviews the whole branch before the merge.
+
+```yaml
+# .sous/flows/task.yaml, shortened
+allowedLabels: [type:task, type:bug]       # which issues this flow accepts
+entry: init
+steps:
+  - id: init                               # a module step: plain TypeScript, no agent
+    uses: init
+    routes:
+      - to: implement
+
+  - id: implement                          # an agent step: the flow names agent and model
+    uses: implement
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      task: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+    routes:
+      - to: review
+
+  - id: review
+    uses: review
+    agent: { kind: claude, model: claude-opus-5-5 }   # or a second opinion: { kind: codex, model: gpt-5.5 }
+    with:
+      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      criteria:  ${{ ctx.work.body }}
+    routes:                                # ordered, first match wins
+      - to: merge
+        when: res.ok
+      - to: blocked                        # three rounds, then a human
+        when: steps.review.visits >= 3
+      - to: fix
+        else: true
+
+  - id: fix
+    uses: fix
+    agent: { kind: claude, model: claude-opus-5-5 }
+    resume: ${{ steps.fix.session ?? steps.implement.session }}   # continue the agent's session
+    with:
+      input:     ${{ steps.review.log }}
+      inputKind: review
+    routes:
+      - to: review                         # a loop is just a route back
+
+  - id: merge                              # squash onto main, label, close the issue
+    uses: merge
+    with:
+      baseBranch: main
+      mergedLabel: sous:merged
+    routes:
+      - to: done                           # done and blocked are the only exits
+```
+
+One issue goes through it like this:
 
 ```sh
 # in Claude Code: spec + sub-issues
@@ -36,7 +95,7 @@ $ ./sous ui
 ![sous ui flow graph for task 57: init and implement done, review running; fix, sync, review-full, fix-review-full and merge still queued](docs/images/task-flow-panel.png)
 
 The same run in `sous ui` on localhost: implement is done and review is
-running, with each step's agent, model and duration. Not a hosted service.
+running, with each step's agent, model and duration.
 
 ## Why sous
 
@@ -96,14 +155,15 @@ between.
 ## How it works
 
 A **step** is a folder with a `step.yaml`: declared inputs and either a
-prompt, where an agent does the work, or a TypeScript module. An agentic
-step can add a `prepare`, which decides when the agent runs (always, only
-if the eval fails, never), and an `eval`, which judges the result with
-`{ ok, log }`.
+prompt, where an agent does the work (`implement`, `review`, `fix` above),
+or a TypeScript module (`init`, `merge`). An agentic step can add a
+`prepare`, which decides when the agent runs (always, only if the eval
+fails, never), and an `eval`, which judges the result with `{ ok, log }`.
 
-A **flow** wires steps into a graph. Each entry names its step, its inputs,
-the agent and model, and ordered routes with conditions. `done` and
-`blocked` are the only exits; a loop is just a route back.
+A **flow** wires steps into a graph, as the YAML above does. Each entry
+names its step, its inputs, the agent and model, and ordered routes with
+conditions. `done` and `blocked` are the only exits; a loop is just a route
+back.
 
 The **executor** owns the loop. The agent sees only a rendered prompt and
 its worktree, and hands back a fixed envelope. Judging happens outside the
@@ -126,61 +186,6 @@ you can read, test and replay. Every judgement call lives in one prompt
 with one schema. A flaky agent cannot skip review, cannot merge, and cannot
 touch anything outside its worktree, because it was never given those
 tools.
-
-This is the starter's `task` flow, shortened. The
-[full file](starters/default/flows/task.yaml) also brings main in and
-reviews the whole branch before the merge.
-
-```yaml
-# .sous/flows/task.yaml, shortened
-allowedLabels: [type:task, type:bug]       # which issues this flow accepts
-entry: init
-steps:
-  - id: init                               # a module step: plain TypeScript, no agent
-    uses: init
-    routes:
-      - to: implement
-
-  - id: implement                          # an agent step: the flow names agent and model
-    uses: implement
-    agent: { kind: claude, model: claude-opus-5-5 }
-    with:
-      task: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
-    routes:
-      - to: review
-
-  - id: review
-    uses: review
-    agent: { kind: claude, model: claude-opus-5-5 }   # or a second opinion: { kind: codex, model: gpt-5.5 }
-    with:
-      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
-      criteria:  ${{ ctx.work.body }}
-    routes:                                # ordered, first match wins
-      - to: merge
-        when: res.ok
-      - to: blocked                        # three rounds, then a human
-        when: steps.review.visits >= 3
-      - to: fix
-        else: true
-
-  - id: fix
-    uses: fix
-    agent: { kind: claude, model: claude-opus-5-5 }
-    resume: ${{ steps.fix.session ?? steps.implement.session }}   # continue the agent's session
-    with:
-      input:     ${{ steps.review.log }}
-      inputKind: review
-    routes:
-      - to: review                         # a loop is just a route back
-
-  - id: merge                              # squash onto main, label, close the issue
-    uses: merge
-    with:
-      baseBranch: main
-      mergedLabel: sous:merged
-    routes:
-      - to: done                           # done and blocked are the only exits
-```
 
 Writing a step of your own is a `step.yaml` and a module or a prompt; the
 manual's [add a step](docs/manual.md#15-add-a-step) shows a module step, a
