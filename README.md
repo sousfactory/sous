@@ -49,7 +49,7 @@ steps:
     uses: review
     agent: { kind: claude, model: claude-opus-5-5 }   # or a second opinion: { kind: codex, model: gpt-5.5 }
     with:
-      diffRange: ${{ steps.implement.commits[0] + "^..HEAD" }}
+      diffRange: '${{ steps.implement.commits[0] ? steps.implement.commits[0] + "^..HEAD" : ctx.baseBranch + "...HEAD" }}'
       criteria:  ${{ ctx.work.body }}
     routes:                                # ordered, first match wins
       - to: merge
@@ -69,10 +69,10 @@ steps:
     routes:
       - to: review                         # a loop is just a route back
 
-  - id: merge                              # squash onto main, label, close the issue
+  - id: merge                              # squash onto the base branch, label, close the issue
     uses: merge
     with:
-      baseBranch: main
+      baseBranch: ${{ ctx.baseBranch }}    # the baseBranch setting in sous.yaml
       mergedLabel: sous:merged
     routes:
       - to: done                           # done and blocked are the only exits
