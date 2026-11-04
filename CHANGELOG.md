@@ -5,7 +5,7 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
-## Unreleased
+## 0.7.0
 
 ### Added
 
