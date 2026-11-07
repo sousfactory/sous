@@ -327,6 +327,18 @@ describe("openSandbox (real repository)", () => {
     expect(await repo.git(["worktree", "list", "--porcelain"])).not.toContain(first.worktreePath);
   });
 
+  it("closes a sandbox whose worktree directory is already gone without running anything", async () => {
+    const git = createGit();
+    const removed: string[] = [];
+    const openSandbox = createOpenSandbox({ ...git, removeWorktree: async (root, path) => void removed.push(path) });
+    const sandbox = await openSandbox({ repoRoot, branch: "feature/15-gone", settings: DEFAULT_SETTINGS });
+    await rm(sandbox.worktreePath, { recursive: true, force: true });
+
+    await expect(sandbox.close()).resolves.toBeUndefined();
+    await expect(sandbox.close()).resolves.toBeUndefined();
+    expect(removed).toEqual([]);
+  });
+
   it("refuses a branch checked out in the primary checkout", async () => {
     await repo.git(["checkout", "-q", "-b", "feature/10-y"]);
     await expect(createOpenSandbox(createGit())({ repoRoot, branch: "feature/10-y", settings: DEFAULT_SETTINGS })).rejects.toThrow(/sous runs it in a worktree of its own/);

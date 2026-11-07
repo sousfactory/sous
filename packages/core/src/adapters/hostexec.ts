@@ -7,6 +7,7 @@
  * Every command goes through it: the agent, and `Sandbox.exec` (evals).
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { constants } from "node:os";
 import { createInterface } from "node:readline";
 
@@ -72,8 +73,9 @@ export const createHostExec = ({ cwd, env, signal, maxTailChars = MAX_TAIL_CHARS
     new Promise<HostExecResult>((resolve, reject) => {
       if (signal?.aborted) return reject(signal.reason);
       const [file, args] = typeof command === "string" ? ["sh", ["-c", command]] : [command[0] ?? "", command.slice(1)];
+      const workdir = options.cwd ?? cwd;
       const proc = spawn(file, args, {
-        cwd: options.cwd ?? cwd,
+        cwd: workdir,
         env: { ...env, ...options.env },
         stdio: [options.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
         detached: true,
@@ -116,7 +118,9 @@ export const createHostExec = ({ cwd, env, signal, maxTailChars = MAX_TAIL_CHARS
       proc.on("error", (error) => {
         clearTimeout(idle);
         running.delete(proc);
-        reject(new Error(`exec failed: ${error.message}`));
+        // Node reports a missing cwd as ENOENT on the binary; say which one is missing.
+        const missingCwd = existsSync(workdir) ? "" : ` (cwd ${workdir} does not exist)`;
+        reject(new Error(`exec failed: ${error.message}${missingCwd}`));
       });
       proc.on("close", (code, exitSignal) => {
         clearTimeout(idle);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Event } from "sous-factory";
-import { BRANCH, ctxOf, fakeGit, REPO, type FakeCtxOptions, type FakeGitState } from "sous-factory/testing";
+import { BRANCH, ctxOf, fakeGit, fakeSandbox, REPO, type FakeCtxOptions, type FakeGitState, type FakeSandbox } from "sous-factory/testing";
 import merge, { cleanUpMerged, mergeComment, mergeMessage, minorFindings } from "../../steps/merge/run.js";
 
 const output = (step: string, scope: string, out: unknown): Event => ({
@@ -155,6 +155,20 @@ describe("merge", () => {
     expect(f.git.calls.filter((c) => c.startsWith("treeSha") || c.startsWith("deleteBranch") || c.startsWith("squashMerge"))).toEqual([]);
     expect(f.git.removedWorktrees).toEqual(["/tmp/worktree"]);
     expect(f.tracker.issues.get("1")?.labels).toEqual(["sous:merged"]);
+  });
+
+  it("a rerun after its own clean-up, worktree and branch gone, answers already merged instead of crashing", async () => {
+    // A worktree removed by an earlier step or a crashed merge: close finds nothing to inspect and resolves.
+    const stock = fakeSandbox({ worktreePath: "/tmp/worktree", branch: BRANCH });
+    let closeCalls = 0;
+    const gone: FakeSandbox = Object.assign(Object.create(stock) as FakeSandbox, { close: async () => void closeCalls++ });
+    const f = setup({ existing: ["main"] }, { sandbox: gone });
+    const out = await merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged" });
+    expect(out).toEqual({ summary: `merge: ${BRANCH} was already in main (sha0); cleaned up`, commits: [], output: { stale: false, sha: "sha0" } });
+    expect(closeCalls).toBe(1);
+    expect(f.tracker.issues.get("1")?.labels).toEqual(["sous:merged"]);
+    expect(f.tracker.comments[0]?.body).toContain("Merged into `main` as sha0:");
+    expect(f.done).toEqual([{ work: "1", commits: [] }]);
   });
 
   it("uses fix(#N) for a task and takes the base branch from the input", async () => {

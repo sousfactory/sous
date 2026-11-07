@@ -505,7 +505,13 @@ the branch is already checked out there. A branch checked out anywhere else,
 the primary checkout say, is refused: sous never runs an agent outside its
 own worktree. There is no container: the agent CLI and the eval commands
 are host processes in the worktree, each in its own process group so an
-interrupt ends them with what they started. An agent call that prints
+interrupt ends them with what they started. Closing the sandbox removes a
+clean worktree and keeps one with changes of any kind; a worktree that an
+earlier step or a crashed run already removed is not an error, for
+`close()` or for the merge step's clean-up, so a flow may remove the
+worktree before `merge` and a crashed `merge` can be rerun. A command that
+cannot start because its working directory is gone says so in its error.
+An agent call that prints
 nothing for `idleTimeoutSeconds` is terminated and counts as a failed
 process. Every agent call logs to
 `<logsDir>/<issue>/<spanId>-<scope>-<step>-<n>.log`: the agent's prose and

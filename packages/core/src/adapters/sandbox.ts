@@ -15,7 +15,7 @@
  * `exec` reject only with `InterruptedError`, never with an
  * `AgentProcessError` or a failed result.
  */
-import { createWriteStream, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { Settings } from "../config/settings.js";
@@ -259,10 +259,21 @@ export const createOpenSandbox =
       branch,
       runAgent: createRunAgent({ exec, idleTimeoutSeconds: settings.idleTimeoutSeconds, ...(signal !== undefined ? { signal } : {}) }),
       exec: createSandboxExec(exec, signal),
-      /** A worktree with changes of any kind, untracked files included, is kept. */
+      /**
+       * A worktree with changes of any kind, untracked files included, is kept.
+       * Idempotent: a worktree an earlier step or a crashed run already removed
+       * leaves nothing to keep or remove. One whose status cannot even be taken
+       * is removed rather than kept by accident (`removeWorktree` tolerates a
+       * registration that is gone), unless the run was interrupted.
+       */
       async close() {
-        const status = await exec("git status --porcelain");
-        if (status.exitCode === 0 && status.stdout.trim() === "") await git.removeWorktree(repoRoot, worktreePath);
+        if (!existsSync(worktreePath)) return;
+        // An interrupt still propagates: a forced removal of a worktree nobody inspected would lose its changes.
+        const status = await exec("git status --porcelain").catch((error: unknown) => {
+          if (signal?.aborted === true) throw error;
+          return undefined;
+        });
+        if (status === undefined || (status.exitCode === 0 && status.stdout.trim() === "")) await git.removeWorktree(repoRoot, worktreePath);
       },
     };
   };

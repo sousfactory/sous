@@ -44,7 +44,14 @@ describe("host exec", () => {
     const exec = createHostExec({ cwd: dir, env: process.env });
     expect((await exec(["printf", "%s|%s", "a b", "$HOME"])).stdout).toBe("a b|$HOME");
     expect((await exec(["sh", "-c", "exit 4"])).exitCode).toBe(4);
-    await expect(exec(["sous-no-such-command"])).rejects.toThrow(/exec failed: spawn sous-no-such-command ENOENT/);
+    await expect(exec(["sous-no-such-command"])).rejects.toThrow(/exec failed: spawn sous-no-such-command ENOENT$/);
+  });
+
+  it("names the working directory when the command cannot start because it does not exist", async () => {
+    const gone = join(dir, "gone");
+    await expect(createHostExec({ cwd: gone, env: process.env })("git status")).rejects.toThrow(`exec failed: spawn sh ENOENT (cwd ${gone} does not exist)`);
+    const missing = join(dir, "missing");
+    await expect(createHostExec({ cwd: dir, env: process.env })("pwd", { cwd: missing })).rejects.toThrow(`exec failed: spawn sh ENOENT (cwd ${missing} does not exist)`);
   });
 
   it("terminates a command that prints nothing for the idle timeout and says so", async () => {

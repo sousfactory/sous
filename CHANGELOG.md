@@ -25,6 +25,20 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   reads `step.run.module` once `prompt` is ruled out must now rule out
   `shell` too, as the starter's `test/steps/steps.test.ts` does.
 
+### Fixed
+
+- **`Sandbox.close()` is idempotent.** A run whose worktree was already
+  gone when the starter's `merge` ran (a flow that removes it in a step of
+  its own, or a rerun of a `merge` that crashed after its clean-up) ended
+  `crashed` with `exec failed: spawn sh ENOENT` and `sous run` exited 1,
+  though the work had shipped. `close()` now resolves without running
+  anything when the worktree directory does not exist, and `merge` labels,
+  comments and answers `already in <base>`. A host command whose working
+  directory does not exist now fails with
+  `exec failed: spawn sh ENOENT (cwd <path> does not exist)`, which
+  `ctx.exec` reports as its stderr. No upgrade step is needed; the
+  starter's `merge` is unchanged.
+
 ## 0.7.0
 
 ### Added
