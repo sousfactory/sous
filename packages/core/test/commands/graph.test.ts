@@ -108,6 +108,11 @@ describe("topology", () => {
     expect(shapeOf(loadStep(fixture("exec", "steps", "prepared")))).toEqual({ kind: "prompt", prepare: true, evalGate: true });
   });
 
+  it("calls a shell step kind shell, its eval a gate", () => {
+    expect(shapeOf(loadStep(fixture("exec", "steps", "shell")))).toEqual({ kind: "shell" });
+    expect(shapeOf(loadStep(fixture("exec", "steps", "shell-eval")))).toEqual({ kind: "shell", evalGate: true });
+  });
+
   it("calls an eval-only step kind eval, without a separate gate", () => {
     expect(shapeOf(loadStep(fixture("exec", "steps", "eval-only")))).toEqual({ kind: "eval" });
   });

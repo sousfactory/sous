@@ -1,0 +1,9 @@
+name: shell
+description: A command; its stdout, stderr and exit code are the output.
+inputs:
+  diffRange: { required: false }
+  input_kind: { required: false }
+  limits: { required: false }
+  note: { required: false }
+run:
+  shell: count

@@ -34,7 +34,8 @@ describe("lifecycle steps", () => {
     }
     if (step.run === undefined) throw new Error(`${name} has no run`);
     expect(step.run.output, `${name} declares run.output`).toBeDefined();
-    for (const file of [step.run.kind === "prompt" ? step.run.promptFile : step.run.module, ...(step.eval?.kind === "module" ? [step.eval.module] : [])]) {
+    const runFiles = step.run.kind === "prompt" ? [step.run.promptFile] : step.run.kind === "module" ? [step.run.module] : [];
+    for (const file of [...runFiles, ...(step.eval?.kind === "module" ? [step.eval.module] : [])]) {
       expect(existsSync(file), `${file} exists`).toBe(true);
     }
   });

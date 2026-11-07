@@ -10,6 +10,7 @@ import { isAgentic, loadStep, type Step } from "./step.js";
 import { DONE, parseFlow, resolveUses, STEP_NAME, TERMINALS, type LoadOptions, type FlowEntry, type FlowFile, type Route } from "./flow.js";
 import { DEFAULT_SETTINGS, loadSettings, projectDirs, SETTINGS_FILE, type Settings } from "./settings.js";
 import { messageOf, schemaProblem } from "./schema.js";
+import { inputEnvName } from "../exec/shell.js";
 
 /** Loader messages start with the file; the error carries it separately, so drop the duplicate. */
 const withoutFile = (file: string, message: string): string => (message.startsWith(`${file}: `) ? message.slice(file.length + 2) : message);
@@ -30,6 +31,7 @@ export type Rule =
   | "placeholders"
   | "with"
   | "agent"
+  | "env"
   | "expression"
   | "gate";
 
@@ -74,6 +76,17 @@ const preparedProperties = (step: Step): string[] => {
   return typeof properties === "object" && properties !== null ? Object.keys(properties) : [];
 };
 
+/** A shell step's inputs reach the command as `SOUS_INPUT_*`; two names on one variable would hide one value. */
+const checkEnvNames = (entry: FlowEntry, step: Step, fail: Collect): void => {
+  const seen = new Map<string, string>();
+  for (const name of Object.keys(step.inputs)) {
+    const variable = inputEnvName(name);
+    const other = seen.get(variable);
+    if (other !== undefined) fail("env", `${step.file}: inputs "${other}" and "${name}" both reach the command as ${variable}`, entry.id);
+    else seen.set(variable, name);
+  }
+};
+
 const checkStep = (entry: FlowEntry, step: Step, fail: Collect): void => {
   if (step.run?.output !== undefined) {
     const problem = schemaProblem(step.run.output);
@@ -94,6 +107,7 @@ const checkStep = (entry: FlowEntry, step: Step, fail: Collect): void => {
   for (const name of Object.keys(entry.with)) {
     if (!Object.hasOwn(step.inputs, name)) fail("with", `with names "${name}", which is not an input of ${step.name}`, entry.id);
   }
+  if (step.run?.kind === "shell") checkEnvNames(entry, step, fail);
   if (isAgentic(step) && entry.agent === undefined) fail("agent", `${step.name} is agentic; agent is required`, entry.id);
   if (!isAgentic(step) && entry.agent !== undefined) fail("agent", `${step.name} is deterministic; agent must be absent`, entry.id);
 };

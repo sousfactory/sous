@@ -300,14 +300,34 @@ run:
   prompt: prompt.md                # an agentic step …
   output: { type: object, … }      # … with the JSON Schema of `output`
   # or: module: ./run.ts           # a deterministic step; output schema optional
+  # or: shell: "npm run count"     # a deterministic command; output schema optional
 eval: ./eval.ts                    # or { shell: "npm test" }; optional
 maxIterations: 3                   # agentic default 3
 loop: true                         # false: a failed eval routes instead of retrying
 ```
 
 - **Kinds.** `run.prompt`: agentic, the flow entry must name an `agent`.
-  `run.module`: deterministic, runs once. No `run` but an `eval`:
-  eval-only, the eval is the work. Neither is an error.
+  `run.module`: deterministic, runs once. `run.shell`: a deterministic
+  command, runs once; a `step.yaml` alone is the whole step. Exactly one
+  of the three. No `run` but an `eval`: eval-only, the eval is the work.
+  Neither is an error.
+- **Shell run.** The command runs through `ctx.exec` in the worktree, as
+  a shell eval does: the project's environment underneath, ended with the
+  run on Ctrl-C, no timeout. The envelope is `{ summary: <the command>,
+  commits: [], output: { stdout, stderr, code, json? } }`: `json` is
+  stdout parsed when the whole of it parses as JSON (`3` from `wc -l`
+  gives `json: 3`, and `stdout` keeps the text). A non-zero exit is not a
+  failure: the visit passes unless an eval fails it, and the routes
+  decide, `when: result.output.code !== 0`. `run.output` is checked as a
+  JSON Schema and documents the shape; it is not applied, as for a
+  module. No `prepare`. The command gets inputs as variables, never
+  spliced into its text: `SOUS_INPUT_<NAME>` per wired input, `NAME` in
+  upper snake case (`diffRange` is `SOUS_INPUT_DIFF_RANGE`), the value as
+  a template renders it (objects and arrays as JSON); an unwired optional
+  input is absent. The run's facts come as `SOUS_WORKTREE`,
+  `SOUS_REPO_ROOT`, `SOUS_SPEC_DIR`, `SOUS_BRANCH`, `SOUS_BASE_BRANCH`,
+  `SOUS_ISSUE_ID`, `SOUS_ISSUE_REF`, `SOUS_WORK_ID` and `SOUS_WORK_REF`. A
+  resumed run runs the command again, so it should be idempotent.
 - **Prompt.** Markdown with `{{input}}`, `{{ctx.*}}` and `{{prepared.*}}`
   placeholders ([chapter 7](#7-variables-and-expressions)). Every
   `{{input}}` must be declared and every input used, unless the input
@@ -336,7 +356,8 @@ type PrepareFn = (ctx: Ctx, inputs: Inputs) => Promise<{ agent: "always" | "on-f
 type EvalFn    = (ctx: Ctx, inputs: Inputs, result?: Envelope, prepared?: Prepared) => Promise<{ ok: boolean; log: string }>;
 ```
 
-`inputs` are the resolved `with:` values. `result` is absent after a
+`inputs` are the resolved `with:` values. `result` is the envelope of the
+agent, the module or the shell command; it is absent after a
 module that returned nothing, an eval-only step, and in an eval that runs
 before any agent. A
 module and a prepare may assign `ctx.work` (a new work item, a new scope),
@@ -402,7 +423,7 @@ comment, the worktree is kept. An agentic step that exhausts
 unique, every target exists, every entry reachable and `done` reachable,
 steps load, schemas are valid JSON Schema, placeholders match inputs,
 `{{prepared.x}}` names a `prepare.output` property, `with` and `agent`
-fit the step, every expression compiles, the routes end in a fallthrough,
+fit the step, no two inputs of a shell step share a `SOUS_INPUT_*` name, every expression compiles, the routes end in a fallthrough,
 and a tracker module builds. Every error is listed as `<file> [<id>]:
 <rule>: <message>`; exit code 2.
 
@@ -807,6 +828,39 @@ export default (async (ctx, inputs) => {
 A module gets the whole `ctx` ([chapter 7](#7-variables-and-expressions)):
 the worktree, `ctx.git`, `ctx.tracker`, `ctx.exec`. It runs once per visit
 and should be idempotent, since a resumed run calls it again.
+
+### A shell step
+
+`steps/count-todos/step.yaml`, the whole step:
+
+```yaml
+name: count-todos
+description: Count the TODO lines under a folder.
+inputs:
+  dir: { required: false, description: "folder to search, default src" }
+run:
+  shell: 'grep -r TODO "${SOUS_INPUT_DIR:-src}" | wc -l'
+```
+
+The flow routes on what it printed. `wc -l` prints a number, so it is
+also `result.output.json`:
+
+```yaml
+- id: count-todos
+  uses: count-todos
+  with: { dir: web/src }
+  routes:
+    - to: blocked
+      when: result.output.code !== 0
+    - to: clean-todos
+      when: result.output.json > 0
+    - to: review
+      else: true
+```
+
+A script that prints one JSON line, `{"count": 3}`, is read as
+`result.output.json.count`. The input reaches the command as
+`SOUS_INPUT_DIR`, never as text in the command line.
 
 ### A prompt step with an eval
 

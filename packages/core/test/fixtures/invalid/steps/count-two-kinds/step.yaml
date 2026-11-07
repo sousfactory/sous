@@ -1,0 +1,4 @@
+name: count-two-kinds
+run:
+  shell: wc -l
+  module: ./run.ts

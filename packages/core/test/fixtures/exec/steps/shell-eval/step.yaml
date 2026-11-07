@@ -1,0 +1,5 @@
+name: shell-eval
+description: A command judged by a module eval that sees its envelope.
+run:
+  shell: count
+eval: ./eval.ts

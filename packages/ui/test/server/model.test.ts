@@ -351,6 +351,15 @@ describe("deriveRun: the running phase of an in-progress step", () => {
     expect(phases(log).init).toBe("eval");
   });
 
+  it("a shell step is in its work while the command runs, until its eval starts", () => {
+    const shell: Topology = { ...kinds, nodes: kinds.nodes.map((n) => (n.id === "init" ? { ...n, kind: "shell" as const } : n)) };
+    const log = new Log().start("r1", 0).visit("init", 0, undefined);
+    const phase = () => deriveRun({ session: session(), timeline: foldTimeline(log.events), topology: shell, live: true }).nodes.find((n) => n.id === "init")?.phase;
+    expect(phase()).toBe("work");
+    evalStart(log, "r1-1", 1);
+    expect(phase()).toBe("eval");
+  });
+
   it("an eval-only step is in its eval only while eval() runs", () => {
     const log = new Log().start("r1", 0).visit("init", 0, 1, true, "review").visit("review", 1, undefined);
     expect(phases(log).review).toBeUndefined();

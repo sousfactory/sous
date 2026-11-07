@@ -320,8 +320,8 @@ const stepSpans = (spans: readonly Span[], lanes: ReadonlyMap<string, string>, s
 };
 
 /**
- * What an in-progress visit runs now. A module has no event of its own, so a
- * module step counts as `work` until its eval starts. Between phases (agent
+ * What an in-progress visit runs now. A module or a shell command has no
+ * event of its own, so such a step counts as `work` until its eval starts. Between phases (agent
  * ended, eval not started) there is none.
  */
 const phaseOf = (span: Span, kind: StepKind | undefined): Phase | undefined => {
@@ -329,7 +329,7 @@ const phaseOf = (span: Span, kind: StepKind | undefined): Phase | undefined => {
   if (it === undefined && span.prepare !== undefined) return span.prepare.endedAt === undefined ? "prepare" : undefined;
   if (it?.eval !== undefined) return it.eval.endedAt === undefined ? "eval" : undefined;
   if (it?.agent !== undefined) return it.agent.endedAt === undefined ? "work" : undefined;
-  return kind === "module" ? "work" : undefined;
+  return kind === "module" || kind === "shell" ? "work" : undefined;
 };
 
 const isTerminal = (to: string): boolean => to === "done" || to === "blocked";

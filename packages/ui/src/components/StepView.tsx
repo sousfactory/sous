@@ -5,7 +5,7 @@ import { elapsed, formatCount, shortSha, timeAgo } from "../format";
 import { AgentLog, LogLines, LogSection } from "./LogSection";
 import { StatusIcon } from "./StatusIcon";
 
-export const KIND_WORD = { prompt: "prompt step", module: "run step", eval: "eval-only step" } as const;
+export const KIND_WORD = { prompt: "prompt step", module: "run step", shell: "shell step", eval: "eval-only step" } as const;
 
 /** ` with prepare and eval gate`, either part alone, or nothing. */
 export const withParts = (node: StepNode): string => {

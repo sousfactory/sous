@@ -60,6 +60,21 @@ describe("loadStep", () => {
     expect(step.run).toEqual({ kind: "module", module: join(projectSteps, "merge", "run.ts") });
   });
 
+  it("parses a shell step with and without an output schema: deterministic, nothing else in the folder", () => {
+    const bare = loadStep(tempStep("name: count\nrun: { shell: 'git diff --name-only main...HEAD | wc -l' }\n"));
+    expect(bare.run).toEqual({ kind: "shell", shell: "git diff --name-only main...HEAD | wc -l" });
+    expect(bare.placeholders.size).toBe(0);
+    expect(isAgentic(bare)).toBe(false);
+    const typed = loadStep(tempStep("name: count\nrun: { shell: node count.js, output: { type: object } }\n"));
+    expect(typed.run).toEqual({ kind: "shell", shell: "node count.js", output: { type: "object" } });
+  });
+
+  it("rejects shell beside module, an empty shell, and prepare on a shell step, naming the file", () => {
+    expect(() => loadStep(tempStep("name: x\nrun: { shell: ls, module: m.ts }\n"))).toThrow(/step\.yaml: .*\/run must match exactly one schema/);
+    expect(() => loadStep(tempStep("name: x\nrun: { shell: '' }\n"))).toThrow(/step\.yaml: \/run/);
+    expect(() => loadStep(tempStep("name: x\nprepare: { module: p.ts, output: {} }\nrun: { shell: ls }\n"))).toThrow(/step\.yaml: prepare needs run\.prompt/);
+  });
+
   it("parses an eval-only step: no run, deterministic, the eval does the work", () => {
     const dir = tempStep("name: verify\neval: { shell: './gradlew build' }\n");
     const step = loadStep(dir);

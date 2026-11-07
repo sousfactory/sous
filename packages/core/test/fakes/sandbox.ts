@@ -5,8 +5,8 @@ import type { AgentRequest, AgentResult, Sandbox } from "../../src/ports/sandbox
 export type FakeSandbox = Sandbox & {
   readonly requests: AgentRequest[];
   readonly execs: string[];
-  /** Every exec call with its cwd (`undefined` means the worktree root). */
-  readonly execCalls: { command: string; cwd: string | undefined }[];
+  /** Every exec call with its cwd (`undefined` means the worktree root) and the variables laid over the environment, when any were. */
+  readonly execCalls: { command: string; cwd: string | undefined; env?: Record<string, string> }[];
   readonly closed: boolean;
   /** Agent calls the signal aborted while they were in flight. */
   readonly abortedCalls: number;
@@ -91,7 +91,7 @@ export const fakeSandbox = (options: FakeSandboxOptions = {}): FakeSandbox => {
     async exec(command, execOptions) {
       if (signal?.aborted === true) throw interruptedBy(signal);
       execs.push(command);
-      execCalls.push({ command, cwd: execOptions?.cwd });
+      execCalls.push({ command, cwd: execOptions?.cwd, ...(execOptions?.env !== undefined ? { env: execOptions.env } : {}) });
       const queue = execScripts.get(command);
       if (queue === undefined) return ok();
       return (queue.length > 1 ? queue.shift() : queue[0]) ?? ok();

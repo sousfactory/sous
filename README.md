@@ -187,9 +187,10 @@ with one schema. A flaky agent cannot skip review, cannot merge, and cannot
 touch anything outside its worktree, because it was never given those
 tools.
 
-Writing a step of your own is a `step.yaml` and a module or a prompt; the
-manual's [add a step](docs/manual.md#15-add-a-step) shows a module step, a
-prompt step with an eval, and a prepare that decides when the agent runs.
+Writing a step of your own is a `step.yaml` and a prompt, a module or a
+shell command; the manual's [add a step](docs/manual.md#15-add-a-step)
+shows a module step, a shell step, a prompt step with an eval, and a
+prepare that decides when the agent runs.
 
 ## What's in the box
 

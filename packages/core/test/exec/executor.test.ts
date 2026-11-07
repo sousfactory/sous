@@ -334,6 +334,82 @@ describe("runFlow: deterministic steps", () => {
   });
 });
 
+describe("runFlow: shell steps", () => {
+  const routes = [
+    { to: "fix", when: "result.output.code !== 0" },
+    { to: "many", when: "result.output.json?.count > 0" },
+    { to: "done" },
+  ];
+
+  it("runs the command once in the worktree and routes on the JSON it printed; the envelope is the command line and no commits", async () => {
+    const sandbox = fakeSandbox({ exec: { count: ok('{"count": 3}\n') } });
+    const ports = portsOf(sandbox);
+    const { session, next } = await visit(entryOf("count", "shell", { routes }), undefined, ports);
+
+    expect(next).toBe("many");
+    expect(sandbox.execCalls.map((c) => [c.command, c.cwd])).toEqual([["count", undefined]]);
+    expect(ports.events.types()).toEqual(["span.open", "output", "span.close", "span.open", "span.close"]);
+    expect(ports.events.of("output")[0]).toMatchObject({
+      step: "count",
+      iteration: 1,
+      envelope: { summary: "count", commits: [], output: { stdout: '{"count": 3}\n', stderr: "", code: 0, json: { count: 3 } } },
+      eval: { ok: true },
+    });
+    expect(sandbox.requests).toEqual([]);
+    expect(session.scopes["1"]?.["count"]).toMatchObject({ ok: true, commits: [] });
+  });
+
+  it("keeps plain stdout as text, with json only when the whole of it parses", async () => {
+    const onNumber = [{ to: "many", when: "result.output.json === 3 && result.output.stdout.trim() === '3'" }, { to: "done" }];
+    const number = await visit(entryOf("count", "shell", { routes: onNumber }), undefined, portsOf(fakeSandbox({ exec: { count: ok("3\n") } })));
+    expect(number.next).toBe("many");
+    expect(number.session.scopes["1"]?.["count"]?.output).toEqual({ stdout: "3\n", stderr: "", code: 0, json: 3 });
+
+    const text = await visit(entryOf("count", "shell", { routes }), undefined, portsOf(fakeSandbox({ exec: { count: ok("3 files\n") } })));
+    expect(text.next).toBe("done");
+    expect(text.session.scopes["1"]?.["count"]?.output).toEqual({ stdout: "3 files\n", stderr: "", code: 0 });
+  });
+
+  it("passes the visit on a non-zero exit and routes on the code", async () => {
+    const { session, next } = await visit(entryOf("count", "shell", { routes }), undefined, portsOf(fakeSandbox({ exec: { count: fail("no such file\n", 2) } })));
+    expect(next).toBe("fix");
+    expect(session.scopes["1"]?.["count"]).toMatchObject({ ok: true, output: { stdout: "", stderr: "no such file\n", code: 2 } });
+  });
+
+  it("hands each wired input and the run's facts to the command as SOUS_* variables; an unwired optional input is absent", async () => {
+    const sandbox = fakeSandbox();
+    const entry = entryOf("count", "shell", { with: { diffRange: '${{ ctx.baseBranch + "...HEAD" }}', input_kind: "plain", limits: "${{ ({ max: 2, list: [1] }) }}" } });
+    await visit(entry, undefined, portsOf(sandbox, { baseBranch: "dev" }));
+
+    expect(sandbox.execCalls[0]?.env).toEqual({
+      SOUS_INPUT_DIFF_RANGE: "dev...HEAD",
+      SOUS_INPUT_INPUT_KIND: "plain",
+      SOUS_INPUT_LIMITS: '{"max":2,"list":[1]}',
+      SOUS_WORKTREE: "/tmp/worktree",
+      SOUS_REPO_ROOT: "/repo",
+      SOUS_SPEC_DIR: "specs/1-test-issue",
+      SOUS_BRANCH: "feature/1-test-issue",
+      SOUS_BASE_BRANCH: "dev",
+      SOUS_ISSUE_ID: "1",
+      SOUS_ISSUE_REF: "#1",
+      SOUS_WORK_ID: "1",
+      SOUS_WORK_REF: "#1",
+    });
+  });
+
+  it("hands the envelope to the step's eval as result", async () => {
+    const evalRoutes = [{ to: "done", when: "res.ok" }, { to: "fix" }];
+    const green = await visit(entryOf("count", "shell-eval", { routes: evalRoutes }), undefined, portsOf(fakeSandbox({ exec: { count: ok('{"count": 0}') } })));
+    expect(green.next).toBe("done");
+    expect(JSON.parse(green.session.scopes["1"]?.["count"]?.log ?? "")).toEqual({ summary: "count", commits: [], output: { stdout: '{"count": 0}', stderr: "", code: 0, json: { count: 0 } } });
+    expect(green.ports.events.types().slice(0, 5)).toEqual(["span.open", "iteration.eval.start", "iteration.eval.end", "output", "span.close"]);
+
+    const red = await visit(entryOf("count", "shell-eval", { routes: evalRoutes }), undefined, portsOf(fakeSandbox({ exec: { count: ok('{"count": 3}') } })));
+    expect(red.next).toBe("fix");
+    expect(red.session.scopes["1"]?.["count"]?.ok).toBe(false);
+  });
+});
+
 describe("runFlow: with, routes and scope", () => {
   it("evaluates with: at visit start over ctx and steps; a whole-string expression keeps its type", async () => {
     const a = entryOf("a", "echo", { with: { a: "${{ ctx.issue.title }}", b: "${{ ({ n: ctx.issue.id }) }}" }, routes: [{ to: "b" }] });

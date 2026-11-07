@@ -1,0 +1,6 @@
+name: count-colliding
+inputs:
+  diffRange: { required: false }
+  diff_range: { required: false }
+run:
+  shell: git diff --name-only "$SOUS_INPUT_DIFF_RANGE" | wc -l

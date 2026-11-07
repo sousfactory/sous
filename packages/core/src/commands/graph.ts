@@ -20,10 +20,10 @@ export type GraphDeps = {
 export type GraphEdge = { from: string; to: string; label?: string };
 
 /**
- * How a step does its work: an agent `prompt`, a deterministic `module`, or
- * `eval` alone (the eval is the work, as in `verify`).
+ * How a step does its work: an agent `prompt`, a deterministic `module` or
+ * `shell` command, or `eval` alone (the eval is the work, as in `verify`).
  */
-export type StepKind = "prompt" | "module" | "eval";
+export type StepKind = "prompt" | "module" | "shell" | "eval";
 
 /**
  * A flow entry as declared, without its inputs. `kind`, `prepare` and

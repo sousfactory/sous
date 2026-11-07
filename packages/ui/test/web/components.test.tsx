@@ -154,6 +154,9 @@ describe("StepCard", () => {
     expect(screen.getByTestId("kind-module")).toBeTruthy();
     expect(screen.queryByTestId("eval-gate")).toBeNull();
     cleanup();
+    render(<StepCard node={node({ id: "count", kind: "shell" })} now={now} flow="task" />);
+    expect(screen.getByTestId("kind-shell").title).toBe("shell command: a command does the work");
+    cleanup();
     render(<StepCard node={node({ id: "verify", kind: "eval" })} now={now} flow="task" />);
     expect(screen.getByTestId("kind-eval").title).toBe("eval only: the eval is the work");
     expect(screen.queryByTestId("eval-gate")).toBeNull();
@@ -192,6 +195,9 @@ describe("StepCard", () => {
     cleanup();
     render(<StepCard node={node({ kind: "module", evalGate: true, status: "in_progress", phase: "work" })} now={now} flow="task" />);
     expect([active("kind-module"), active("eval-gate")]).toEqual([true, false]);
+    cleanup();
+    render(<StepCard node={node({ kind: "shell", evalGate: true, status: "in_progress", phase: "work" })} now={now} flow="task" />);
+    expect([active("kind-shell"), active("eval-gate")]).toEqual([true, false]);
     cleanup();
     render(<StepCard node={node({ kind: "eval", status: "in_progress" })} now={now} flow="task" />);
     expect(active("kind-eval")).toBe(false);

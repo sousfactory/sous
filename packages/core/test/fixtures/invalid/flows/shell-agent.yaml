@@ -1,0 +1,8 @@
+entry: count
+steps:
+  - id: count
+    uses: count
+    agent: { kind: claude, model: m }
+    routes:
+      - to: done
+        else: true

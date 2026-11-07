@@ -18,7 +18,9 @@ export type StepInput = { required: boolean; description?: string; prompt?: fals
 
 export type StepRun =
   | { kind: "prompt"; promptFile: string; prompt: string; output: Record<string, unknown> }
-  | { kind: "module"; module: string; output?: Record<string, unknown> };
+  | { kind: "module"; module: string; output?: Record<string, unknown> }
+  /** A command run once per visit in the worktree; its stdout, stderr and exit code are the output. */
+  | { kind: "shell"; shell: string; output?: Record<string, unknown> };
 
 export type StepEval = { kind: "module"; module: string } | { kind: "shell"; shell: string };
 
@@ -52,7 +54,10 @@ type StepDoc = {
   name: string;
   description?: string;
   inputs?: Record<string, { required?: boolean; description?: string; prompt?: boolean }>;
-  run?: { prompt: string; output: Record<string, unknown>; module?: never } | { module: string; output?: Record<string, unknown>; prompt?: never };
+  run?:
+    | { prompt: string; output: Record<string, unknown>; module?: never; shell?: never }
+    | { module: string; output?: Record<string, unknown>; prompt?: never; shell?: never }
+    | { shell: string; output?: Record<string, unknown>; prompt?: never; module?: never };
   eval?: string | { shell: string };
   prepare?: { module: string; output: Record<string, unknown> };
   maxIterations?: number;
@@ -87,6 +92,11 @@ const check = checker<StepDoc>({
           required: ["module"],
           additionalProperties: false,
           properties: { module: { type: "string", minLength: 1 }, output: { type: "object" } },
+        },
+        {
+          required: ["shell"],
+          additionalProperties: false,
+          properties: { shell: { type: "string", minLength: 1 }, output: { type: "object" } },
         },
       ],
     },
@@ -127,7 +137,9 @@ const runOf = (doc: NonNullable<StepDoc["run"]>, dir: string): StepRun => {
     const promptFile = resolve(dir, doc.prompt);
     return { kind: "prompt", promptFile, prompt: readPrompt(promptFile), output: doc.output };
   }
-  return { kind: "module", module: resolve(dir, doc.module), ...(doc.output !== undefined ? { output: doc.output } : {}) };
+  const output = doc.output !== undefined ? { output: doc.output } : {};
+  if (doc.shell !== undefined) return { kind: "shell", shell: doc.shell, ...output };
+  return { kind: "module", module: resolve(dir, doc.module), ...output };
 };
 
 const evalOf = (doc: NonNullable<StepDoc["eval"]>, dir: string): StepEval =>

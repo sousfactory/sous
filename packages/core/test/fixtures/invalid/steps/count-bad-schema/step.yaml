@@ -1,0 +1,5 @@
+name: count-bad-schema
+run:
+  shell: wc -l
+  output:
+    type: strng

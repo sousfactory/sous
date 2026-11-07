@@ -5,6 +5,26 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
+## Unreleased
+
+### Added
+
+- **`run: { shell }`.** A third kind of step beside `run.prompt` and
+  `run.module`: a deterministic command run once per visit in the
+  worktree, a `step.yaml` alone. Its `result.output` is
+  `{ stdout, stderr, code }` plus `json` when the whole of stdout parses
+  as JSON, so `when: result.output.code !== 0` and
+  `when: result.output.json.count > 0` route; a non-zero exit is not a
+  failure by itself. Inputs reach the command as `SOUS_INPUT_<NAME>`
+  (`diffRange` is `SOUS_INPUT_DIFF_RANGE`), the run's facts as
+  `SOUS_WORKTREE`, `SOUS_BRANCH`, `SOUS_BASE_BRANCH` and the rest; nothing
+  is spliced into the command line. `sous validate` rejects `agent:` and
+  `prepare` on a shell step and two inputs on one variable.
+  `fakeSandbox().execCalls` in `sous-factory/testing` records the `env`
+  a call passed. No upgrade step is needed; only a project test that
+  reads `step.run.module` once `prompt` is ruled out must now rule out
+  `shell` too, as the starter's `test/steps/steps.test.ts` does.
+
 ## 0.7.0
 
 ### Added

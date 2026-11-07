@@ -1,0 +1,7 @@
+entry: count
+steps:
+  - id: count
+    uses: count-bad-schema
+    routes:
+      - to: done
+        else: true

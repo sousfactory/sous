@@ -26,6 +26,7 @@ import { buildCtx, ctxPlaceholders, type CtxWrites } from "./ctx.js";
 import { AgentOutputError, AgentProcessError, SousError } from "./errors.js";
 import { skillAudit, type SkillAuditor } from "../skills.js";
 import { renderPrompt, retryPrompt } from "./prompt.js";
+import { shellEnv, shellEnvelope } from "./shell.js";
 import { forgetPrepared, openVisit, scopeKey, stepsOf, updateVisit, type Session } from "./scope.js";
 import { validator } from "../config/schema.js";
 
@@ -426,18 +427,25 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     return { ...(last ?? { res: { ok: false, log: "" }, ...withPrepared }), iteration, exhausted: true };
   };
 
-  /** An eval-only step has no module; its eval then runs with no result. */
-  const runModule = async (entry: LoadedEntry, inputs: Inputs): Promise<Envelope | undefined> => {
+  /**
+   * A module, or a shell command through `ctx.exec` as a shell eval runs
+   * one. An eval-only step has neither; its eval then runs with no result.
+   */
+  const runOnce = async (entry: LoadedEntry, inputs: Inputs): Promise<Envelope | undefined> => {
     const { step } = entry;
     if (step.run === undefined) return undefined;
-    if (step.run.kind !== "module") throw new SousError(`${entry.id}: not a module step`);
+    if (step.run.kind === "shell") {
+      const ctx = ctxFor();
+      return shellEnvelope(step.run.shell, await ctx.exec(step.run.shell, { env: shellEnv(ctx, inputs) }));
+    }
+    if (step.run.kind !== "module") throw new SousError(`${entry.id}: not a module or shell step`);
     const run = await importDefault<RunFn>(step.run.module);
     return withWrites(async (ctx) => (await run(ctx, inputs)) ?? undefined);
   };
 
   const runDeterministic = async (entry: LoadedEntry, key: string, inputs: Inputs): Promise<VisitResult> => {
     const { step } = entry;
-    const envelope = await runModule(entry, inputs);
+    const envelope = await runOnce(entry, inputs);
     const res = await evaluate(step, inputs, 1, envelope);
     if (envelope !== undefined) await recordOutput(entry.id, key, 1, envelope, res);
     return { res, ...(envelope !== undefined ? { envelope } : {}), iteration: 1, exhausted: false };

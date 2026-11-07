@@ -1,4 +1,4 @@
-import { AlertIcon, CodeIcon, ShieldCheckIcon, SparkleFillIcon, ToolsIcon } from "@primer/octicons-react";
+import { AlertIcon, CodeIcon, ShieldCheckIcon, SparkleFillIcon, TerminalIcon, ToolsIcon } from "@primer/octicons-react";
 import type { Phase, StepNode } from "../../server/model";
 import { elapsed } from "../format";
 import { NODE_HEIGHT, NODE_WIDTH } from "../layout";
@@ -13,6 +13,7 @@ type StepKind = NonNullable<StepNode["kind"]>;
 const KIND_LABEL: Record<StepKind, string> = {
   prompt: "prompt: an agent does the work",
   module: "run: a module does the work",
+  shell: "shell command: a command does the work",
   eval: "eval only: the eval is the work",
 };
 
@@ -25,7 +26,7 @@ const iconClass = (active: boolean): string => `flex shrink-0 ${active ? "text-f
 
 /** An eval-only step's work is its eval. A faded sparkle means the latest visit's prepare skipped the agent. */
 const KindIcon = ({ kind, phase, skipped }: { kind: StepKind; phase: Phase | undefined; skipped: StepNode["agentSkipped"] }) => {
-  const Icon = kind === "prompt" ? SparkleFillIcon : kind === "module" ? CodeIcon : ShieldCheckIcon;
+  const Icon = { prompt: SparkleFillIcon, module: CodeIcon, shell: TerminalIcon, eval: ShieldCheckIcon }[kind];
   const active = phase === (kind === "eval" ? "eval" : "work");
   const title = skipped !== undefined ? `${KIND_LABEL[kind]}; prepare skipped the agent${skipped.reason !== undefined ? `: ${skipped.reason}` : ""}` : KIND_LABEL[kind];
   return (
