@@ -108,7 +108,7 @@ your-project/
     ├── tsconfig.json             # for the steps and tests
     ├── vitest.config.ts
     ├── flows/
-    │   ├── task.yaml             # one issue: init → plan → implement → review ⇄ fix → sync → review-full → merge
+    │   ├── task.yaml             # one issue: init → check-issue → plan → implement → review ⇄ fix → sync → review-full → merge
     │   ├── feature.yaml          # an issue with sub-issues: the same, per sub-issue, then as a whole
     │   └── bench.yaml            # smoke test: hello-world → tell-a-joke; writes nothing
     ├── steps/
@@ -198,7 +198,10 @@ it:
   `review`, `fix` are prompts and an eval each; `verify` is a list of
   commands.
 - Drop what you do not need. `bench` and its two steps are a smoke test;
-  `next-work` and `close-work` only serve `feature`.
+  `next-work` and `close-work` only serve `feature`. `check-issue` runs
+  after `init` in `task` and after `next-work` in `feature`, before
+  anything is planned or built: to drop it, delete its entry and point the
+  step before it at the one after.
 - Write your own flows from your own steps. A flow needs an `entry` and
   steps that route to `done`; `init` and `merge` are starter steps, not
   engine features.
@@ -230,7 +233,9 @@ Then a real task. Label an issue `type:task`, and:
 What happens, in order: the issue is claimed (`sous:running` on GitHub), a
 worktree is opened on `feature/<id>-<slug>`, the spec is read from
 `specs/<id>-*/spec.md` in that worktree (the issue itself serves as the
-spec until one is written), `init` checks the issue is open, `plan`
+spec until one is written), `init` checks the issue is open,
+`check-issue` checks the issue against the code and stops the run with its
+evidence when the issue is already fixed or rests on a false premise, `plan`
 derives a spec from the issue when the branch has none and stops with its
 open questions when it may not decide alone, `implement` builds and commits, `review` judges the diff, `fix` addresses
 findings, `sync` brings the base branch in, `review-full` judges the whole
@@ -928,6 +933,7 @@ steps:
     agent: { kind: claude, model: claude-opus-5-5 }
     with:
       task: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+      divergence: ""                       # no check-issue in this flow, so nothing diverges
     routes:
       - to: review
   - id: review
@@ -1057,8 +1063,14 @@ touch nothing else under the spec folder: one line per choice a reviewer
 could read as a departure from the spec, or per finding the fix refutes,
 with its reason, committed with the code. The reviewer judges the line
 instead of the departure, so the trace of what the run decided travels
-with the branch and lands with the merge. Everything above that section
-stays the plan session's.
+with the branch and lands with the merge. `check-issue` adds a line there
+too when part of the issue is false but its defect is real: what the issue
+claims, what the code shows, and why; with no `spec.md` on the branch yet
+it hands the lines to `plan`, which writes them into the spec it derives.
+In the feature flow, which has no `plan`, `implement` gets the lines as
+its `divergence` input and the child's `review` gets them as a
+`## Decisions` section after the child's body, its criteria.
+Everything above that section stays the plan session's.
 
 **Check:** `npx vitest run test/prompts.test.ts`; then plan one small
 issue with `/sous-plan` and read the spec it writes.

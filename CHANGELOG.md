@@ -9,6 +9,27 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Added
 
+- **The starter's `check-issue` step.** The task flow runs it after
+  `init`, the feature flow for each child after `next-work`, before
+  anything is planned or built: an agent, read-only on the code, checks
+  whether the issue still holds against the worktree and answers `holds`,
+  `fixed`, `false-premise` or `unclear` with each command it ran and its
+  result as the evidence. `holds` and `unclear` go on; `fixed` and
+  `false-premise` stop the run as blocked with the evidence as the
+  comment, and the human closes or rewrites the issue, never the run. A
+  partly false issue whose defect is real goes on with the divergence as a
+  line under the spec's `## Decisions`; with no spec on the branch yet,
+  `plan` gets the lines through its new optional `divergence` input. In
+  the feature flow `implement` gets them through its new `divergence`
+  input and the child's `review` as a `## Decisions` section of its
+  criteria; a project on an older starter that adopts `check-issue` adds
+  `divergence` to its `implement` entries in both flows. A
+  child closed after such a block is skipped without an agent on the next
+  run. One more agent call per issue; a project that does not want it
+  deletes the entry and points `init` at `plan` (task) or `next-work` at
+  `implement` (feature). Projects on an older starter copy
+  `steps/check-issue/` and the flow entries to adopt it.
+
 - **`run: { shell }`.** A third kind of step beside `run.prompt` and
   `run.module`: a deterministic command run once per visit in the
   worktree, a `step.yaml` alone. Its `result.output` is

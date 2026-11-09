@@ -42,6 +42,7 @@ steps:
     agent: { kind: claude, model: claude-opus-5-5 }
     with:
       task: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+      divergence: ""                       # the full file passes check-issue's findings here
     routes:
       - to: review
 

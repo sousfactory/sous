@@ -3,6 +3,7 @@ description: "Implement a task in the worktree following the implement and tdd s
 
 inputs:
   task: { required: true, description: "what to implement: title and body of the work item; its acceptance criteria are the definition of done" }
+  divergence: { required: true, description: "lines where check-issue found the code contradicting the task, as `- ` lines; empty when there are none" }
 
 run:
   prompt: prompt.md

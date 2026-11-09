@@ -22,8 +22,8 @@ Three flows:
 
 | Flow | Accepts | What it does |
 | --- | --- | --- |
-| `task` | `type:task`, `type:bug` | One issue: init → plan → implement → review ⇄ fix → sync → review-full ⇄ fix → merge. `plan` derives a spec from the issue when the branch has none. |
-| `feature` | `type:feature` | A parent issue delivered sub-issue by sub-issue (next-work → implement → review ⇄ fix → close-work, repeated), then synced, reviewed as a whole and merged. |
+| `task` | `type:task`, `type:bug` | One issue: init → check-issue → plan → implement → review ⇄ fix → sync → review-full ⇄ fix → merge. `check-issue` stops the run when the issue no longer holds against the code; `plan` derives a spec from the issue when the branch has none. |
+| `feature` | `type:feature` | A parent issue delivered sub-issue by sub-issue (next-work → check-issue → implement → review ⇄ fix → close-work, repeated), then synced, reviewed as a whole and merged. |
 | `bench` | any issue | A smoke test: one module step, one agent step, nothing committed, the issue untouched. |
 
 `feature` in one picture: `/sous-plan` turns the parent issue into a spec
@@ -33,7 +33,8 @@ base branch.
 
 ```mermaid
 flowchart LR
-  init --> nw[next-work] --> implement --> review
+  init --> nw[next-work] --> ci[check-issue] --> implement --> review
+  ci -- closed --> nw
   review -- findings --> fix --> review
   review -- ok --> cw[close-work] --> nw
   nw -- none left --> sync --> rf[review-full]
@@ -45,11 +46,12 @@ flowchart LR
 
 ![The feature flow mid-run in sous ui](https://raw.githubusercontent.com/sousfactory/sous/main/docs/images/feature-flow.png)
 
-Twelve steps, each with its own `README.md`:
+Thirteen steps, each with its own `README.md`:
 
 | Step | Kind | Does |
 | --- | --- | --- |
 | `init` | module | Checks the issue is open and the worktree is on the run's branch. |
+| `check-issue` | prompt with prepare | Checks the issue against the code before anything is planned or built; stops the run with the evidence when it is already fixed or rests on a false premise. |
 | `plan` | prompt with prepare | Derives a spec from the issue when the branch has none; records assumptions, stops on questions it may not decide. |
 | `next-work` | module | Puts the next open child with no open blockers on the bench. |
 | `implement` | prompt | Implements the work item following the `implement` and `tdd` skills, commits. |

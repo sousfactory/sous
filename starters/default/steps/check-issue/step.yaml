@@ -1,0 +1,40 @@
+name: check-issue
+description: "Check the issue against the code before anything is planned or built. Prepare skips the agent on an issue that is already closed; otherwise the agent, read-only on the code, answers whether the issue still holds, with each command it ran and its result as the evidence. Eval: holds and unclear pass; fixed and false-premise fail with the evidence as the log, which becomes the blocked comment."
+
+inputs:
+  issue: { required: true, description: "the issue as filed: ref, title and body; what is checked against the code" }
+
+prepare:
+  module: ./prepare.ts
+  output:
+    type: object
+    required: [verdict]
+    properties:
+      verdict: { enum: [open, closed], description: "closed: a human closed the issue, so the agent did not run" }
+
+run:
+  prompt: prompt.md
+  output:
+    type: object
+    required: [verdict, evidence]
+    properties:
+      verdict:
+        enum: [holds, fixed, false-premise, unclear]
+        description: "holds: the issue stands; fixed: the defect is gone from the code; false-premise: the issue rests on a claim the code contradicts; unclear: the check could not settle it"
+      evidence:
+        type: array
+        description: "every command run for the verdict, with its result"
+        items:
+          type: object
+          required: [command, result]
+          properties:
+            command: { type: string }
+            result: { type: string, description: "the relevant part of the output, verbatim" }
+      divergence:
+        type: array
+        description: "with holds, each claim of the issue the code contradicts: what the code shows instead, and why the defect is real anyway; every line, also those written into an existing spec.md, for plan, implement and the feature flow's child review"
+        items: { type: string }
+
+eval: ./eval.ts
+# A blocking verdict needs a human; another attempt would only check the same code again.
+loop: false

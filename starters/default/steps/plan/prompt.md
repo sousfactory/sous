@@ -10,6 +10,15 @@ this step; what you cannot decide alone you write down and stop.
 
 {{issue}}
 
+## Where the code contradicts the issue
+
+{{divergence}}
+
+Each line above, if there is any, is a claim of the issue that the check
+before this step found false against the code, while the defect itself is
+real. Copy each line, as it stands, into the spec's Decisions section, and
+derive the rest of the spec from what the code shows, not from the claim.
+
 ## What you may and may not do
 
 - **Derive, do not extend.** Every sentence in the spec traces to the

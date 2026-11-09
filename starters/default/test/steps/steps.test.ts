@@ -18,6 +18,7 @@ const LIBRARY: Record<string, Expected> = {
   "next-work": { kind: "module", inputs: [] },
   "close-work": { kind: "module", inputs: ["commits"] },
   merge: { kind: "module", inputs: ["baseBranch", "mergedLabel", "resync"] },
+  "check-issue": { kind: "prompt", inputs: ["issue"], eval: true, loop: false },
 };
 
 const NAMES = Object.keys(LIBRARY);
@@ -49,6 +50,20 @@ describe("lifecycle steps", () => {
     expect(step.eval !== undefined).toBe(expected.eval ?? false);
     if (expected.maxIterations !== undefined) expect(step.maxIterations).toBe(expected.maxIterations);
     if (expected.loop !== undefined) expect(step.loop).toBe(expected.loop);
+  });
+
+  it("check-issue answers a verdict with its evidence and may report divergence; its prepare says whether the issue is still open", () => {
+    const step = load("check-issue");
+    expect(step.run?.output).toMatchObject({
+      required: ["verdict", "evidence"],
+      properties: {
+        verdict: { enum: ["holds", "fixed", "false-premise", "unclear"] },
+        evidence: { type: "array", items: { required: ["command", "result"] } },
+        divergence: { type: "array", items: { type: "string" } },
+      },
+    });
+    expect(step.prepare?.output).toMatchObject({ required: ["verdict"], properties: { verdict: { enum: ["open", "closed"] } } });
+    expect(existsSync(step.prepare?.module ?? "")).toBe(true);
   });
 
   it("_shared is not a step", () => {

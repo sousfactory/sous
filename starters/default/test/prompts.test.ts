@@ -20,10 +20,10 @@ const stepDirs = (flows: readonly string[]): string[] => [...new Set(flows.flatM
 
 const LIFECYCLE_STEPS = ["close-work", "init", "merge", "next-work", "sync-resolve"];
 // verify is not a flow step: its eval judges implement, fix and sync-resolve.
-const WORK_STEPS = ["fix", "implement", "plan", "review"];
+const WORK_STEPS = ["check-issue", "fix", "implement", "plan", "review"];
 
 describe("step prompts", () => {
-  it("the delivery flows use the five lifecycle steps and the four work steps; bench uses the two sample steps", () => {
+  it("the delivery flows use the five lifecycle steps and the five work steps; bench uses the two sample steps", () => {
     expect(stepDirs(["feature", "task"]).map((d) => d.replace(`${root}/`, ""))).toEqual([...LIFECYCLE_STEPS, ...WORK_STEPS].sort().map((n) => `steps/${n}`));
     expect(stepDirs(["bench"]).map((d) => d.replace(`${root}/`, ""))).toEqual(["steps/hello-world", "steps/tell-a-joke"]);
   });
@@ -42,6 +42,14 @@ describe("step prompts", () => {
       expect(step.run.prompt).not.toMatch(/!`/);
     } else {
       expect(placeholders).toEqual([]);
+    }
+  });
+
+  it.each(stepDirs(["bench", "feature", "task"]).map((dir) => [dir.replace(`${root}/`, ""), dir]))("%s: every input the prompt renders is required, since a placeholder without a value fails the render", (_name, dir) => {
+    const step: Step = loadStep(dir);
+    for (const p of step.placeholders) {
+      if (p.startsWith("ctx.") || p.startsWith("prepared.")) continue;
+      expect(step.inputs[p]?.required, `{{${p}}} is a required input`).toBe(true);
     }
   });
 
@@ -67,7 +75,7 @@ describe("step prompts", () => {
   });
 
   it("inputs are per-step decisions only: no rules, spec path, skills folder or check commands (convention over configuration)", () => {
-    expect(Object.keys(loadStep(join(root, "steps", "implement")).inputs)).toEqual(["task"]);
+    expect(Object.keys(loadStep(join(root, "steps", "implement")).inputs)).toEqual(["task", "divergence"]);
     expect(Object.keys(loadStep(join(root, "steps", "fix")).inputs)).toEqual(["input", "inputKind", "diffRange"]);
     expect(Object.keys(loadStep(join(root, "steps", "review")).inputs)).toEqual(["diffRange", "criteria"]);
     for (const dir of stepDirs(["feature", "task"])) {
@@ -102,6 +110,35 @@ describe("step prompts", () => {
         expect(text, `${name}: such a criterion is reported as covered, not unconfirmed`).toMatch(/covered by the evaluation, not as unconfirmed/);
       }
     }
+  });
+});
+
+describe("the check-issue prompt", () => {
+  const step = loadStep(join(root, "steps", "check-issue"));
+  const text = step.run?.kind === "prompt" ? step.run.prompt : "";
+
+  it("is autonomous, read-only on code and keeps away from the tracker", () => {
+    expect(text).toMatch(/Nobody will answer questions/);
+    expect(text).toMatch(/Read-only on the code/);
+    expect(text).toMatch(/Do not touch the issue tracker/);
+    expect(text).toMatch(/never closes an issue/);
+    expect(text).toMatch(/never push/);
+    expect(text).not.toMatch(/<result>|Output contract/);
+    expect(text).not.toMatch(/sous:|fcli:|gradle|Co-Authored-By|CODING_STANDARDS/i);
+  });
+
+  it("asks for evidence, not assertions, and resolves doubt toward going on", () => {
+    expect(text).toMatch(/never an assertion/);
+    for (const verdict of ["holds", "fixed", "false-premise", "unclear"]) expect(text).toContain(`\`${verdict}\``);
+    expect(text).toMatch(/never the full test suite/);
+  });
+
+  it("always reports a divergence in its output, and under ## Decisions too when the spec exists, never creating the spec", () => {
+    expect(text).toContain("{{ctx.specDir}}/spec.md");
+    expect(text).toContain("## Decisions");
+    expect(text).toMatch(/Nothing else in the folder changes/);
+    expect(text).toMatch(/Always list each line in `divergence`/);
+    expect(text).toMatch(/Never create the spec file/);
   });
 });
 

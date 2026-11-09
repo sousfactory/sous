@@ -14,10 +14,29 @@ steps:
   - id: next-work
     uses: next-work
     routes:
-      - to: implement
+      - to: check-issue
         when: 'result.output.work != null'
       - to: sync
         when: 'result.output.remaining === 0'
+      - to: blocked
+        else: true
+
+  # Does the child still hold against the code? Fixed or resting on a false
+  # premise stops the run with the evidence as the blocked comment; once the
+  # human has closed the child, the next run skips it. What it found the code
+  # contradicting goes to implement and to the child's review. To drop the
+  # check, delete this entry, route next-work to implement and drop the
+  # divergence from implement and review.
+  - id: check-issue
+    uses: check-issue
+    agent: { kind: claude, model: claude-opus-5-5 }
+    with:
+      issue: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+    routes:
+      - to: next-work
+        when: 'prepared.output.verdict === "closed"'
+      - to: implement
+        when: res.ok
       - to: blocked
         else: true
 
@@ -26,6 +45,7 @@ steps:
     agent: { kind: claude, model: claude-opus-5-5 }
     with:
       task: ${{ ctx.work.ref + " " + ctx.work.title + "\n\n" + ctx.work.body }}
+      divergence: '${{ (steps["check-issue"]?.output?.divergence ?? []).map((d) => "- " + d).join("\n") }}'
     routes:
       - to: review
 
@@ -34,7 +54,8 @@ steps:
     agent: { kind: claude, model: claude-opus-5-5 }   # cross-model alternative: { kind: codex, model: gpt-5.5 }
     with:
       diffRange: '${{ steps.implement.commits[0] ? steps.implement.commits[0] + "^..HEAD" : ctx.baseBranch + "...HEAD" }}'
-      criteria:  ${{ ctx.work.body }}
+      # What check-issue found the code contradicting in the child, for the reviewer to judge as decisions.
+      criteria:  '${{ ctx.work.body + ((steps["check-issue"]?.output?.divergence ?? []).length > 0 ? "\n\n## Decisions\n\n" + steps["check-issue"].output.divergence.map((d) => "- " + d).join("\n") : "") }}'
     routes:
       - to: close-work
         when: res.ok

@@ -8,6 +8,17 @@ below. Nobody will answer questions: decide, do, and report.
 
 {{task}}
 
+## Where the code contradicts the task
+
+{{divergence}}
+
+Each line above, if there is any, is a claim of the task that the check
+before this step found false against the code, while the defect itself is
+real. Build against what the code shows, not against the claim. When
+`{{ctx.specDir}}/spec.md` exists, append each line not already under its
+`## Decisions` section there (see below); never create the file for them,
+the reviewer gets them with the task.
+
 ## Spec (the design of record)
 
 {{ctx.spec}}

@@ -3,6 +3,7 @@ description: "Derive a spec from the issue when the branch has none. Prepare ski
 
 inputs:
   issue: { required: true, description: "the issue as filed: ref, title and body; what the spec is derived from" }
+  divergence: { required: true, description: "lines where check-issue found the code contradicting the issue, as `- ` lines; each becomes a line of the spec's Decisions section; empty when there are none" }
 
 prepare:
   module: ./prepare.ts
