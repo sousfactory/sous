@@ -491,3 +491,77 @@ describe("deriveRun: trace", () => {
     ]);
   });
 });
+
+describe("deriveRun: cost", () => {
+  /** implement: a call costing 1.25 and one costing 2.25; review: one Codex call without a cost. */
+  const costed = () => {
+    const log = new Log().start("r1", 0);
+    log.events.push(
+      { type: "span.open", at: at(0), runId: "r1", spanId: "r1-1", step: "implement", scope: "84" },
+      { type: "iteration.agent.start", at: at(0), spanId: "r1-1", n: 1, kind: "claude", model: "m" },
+      { type: "iteration.agent.end", at: at(1), spanId: "r1-1", n: 1, outcome: "ok", commits: [], costUsd: 1.25 },
+      { type: "iteration.agent.start", at: at(1), spanId: "r1-1", n: 2, kind: "claude", model: "m" },
+      { type: "iteration.agent.end", at: at(2), spanId: "r1-1", n: 2, outcome: "ok", commits: [], costUsd: 2.25 },
+      { type: "span.close", at: at(2), spanId: "r1-1", ok: true, next: "review" },
+      { type: "span.open", at: at(2), runId: "r1", spanId: "r1-2", step: "review", scope: "84" },
+      { type: "iteration.agent.start", at: at(2), spanId: "r1-2", n: 1, kind: "codex", model: "m" },
+      { type: "iteration.agent.end", at: at(3), spanId: "r1-2", n: 1, outcome: "ok", commits: [] },
+      { type: "span.close", at: at(3), spanId: "r1-2", ok: true, next: "merge" },
+    );
+    return log.end(3, "done");
+  };
+
+  it("carries each agent call's cost, and none for a call that reported none", () => {
+    const details = derive(costed(), false).details;
+    expect(details["implement"]?.visits[0]?.iterations.map((it) => [it.agent?.costUsd, it.agent?.cost])).toEqual([
+      [1.25, "$1.25"],
+      [2.25, "$2.25"],
+    ]);
+    expect(details["review"]?.visits[0]?.iterations[0]?.agent).not.toHaveProperty("costUsd");
+    expect(details["review"]?.visits[0]?.iterations[0]?.agent?.cost).toBe("");
+  });
+
+  it("carries each visit's sum and count of uncosted calls, on the step's visits and in the trace", () => {
+    const view = derive(costed(), false);
+    expect(view.details["implement"]?.visits[0]).toMatchObject({ costUsd: 3.5, costUnknown: 0 });
+    expect(view.details["review"]?.visits[0]).toMatchObject({ costUnknown: 1 });
+    expect(view.details["review"]?.visits[0]).not.toHaveProperty("costUsd");
+    expect(view.trace.map((r) => [r.step, r.costUsd, r.costUnknown, r.cost])).toEqual([
+      ["implement", 3.5, 0, "$3.50"],
+      ["review", undefined, 1, ""],
+    ]);
+  });
+
+  it("carries the run's total and its uncosted calls in the summary, and no total for a run without a costed call", () => {
+    expect(derive(costed(), false).summary).toMatchObject({ costUsd: 3.5, costUnknown: 1, cost: "$3.50+" });
+    const uncosted = derive(new Log().start("r1", 0).visit("implement", 0, 1, true, "review", "84", true).end(1, "done"), false).summary;
+    expect(uncosted).toMatchObject({ costUnknown: 1, cost: "" });
+    expect(uncosted).not.toHaveProperty("costUsd");
+  });
+
+  it("renders a full, partial, tiny and empty cost as the string sous status prints for the same fold", () => {
+    const run = (calls: (number | undefined)[]) => {
+      const log = new Log().start("r1", 0);
+      log.events.push({ type: "span.open", at: at(0), runId: "r1", spanId: "r1-1", step: "implement", scope: "84" });
+      calls.forEach((costUsd, i) =>
+        log.events.push(
+          { type: "iteration.agent.start", at: at(i), spanId: "r1-1", n: i + 1, kind: "claude", model: "m" },
+          { type: "iteration.agent.end", at: at(i + 1), spanId: "r1-1", n: i + 1, outcome: "ok", commits: [], ...(costUsd !== undefined ? { costUsd } : {}) },
+        ),
+      );
+      log.events.push({ type: "span.close", at: at(calls.length), spanId: "r1-1", ok: true, next: "review" });
+      const view = derive(log.end(calls.length, "done"), false);
+      return [view.summary.cost, view.trace[0]?.cost];
+    };
+    // The literals are the ones test/commands/status.test.ts asserts for `sous status`.
+    const cases: [(number | undefined)[], string][] = [
+      [[1, 2.5], "$3.50"],
+      [[1, undefined], "$1.00+"],
+      [[0.004], "<$0.01"],
+      [[undefined, undefined], ""],
+    ];
+    for (const [calls, expected] of cases) {
+      expect(run(calls)).toEqual([expected, expected]);
+    }
+  });
+});

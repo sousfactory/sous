@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFileEventLog } from "../../src/adapters/eventlog.js";
+import { formatCost } from "../../src/session/cost.js";
 import { formatDuration, laneName, renderStatus, statusCommand, type StatusPaths } from "../../src/commands/status.js";
 import { recordVisit, type Session } from "../../src/exec/scope.js";
 import type { Event } from "../../src/session/events.js";
@@ -193,6 +194,38 @@ describe("renderStatus: timeline", () => {
         "work 91", "next-work", "implement", "review", "close-work", "next-work",
       ]);
     }
+  });
+
+  it("shows each step's cost beside its durations and the run's after its outcome, with + when a call reported none", () => {
+    const costed = (events: Event[], costs: Record<string, number>): Event[] =>
+      events.map((e): Event => {
+        const costUsd = e.type === "iteration.agent.end" ? costs[`${e.spanId}/${e.n}`] : undefined;
+        return e.type === "iteration.agent.end" && costUsd !== undefined ? { ...e, costUsd } : e;
+      });
+    const r1 = (costs: Record<string, number>) => {
+      const text = renderStatus(session(), foldTimeline(costed(timed(), costs)), paths);
+      return text.split("\n").filter((l) => l.includes("run r1") || l.includes(" build "));
+    };
+    const reviewCall: Event = { type: "iteration.agent.end", at: at(9, 5, 20), spanId: "r1-3", n: 1, outcome: "ok", commits: [], costUsd: 0.25 };
+
+    expect(r1({ "r1-2/1": 1, "r1-2/2": 2.5 })).toEqual([
+      "  run r1  09:00:00  crashed  cost $3.50+",
+      "      ✓ 09:00:03  build 5m15s  ok  (2 iter: agent 4m12s, eval 1m03s, cost $3.50)",
+    ]);
+    expect(r1({ "r1-2/1": 1 })[1]).toBe("      ✓ 09:00:03  build 5m15s  ok  (2 iter: agent 4m12s, eval 1m03s, cost $1.00+)");
+    expect(r1({})).toEqual(["  run r1  09:00:00  crashed", "      ✓ 09:00:03  build 5m15s  ok  (2 iter: agent 4m12s, eval 1m03s)"]);
+
+    const fullyCosted = [...costed(timed(), { "r1-2/1": 1, "r1-2/2": 2.5 })];
+    fullyCosted.splice(fullyCosted.findIndex((e) => e.type === "run.start" && e.runId === "r2"), 0, reviewCall);
+    expect(renderStatus(session(), foldTimeline(fullyCosted), paths)).toContain("  run r1  09:00:00  crashed  cost $3.75\n");
+  });
+
+  it("formats a cost with two decimals, a + for a lower bound, <$0.01 for a fraction of a cent, and nothing when none is known", () => {
+    expect(formatCost(0.5, 0)).toBe("$0.50");
+    expect(formatCost(0.5, 2)).toBe("$0.50+");
+    expect(formatCost(0.004, 0)).toBe("<$0.01");
+    expect(formatCost(undefined, 0)).toBe("");
+    expect(formatCost(undefined, 3)).toBe("");
   });
 
   it("formats durations and lane names", () => {

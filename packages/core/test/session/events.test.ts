@@ -19,6 +19,7 @@ export const everyEvent = (): Event[] => [
     commits: ["c1"],
     sessionId: "s1",
     usage: { inputTokens: 1, outputTokens: 2, cacheCreationInputTokens: 3, cacheReadInputTokens: 4 },
+    costUsd: 0.42,
     logPath: "/logs/build-1.log",
   },
   { type: "iteration.eval.start", at, spanId: "r1-1", n: 1 },

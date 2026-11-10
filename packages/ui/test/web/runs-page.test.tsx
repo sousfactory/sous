@@ -14,7 +14,7 @@ const data: RunsResponse = {
     {
       kind: "run",
       updatedAt: "2026-10-04T12:05:00.000Z",
-      summary: { issue: "84", title: "shorten the KDoc", flow: "task", branch: "feature/84-shorten", status: "success", outcome: "done", live: false, attempts: 1, runId: "e1df38b7", sha: "790cc89", startedAt: "2026-10-04T12:00:00.000Z", endedAt: "2026-10-04T12:04:32.000Z" },
+      summary: { issue: "84", title: "shorten the KDoc", flow: "task", branch: "feature/84-shorten", status: "success", outcome: "done", live: false, attempts: 1, runId: "e1df38b7", sha: "790cc89", startedAt: "2026-10-04T12:00:00.000Z", endedAt: "2026-10-04T12:04:32.000Z", costUnknown: 0, cost: "" },
     },
     { kind: "error", updatedAt: "2026-10-03T12:00:00.000Z", issue: "68", error: "/schemaVersion must be equal to constant" },
   ],

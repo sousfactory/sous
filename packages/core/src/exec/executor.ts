@@ -27,7 +27,7 @@ import { AgentOutputError, AgentProcessError, SousError } from "./errors.js";
 import { skillAudit, type SkillAuditor } from "../skills.js";
 import { renderPrompt, retryPrompt } from "./prompt.js";
 import { shellEnv, shellEnvelope } from "./shell.js";
-import { forgetPrepared, openVisit, scopeKey, stepsOf, updateVisit, type Session } from "./scope.js";
+import { addAgentCost, forgetPrepared, openVisit, scopeKey, stepsOf, updateVisit, type Session } from "./scope.js";
 import { validator } from "../config/schema.js";
 
 export type Logger = { info: (line: string) => void; warn: (line: string) => void };
@@ -234,9 +234,10 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     return undefined;
   };
 
-  /** Persists the session id at once, so a crash later in the visit can still resume it. */
-  const afterAgentCall = async (id: string, key: string, sessionId: string | undefined): Promise<void> => {
+  /** Persists the session id and the call's cost at once, so a crash later in the visit can still resume it and keeps the bill. */
+  const afterAgentCall = async (id: string, key: string, sessionId: string | undefined, costUsd: number | undefined): Promise<void> => {
     session = bumpIteration(session, id);
+    session = addAgentCost(session, id, costUsd, key);
     if (sessionId !== undefined) session = updateVisit(session, id, { session: sessionId }, key);
     await persist(session);
   };
@@ -291,14 +292,14 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
         ...(error.sessionId !== undefined ? { sessionId: error.sessionId } : {}),
         ...(error.logPath !== undefined ? { logPath: error.logPath } : {}),
       });
-      await afterAgentCall(entry.id, key, error.sessionId);
+      await afterAgentCall(entry.id, key, error.sessionId, undefined);
       log.warn(`${entry.id}: ${error.message}`);
       const envelope = error instanceof AgentOutputError ? invalidOutputEnvelope(error) : agentFailureEnvelope(error);
       const failureLog = error instanceof AgentOutputError ? error.message : agentFailureLog(error);
       return { envelope, ...(error.sessionId !== undefined ? { sessionId: error.sessionId } : {}), res: { ok: false, log: failureLog }, failed: true };
     }
 
-    const { envelope, sessionId, usage, logPath: path, toolCalls } = result;
+    const { envelope, sessionId, usage, costUsd, logPath: path, toolCalls } = result;
     await emit({
       type: "iteration.agent.end",
       spanId,
@@ -307,9 +308,10 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
       commits: envelope.commits,
       ...(sessionId !== undefined ? { sessionId } : {}),
       ...(usage !== undefined ? { usage } : {}),
+      ...(costUsd !== undefined ? { costUsd } : {}),
       ...(path !== undefined ? { logPath: path } : {}),
     });
-    await afterAgentCall(entry.id, key, sessionId);
+    await afterAgentCall(entry.id, key, sessionId, costUsd);
     const audit = await skills.check({ reported: envelope.skills, toolCalls, resumed: resumeSession !== undefined });
     if (audit !== undefined) {
       await emit({ type: "skills", spanId, n, ...audit });

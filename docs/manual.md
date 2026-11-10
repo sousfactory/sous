@@ -463,7 +463,9 @@ JavaScript, compiled once, not sandboxed.
 | `prepared` | `{ agent, reason?, output }` of the visit's prepare | `{{prepared.<field>}}` of `output` | returned by prepare | 4th argument | `when` |
 | `result` | the visit's envelope `{ summary, commits, output }` | — | returned by run | 3rd argument | `when` |
 | `res` | `{ ok, log }` of the visit's final eval | — | — | returned | `when` |
-| `steps.<id>` | latest visit in this scope: `{ visits, ok, log, output, commits, session, prepared }` | — | — | — | ✓ |
+| `steps.<id>` | latest visit in this scope: `{ visits, ok, log, output, commits, session, prepared, costUsd, costUnknown }` | — | — | — | ✓ |
+| `steps.<id>.costUsd` | US dollars of every agent call of the step in this scope, over all visits and iterations; `undefined` until a call reported a cost | — | — | — | ✓ |
+| `steps.<id>.costUnknown` | the step's agent calls in this scope that reported no cost (`costUsd` is then a lower bound); `0` until one did not | — | — | — | ✓ |
 
 Assigning `ctx.work` or `ctx.specDir`, and calling `ctx.workDone`, is
 recorded only from a module. An unvisited `steps.<id>` is `undefined`
@@ -471,7 +473,8 @@ recorded only from a module. An unvisited `steps.<id>` is `undefined`
 
 **Scope.** `steps.*` holds the visits of the current work item only, so
 `steps.<id>.visits` counts the visits per work item, e.g. review rounds
-per sub-issue. A module that assigns `ctx.work` switches the scope; scopes
+per sub-issue. `costUsd` and `costUnknown` accumulate the same way, while
+`ok`, `log`, `output` and `commits` show the latest visit. A module that assigns `ctx.work` switches the scope; scopes
 are never deleted.
 
 **Elsewhere.** `branch:` in `sous.yaml` sees `issue` `{ id, title }` (the
@@ -654,10 +657,12 @@ owns the `## Blocked by` rule.
 
 ### Run record
 
-`session.json` (schema 8) holds what a run needs to continue: `current`,
+`session.json` (schema 9) holds what a run needs to continue: `current`,
 `previous`, `work`, `scopes` (the `steps.<id>` records per work item),
 `workProgress`, `history`, `iterations`, `blocked`, `closed` (the
-lifecycle has closed the issue of a finished run). A file of another
+lifecycle has closed the issue of a finished run). Each step record
+carries `costUsd` (absent until an agent call reported a cost) and
+`costUnknown`, cumulative over the step's visits like `visits`. A file of another
 schema is an error, not a migration. Every checkpoint is written beside
 the file and renamed into place, with the previous one kept as
 `session.json.bak`, so a crash mid-write never leaves a run that cannot
@@ -667,6 +672,22 @@ continue.
 `span.open/close` (one span per visit), `prepare.start/end`,
 `iteration.agent.start/end`, `iteration.eval.start/end`, `output` and
 `skills`. `sous status` and `sous ui` fold it into a timeline.
+`iteration.agent.end` carries the call's `usage` and its `costUsd` when
+the agent CLI reported one; a call that reported none has no `costUsd`,
+never `0`. The timeline sums each span and each run segment from these.
+
+**What a run costs.** The figure is the agent CLI's own, never computed
+by sous: the Claude CLI reports `total_cost_usd` for every call, Codex
+reports tokens only. What it means depends on the plan the CLI runs
+under: with an API key it is what the call is billed, under a subscription
+it is the CLI's estimate, not a bill. `sous status` prints `cost $x.xx` on each step and
+run line, `$x.xx+` when some calls reported no cost (a lower bound), and
+nothing when none did. `sous ui` shows the same strings: each agent
+iteration's cost after its token counts, a `Cost` column in the run's
+step table, and the run's total beside its duration, whose `+` says on
+hover how many calls reported no cost. A flow caps a loop by money with
+`when: steps.fix.costUsd > 20`, the way `steps.fix.visits >= 3` caps it
+by rounds.
 
 ### Lifecycle
 
@@ -1175,7 +1196,7 @@ An eval alone (from `test/bench.test.ts`): call it with a hand-written
 envelope, `jokeEval(ctx, { topic: "t" }, { summary, commits: [], output })`.
 
 A flow: `loadFlow(file, { stepsDir })`, then `walk(flow, ports)` with the
-agent answers scripted in order (`agentResult(session, envelope)`) and
+agent answers scripted in order (`agentResult(session, envelope, costUsd?)`) and
 `exec` answers per command (`{ "npm test": ok("…") }`). The returned
 session's `history` is the step sequence; `ports.tracker.comments`,
 `ports.git.committed` and `ports.sandbox.execs` show the side effects.

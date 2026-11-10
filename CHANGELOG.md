@@ -9,6 +9,28 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Added
 
+- **What an agent call cost, in the run record, in `sous status` and in
+  flows.** The Claude CLI's `total_cost_usd` becomes `costUsd` on the
+  call's `iteration.agent.end` event; a call whose CLI reports no cost
+  (Codex) carries none, never `0`. `sous status <issue>` shows
+  `cost $x.xx` on every step line and on the run line, with a trailing
+  `+` when some call reported no cost and nothing when none did. The step
+  record gains `costUsd` and `costUnknown`, summed over every visit and
+  iteration of the step for the work item, so a flow can route on money:
+  `when: steps.fix.costUsd > 20`. `agentResult` in `sous-factory/testing`
+  takes an optional cost as its third argument; `formatCost` is exported
+  from `sous-factory/read`. **The session schema goes to 9:** a run in
+  flight under an older engine does not survive the upgrade; `sous run`
+  and `sous status` reject its `session.json` with the another-schema
+  error. Finish or `--restart` such runs.
+
+- **What a run cost, in `sous ui`.** Each agent iteration shows its cost
+  after its token counts, the run's step table has a `Cost` column beside
+  `Duration`, and the run header shows the run's total with its duration;
+  a `+` marks a lower bound and its tooltip says how many agent calls
+  reported no cost. A run without a costed call shows no figure, never
+  `$0.00`. The strings are the ones `sous status` prints.
+
 - **The starter's `check-issue` step.** The task flow runs it after
   `init`, the feature flow for each child after `next-work`, before
   anything is planned or built: an agent, read-only on the code, checks

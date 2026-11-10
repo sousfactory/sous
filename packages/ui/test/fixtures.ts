@@ -10,7 +10,7 @@ import type { Event, Session, StepRecord, Topology } from "sous-factory/read";
 export const at = (minute: number): string => new Date(Date.UTC(2026, 9, 4, 12, minute, 0)).toISOString();
 
 export const session = (patch: Partial<Session> = {}): Session => ({
-  schemaVersion: 8,
+  schemaVersion: 9,
   flow: "task",
   issue: "84",
   title: "shorten the KDoc",
@@ -28,7 +28,7 @@ export const session = (patch: Partial<Session> = {}): Session => ({
   ...patch,
 });
 
-export const record = (patch: Partial<StepRecord> = {}): StepRecord => ({ visits: 1, ok: true, log: "", output: undefined, commits: [], ...patch });
+export const record = (patch: Partial<StepRecord> = {}): StepRecord => ({ visits: 1, ok: true, log: "", output: undefined, commits: [], costUnknown: 0, ...patch });
 
 /** init → implement → review ⇄ fix, review → merge. */
 export const taskTopology: Topology = {

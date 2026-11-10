@@ -25,7 +25,9 @@ export type StreamEvent =
   /** The agent's final answer, when the CLI marks one; the envelope is looked for here first. */
   | { type: "result"; text: string }
   | { type: "tool"; call: ToolCall }
-  | { type: "usage"; usage: TokenUsage };
+  | { type: "usage"; usage: TokenUsage }
+  /** The call's cost in US dollars as the CLI reports it; a CLI that reports none never emits it. */
+  | { type: "cost"; usd: number };
 
 export type Provider = {
   /** The agent's name in error messages: `claude exited with code 1`. */

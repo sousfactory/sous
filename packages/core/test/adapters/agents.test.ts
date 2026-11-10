@@ -64,6 +64,16 @@ describe("claude", () => {
     expect(claude.parseLine('{"type":"user","message":{"content":[]}}')).toEqual([]);
     expect(claude.parseLine("plain text")).toEqual([]);
   });
+
+  it("reads the call's cost from total_cost_usd on the result line, and none when the line has no cost", () => {
+    const usage = { input_tokens: 10, output_tokens: 2 };
+    expect(claude.parseLine(JSON.stringify({ type: "result", result: "ok", usage, total_cost_usd: 1.25 }))).toEqual([
+      { type: "result", text: "ok" },
+      { type: "usage", usage: { inputTokens: 10, outputTokens: 2, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 } },
+      { type: "cost", usd: 1.25 },
+    ]);
+    expect(claude.parseLine(JSON.stringify({ type: "result", result: "ok", usage })).some((e) => e.type === "cost")).toBe(false);
+  });
 });
 
 describe("codex", () => {
@@ -98,6 +108,7 @@ describe("codex", () => {
     expect(codex.parseLine(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1000, cached_input_tokens: 400, output_tokens: 50 } }))).toEqual([
       { type: "usage", usage: { inputTokens: 600, outputTokens: 50, cacheCreationInputTokens: 0, cacheReadInputTokens: 400 } },
     ]);
+    expect(codex.parseLine(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 }, total_cost_usd: 3 })).some((e) => e.type === "cost")).toBe(false);
     expect(codex.parseLine(JSON.stringify({ type: "item.completed", item: { type: "reasoning" } }))).toEqual([]);
   });
 });

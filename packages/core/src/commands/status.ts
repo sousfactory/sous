@@ -8,6 +8,7 @@ import { logDir } from "../adapters/logs.js";
 import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
 import { stepsOf, type HistoryEntry, type Session } from "../exec/scope.js";
 import { eventsFile, runDir, sessionFile } from "../session/paths.js";
+import { formatCost } from "../session/cost.js";
 import { estimatedEnd, historyStatus, spanStatus, type RecordStatus } from "../session/status.js";
 import { loadSession } from "../session/store.js";
 import { foldTimeline, spansByLane, visitLanes, type IterationSpan, type RunSegment, type Span, type Timeline } from "../session/timeline.js";
@@ -76,7 +77,12 @@ const spanLine = (span: Span, timeline: Timeline): string => {
           : "fail";
   const agent = total(span.iterations, (i) => i.agent);
   const evals = total(span.iterations, (i) => i.eval);
-  const parts = [...(agent !== undefined ? [`agent ${formatDuration(agent)}`] : []), ...(evals !== undefined ? [`eval ${formatDuration(evals)}`] : [])];
+  const cost = formatCost(span.costUsd, span.costUnknown);
+  const parts = [
+    ...(agent !== undefined ? [`agent ${formatDuration(agent)}`] : []),
+    ...(evals !== undefined ? [`eval ${formatDuration(evals)}`] : []),
+    ...(cost !== "" ? [`cost ${cost}`] : []),
+  ];
   const breakdown = span.iterations.length === 0 ? "" : `  (${span.iterations.length} iter${parts.length > 0 ? `: ${parts.join(", ")}` : ""})`;
   return `${MARKS[status]} ${clockTime(span.startedAt)}  ${span.step} ${shown}  ${result}${breakdown}`;
 };
@@ -87,7 +93,8 @@ const runLine = (run: RunSegment, previous: RunSegment | undefined): string => {
   const idle = previous?.endedAt !== undefined ? between(previous.endedAt, run.startedAt) : undefined;
   const resumed = run.resumedFrom !== undefined ? `  resumed at ${run.resumedFrom.step}` : "";
   const spec = run.spec === "issue" ? "  spec: issue" : "";
-  return `run ${run.id}  ${clockTime(run.startedAt)}  ${run.outcome ?? "running"}${idle !== undefined ? `  (idle ${formatDuration(idle)})` : ""}${resumed}${spec}`;
+  const cost = formatCost(run.costUsd, run.costUnknown);
+  return `run ${run.id}  ${clockTime(run.startedAt)}  ${run.outcome ?? "running"}${cost !== "" ? `  cost ${cost}` : ""}${idle !== undefined ? `  (idle ${formatDuration(idle)})` : ""}${resumed}${spec}`;
 };
 
 const lanes = (spans: Span[], timeline: Timeline, laneOf: ReadonlyMap<string, string>): string[] =>

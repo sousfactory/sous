@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { openVisit, recordVisit, scopeKey, stepsOf, type Session } from "../../src/exec/scope.js";
+import { addAgentCost, openVisit, recordVisit, scopeKey, stepsOf, type Session } from "../../src/exec/scope.js";
 import { createSession, setWork } from "../../src/session/update.js";
 
 const fresh = (): Session =>
@@ -17,8 +17,8 @@ describe("scopeKey", () => {
 describe("recordVisit / stepsOf", () => {
   it("records the first visit of a step in the current scope with visits 1", () => {
     const s = recordVisit(setWork(fresh(), "14"), "build", visit);
-    expect(s.scopes).toEqual({ "12": {}, "14": { build: { ...visit, visits: 1 } } });
-    expect(stepsOf(s)).toEqual({ build: { ...visit, visits: 1 } });
+    expect(s.scopes).toEqual({ "12": {}, "14": { build: { ...visit, visits: 1, costUnknown: 0 } } });
+    expect(stepsOf(s)).toEqual({ build: { ...visit, visits: 1, costUnknown: 0 } });
     expect(stepsOf(s)["review"]).toBeUndefined();
   });
 
@@ -26,7 +26,7 @@ describe("recordVisit / stepsOf", () => {
     let s = recordVisit(setWork(fresh(), "14"), "review", { ok: false, log: "major: x", output: { verdict: "findings" }, commits: [] });
     s = recordVisit(s, "fix", visit);
     s = recordVisit(s, "review", { ok: true, log: "", output: { verdict: "clean" }, commits: [] });
-    expect(stepsOf(s)["review"]).toEqual({ visits: 2, ok: true, log: "", output: { verdict: "clean" }, commits: [] });
+    expect(stepsOf(s)["review"]).toEqual({ visits: 2, ok: true, log: "", output: { verdict: "clean" }, commits: [], costUnknown: 0 });
     expect(stepsOf(s)["fix"]?.visits).toBe(1);
   });
 
@@ -36,22 +36,44 @@ describe("recordVisit / stepsOf", () => {
     s = recordVisit(setWork(s, "12"), "verify", { ok: false, log: "BUILD FAILED", output: undefined, commits: [] });
     expect(s.scopes["14"]?.["build"]).toMatchObject({ visits: 1, commits: ["c1"], session: "s1" });
     expect(s.scopes["15"]?.["build"]).toMatchObject({ visits: 1, commits: ["c2"], session: "s2" });
-    expect(stepsOf(s)).toEqual({ verify: { visits: 1, ok: false, log: "BUILD FAILED", output: undefined, commits: [] } });
+    expect(stepsOf(s)).toEqual({ verify: { visits: 1, ok: false, log: "BUILD FAILED", output: undefined, commits: [], costUnknown: 0 } });
     expect(stepsOf(setWork(s, "14"))["build"]?.session).toBe("s1");
   });
 
   it("openVisit keeps only the previous visit's session: its result never carries into the new visit", () => {
     const s = recordVisit(fresh(), "review", { ok: true, log: "clean", output: { verdict: "clean" }, commits: ["c1"], session: "s1" });
-    expect(stepsOf(openVisit(s, "review"))["review"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [], session: "s1" });
+    expect(stepsOf(openVisit(s, "review"))["review"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [], session: "s1", costUnknown: 0 });
 
     const noSession = recordVisit(fresh(), "build", { ok: false, log: "x", output: { ok: false }, commits: [] });
-    expect(stepsOf(openVisit(noSession, "build"))["build"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [] });
-    expect(stepsOf(openVisit(fresh(), "init"))["init"]).toEqual({ visits: 1, ok: true, log: "", output: undefined, commits: [] });
+    expect(stepsOf(openVisit(noSession, "build"))["build"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [], costUnknown: 0 });
+    expect(stepsOf(openVisit(fresh(), "init"))["init"]).toEqual({ visits: 1, ok: true, log: "", output: undefined, commits: [], costUnknown: 0 });
+  });
+
+  it("adds every agent call's cost to the step across visits, and counts the calls without one", () => {
+    let s = openVisit(fresh(), "fix");
+    expect(stepsOf(s)["fix"]?.costUsd).toBeUndefined();
+    expect(stepsOf(s)["fix"]?.costUnknown).toBe(0);
+
+    s = addAgentCost(s, "fix", 1);
+    s = openVisit(s, "fix");
+    s = addAgentCost(s, "fix", 2);
+    expect(stepsOf(s)["fix"]).toMatchObject({ visits: 2, costUsd: 3, costUnknown: 0 });
+
+    s = addAgentCost(s, "fix", undefined);
+    expect(stepsOf(s)["fix"]).toMatchObject({ costUsd: 3, costUnknown: 1 });
+    expect(stepsOf(addAgentCost(openVisit(fresh(), "review"), "review", undefined))["review"]).not.toHaveProperty("costUsd");
+  });
+
+  it("keeps the cost per work item: a new scope starts the step over", () => {
+    const s = addAgentCost(openVisit(setWork(fresh(), "14"), "build"), "build", 1.5);
+    const next = openVisit(setWork(s, "15"), "build");
+    expect(stepsOf(next)["build"]?.costUsd).toBeUndefined();
+    expect(s.scopes["14"]?.["build"]?.costUsd).toBe(1.5);
   });
 
   it("records into the issue's own scope of a fresh session without setWork", () => {
     const s = recordVisit(fresh(), "init", { ok: true, log: "", output: { specDir: "specs/12-some-slug" }, commits: [] });
-    expect(s.scopes).toEqual({ "12": { init: { visits: 1, ok: true, log: "", output: { specDir: "specs/12-some-slug" }, commits: [] } } });
+    expect(s.scopes).toEqual({ "12": { init: { visits: 1, ok: true, log: "", output: { specDir: "specs/12-some-slug" }, commits: [], costUnknown: 0 } } });
   });
 
   it("does not touch the input", () => {

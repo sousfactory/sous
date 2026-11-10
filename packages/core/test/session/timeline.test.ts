@@ -50,8 +50,8 @@ describe("foldTimeline", () => {
   it("builds one segment per run.start and closes an earlier one without run.end as crashed at its last activity", () => {
     const { runs } = foldTimeline(scripted());
     expect(runs).toEqual([
-      { id: "r1", startedAt: iso(1), endedAt: iso(9), outcome: "crashed", pid: 1, host: "h", sha: "x", flow: "feature" },
-      { id: "r2", startedAt: iso(20), pid: 1, host: "h", sha: "x", flow: "feature", resumedFrom: { step: "review", iteration: 1 } },
+      { id: "r1", startedAt: iso(1), endedAt: iso(9), outcome: "crashed", pid: 1, host: "h", sha: "x", flow: "feature", costUnknown: 2 },
+      { id: "r2", startedAt: iso(20), pid: 1, host: "h", sha: "x", flow: "feature", resumedFrom: { step: "review", iteration: 1 }, costUnknown: 1 },
     ]);
   });
 
@@ -100,6 +100,60 @@ describe("foldTimeline", () => {
       { type: "output", at: iso(3), spanId: "r1-1", step: "verify", iteration: 1, scope: "1", envelope: { summary: "", commits: [], output: {} }, eval: { ok: false, logTail: "" } },
     ]);
     expect(span(t, "r1-1")).toMatchObject({ scope: "1", iterations: [{ n: 1, eval: { startedAt: iso(1), endedAt: iso(3), ok: false } }] });
+  });
+
+  describe("cost", () => {
+    const agentCall = (spanId: string, n: number, m: number, costUsd?: number): Event[] => [
+      { type: "iteration.agent.start", at: iso(m), spanId, n, kind: "claude", model: "b" },
+      { type: "iteration.agent.end", at: iso(m, 30), spanId, n, outcome: "ok", commits: [], ...(costUsd !== undefined ? { costUsd } : {}) },
+    ];
+    const costed = (calls: (number | undefined)[]): Timeline =>
+      foldTimeline([
+        runStart("r1", 0),
+        { type: "span.open", at: iso(1), runId: "r1", spanId: "r1-1", step: "build", scope: "1" },
+        ...calls.flatMap((usd, i) => agentCall("r1-1", i + 1, i + 1, usd)),
+        { type: "span.close", at: iso(9), spanId: "r1-1", ok: true, next: "verify" },
+        { type: "span.open", at: iso(10), runId: "r1", spanId: "r1-2", step: "verify", scope: "1" },
+        { type: "iteration.eval.start", at: iso(10), spanId: "r1-2", n: 1 },
+        { type: "iteration.eval.end", at: iso(11), spanId: "r1-2", n: 1, ok: true },
+      ]);
+
+    it("keeps each agent call's cost on its agent span", () => {
+      expect(span(costed([1.25]), "r1-1").iterations[0]?.agent).toMatchObject({ costUsd: 1.25 });
+      expect(span(costed([undefined]), "r1-1").iterations[0]?.agent).not.toHaveProperty("costUsd");
+    });
+
+    it("sums a step's known costs and counts its agent calls without one", () => {
+      expect(span(costed([1, 2.5]), "r1-1")).toMatchObject({ costUsd: 3.5, costUnknown: 0 });
+      expect(span(costed([1, undefined]), "r1-1")).toMatchObject({ costUsd: 1, costUnknown: 1 });
+      const none = span(costed([undefined, undefined, undefined]), "r1-1");
+      expect(none).not.toHaveProperty("costUsd");
+      expect(none.costUnknown).toBe(3);
+    });
+
+    it("gives a span without agent calls no cost and nothing unknown", () => {
+      const verify = span(costed([1]), "r1-2");
+      expect(verify).not.toHaveProperty("costUsd");
+      expect(verify.costUnknown).toBe(0);
+    });
+
+    it("sums a run segment over its spans the same way", () => {
+      const twoSpans = foldTimeline([
+        runStart("r1", 0),
+        { type: "span.open", at: iso(1), runId: "r1", spanId: "r1-1", step: "build", scope: "1" },
+        ...agentCall("r1-1", 1, 1, 1),
+        ...agentCall("r1-1", 2, 2),
+        { type: "span.close", at: iso(3), spanId: "r1-1", ok: true, next: "review" },
+        { type: "span.open", at: iso(4), runId: "r1", spanId: "r1-2", step: "review", scope: "1" },
+        ...agentCall("r1-2", 1, 4, 2.5),
+        runStart("r2", 20),
+        { type: "span.open", at: iso(21), runId: "r2", spanId: "r2-1", step: "review", scope: "1" },
+        ...agentCall("r2-1", 1, 21),
+      ]);
+      expect(twoSpans.runs[0]).toMatchObject({ costUsd: 3.5, costUnknown: 1 });
+      expect(twoSpans.runs[1]).not.toHaveProperty("costUsd");
+      expect(twoSpans.runs[1]?.costUnknown).toBe(1);
+    });
   });
 
   it("is pure and folds an empty log to nothing", () => {

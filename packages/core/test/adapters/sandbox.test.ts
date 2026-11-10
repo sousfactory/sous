@@ -164,6 +164,18 @@ describe("createRunAgent", () => {
     expect(viaCodex.calls[0]?.command).toEqual(["codex", "exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-x", "-"]);
   });
 
+  it("carries the call's cost when the stream reported one, the invalid-output retry's added, and none otherwise", async () => {
+    const costed = (result: string, usd: number) => JSON.stringify({ type: "result", result, total_cost_usd: usd });
+    const once = scripted(streaming([init("s1"), assistant(tagged(JSON.stringify(work))), costed("done", 1.25)]));
+    expect((await createRunAgent({ exec: once.exec, idleTimeoutSeconds: 60 })(request())).costUsd).toBe(1.25);
+
+    const retried = scripted(streaming([init("s1"), assistant("no tag"), costed("no tag", 0.5)]), streaming([init("s1"), assistant(tagged(JSON.stringify(work))), costed("done", 0.25)]));
+    expect((await createRunAgent({ exec: retried.exec, idleTimeoutSeconds: 60 })(request())).costUsd).toBe(0.75);
+
+    const without = scripted(streaming([init("s1"), assistant(tagged(JSON.stringify(work))), resultLine("done")]));
+    expect(await createRunAgent({ exec: without.exec, idleTimeoutSeconds: 60 })(request())).not.toHaveProperty("costUsd");
+  });
+
   it("resumes once with the validation message when the output does not parse, then succeeds, logging the retry beside the call", async () => {
     const { exec, calls } = scripted(streaming([init("s1"), assistant("no tag")]), streaming([init("s1"), assistant(tagged(JSON.stringify(work)))]));
     const runAgent = createRunAgent({ exec, idleTimeoutSeconds: 60 });

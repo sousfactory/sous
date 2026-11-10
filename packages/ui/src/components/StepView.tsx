@@ -73,6 +73,9 @@ const usageText = (it: IterationView): string => {
   return u === undefined ? "" : ` · ${formatCount(u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens)} in / ${formatCount(u.outputTokens)} out tokens`;
 };
 
+/** One call's own figure, as the server rendered it; nothing when the call reported none. */
+const costText = (it: IterationView): string => (it.agent === undefined || it.agent.cost === "" ? "" : ` · ${it.agent.cost}`);
+
 /** The step's routes in file order; `taken` marks the one the latest visit took. */
 export const Routes = ({ routes, taken }: { routes: RouteView[]; taken?: string | undefined }) => (
   <div className="mb-4 overflow-hidden rounded-md border border-line" data-testid="routes">
@@ -167,6 +170,7 @@ export const StepView = ({ issue, node, detail, now, live }: StepViewProps) => {
                             · {it.agent.model}
                             {it.agent.outcome !== undefined && it.agent.outcome !== "ok" ? ` · ${it.agent.outcome}` : ""}
                             {usageText(it)}
+                            {costText(it)}
                           </span>
                         </>
                       }

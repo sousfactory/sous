@@ -31,6 +31,11 @@ export type AgentResult = {
   sessionId?: string;
   /** Of the call that produced the envelope, when the provider reports it. */
   usage?: TokenUsage;
+  /**
+   * In US dollars, as the agent CLI reported it: the invalid-output retry's
+   * included. Absent when the CLI reports no cost (Codex), never `0`.
+   */
+  costUsd?: number;
   /** Of the call that produced the envelope: the retry's file after a retry. */
   logPath?: string;
   /** In order, the invalid-output retry's included; feeds the skill audit. */

@@ -6,7 +6,7 @@
  */
 import type { StepRecord, StepsScope, WorkRecord } from "../index.js";
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /** One transition: the step left, how its eval went, and where the run went next. */
 export type HistoryEntry = { step: string; at: string; ok: boolean; next: string };
@@ -48,8 +48,8 @@ export const scopeKey = (work: string): string => work;
 /** `steps` as expressions see it: the records of the current scope. */
 export const stepsOf = (session: Session): StepsScope => session.scopes[scopeKey(session.work)] ?? {};
 
-/** What a visit records; `visits` is counted here. */
-export type Visit = Omit<StepRecord, "visits">;
+/** What a visit records; `visits` and the cost are counted here. */
+export type Visit = Omit<StepRecord, "visits" | "costUsd" | "costUnknown">;
 
 const withRecord = (session: Session, key: string, id: string, record: StepRecord): Session => ({
   ...session,
@@ -60,7 +60,8 @@ const withRecord = (session: Session, key: string, id: string, record: StepRecor
  * Keeps only the previous visit's `session`, so `resume:` can continue it;
  * its result does not carry over. Were it kept, a run that stops between
  * this visit's agent call and its end would re-enter on the old output and
- * pass on work this visit never finished. A visit starts with `ok: true`, so
+ * pass on work this visit never finished. The cost carries over, like
+ * `visits`: it is the step's for the work item, not the visit's. A visit starts with `ok: true`, so
  * `sous status` reads a step in progress as fine, not as failed. `key` stays
  * the visit's scope even when the step changes the work item.
  */
@@ -73,6 +74,8 @@ export const openVisit = (session: Session, id: string, key: string = scopeKey(s
     commits: [],
     ...(previous?.session !== undefined ? { session: previous.session } : {}),
     visits: (previous?.visits ?? 0) + 1,
+    ...(previous?.costUsd !== undefined ? { costUsd: previous.costUsd } : {}),
+    costUnknown: previous?.costUnknown ?? 0,
   });
 };
 
@@ -81,6 +84,21 @@ export const updateVisit = (session: Session, id: string, patch: Partial<Visit>,
   const current = session.scopes[key]?.[id];
   if (current === undefined) throw new Error(`no open visit of "${id}" in scope ${key}`);
   return withRecord(session, key, id, { ...current, ...patch });
+};
+
+/**
+ * Adds one agent call of the open visit to the step's cost: its dollars when
+ * the CLI reported them, else one more call of unknown cost.
+ */
+export const addAgentCost = (session: Session, id: string, costUsd: number | undefined, key: string = scopeKey(session.work)): Session => {
+  const current = session.scopes[key]?.[id];
+  if (current === undefined) throw new Error(`no open visit of "${id}" in scope ${key}`);
+  return withRecord(
+    session,
+    key,
+    id,
+    costUsd === undefined ? { ...current, costUnknown: current.costUnknown + 1 } : { ...current, costUsd: (current.costUsd ?? 0) + costUsd },
+  );
 };
 
 /**

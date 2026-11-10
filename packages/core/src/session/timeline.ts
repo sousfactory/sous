@@ -9,6 +9,14 @@ import type { PrepareVerdict } from "../index.js";
 import type { AgentOutcome, Event, RunOutcome, TokenUsage } from "./events.js";
 import type { SpecSource } from "./spec.js";
 
+/**
+ * What a span or a run segment cost, folded once here so `sous status` and
+ * the UI never sum on their own. `costUsd` is the sum of the known costs,
+ * absent when no agent call reported one; `costUnknown` counts the agent
+ * calls without a cost, which makes `costUsd` a lower bound.
+ */
+export type Cost = { costUsd?: number; costUnknown: number };
+
 export type RunSegment = {
   id: string;
   startedAt: string;
@@ -22,7 +30,7 @@ export type RunSegment = {
   flow: string;
   resumedFrom?: { step: string; iteration: number };
   spec?: SpecSource;
-};
+} & Cost;
 
 export type AgentSpan = {
   kind: AgentKind;
@@ -33,6 +41,8 @@ export type AgentSpan = {
   resumedSession?: string;
   logPath?: string;
   usage?: TokenUsage;
+  /** In US dollars, as the agent CLI reported it; absent when it reported none. */
+  costUsd?: number;
   commits: string[];
   outcome?: AgentOutcome;
 };
@@ -73,7 +83,7 @@ export type Span = {
   /** Set when the step has a `prepare` and it ran in this span; a re-entry reuses the recorded result and has none. */
   prepare?: PrepareSpan;
   iterations: IterationSpan[];
-};
+} & Cost;
 
 export type Timeline = { runs: RunSegment[]; spans: Span[] };
 
@@ -119,14 +129,24 @@ const apply = ({ runs, spans }: Timeline, event: Event): Timeline => {
   switch (event.type) {
     case "run.start": {
       const { at, runId, pid, host, sha, flow, resumedFrom, spec } = event;
-      const run: RunSegment = { id: runId, startedAt: at, pid, host, sha, flow, ...(resumedFrom !== undefined ? { resumedFrom } : {}), ...(spec !== undefined ? { spec } : {}) };
+      const run: RunSegment = {
+        id: runId,
+        startedAt: at,
+        pid,
+        host,
+        sha,
+        flow,
+        ...(resumedFrom !== undefined ? { resumedFrom } : {}),
+        ...(spec !== undefined ? { spec } : {}),
+        costUnknown: 0,
+      };
       return { runs: [...runs, run], spans };
     }
     case "run.end":
       return { runs: applyToRun(runs, event.runId, (run) => ({ ...run, endedAt: event.at, outcome: event.outcome, ...(event.error !== undefined ? { error: event.error } : {}) })), spans };
     case "span.open": {
       const { at, spanId, runId, step, scope } = event;
-      return { runs, spans: [...spans, { id: spanId, runId, step, scope, startedAt: at, iterations: [] }] };
+      return { runs, spans: [...spans, { id: spanId, runId, step, scope, startedAt: at, iterations: [], costUnknown: 0 }] };
     }
     case "span.close":
       return {
@@ -188,6 +208,7 @@ const apply = ({ runs, spans }: Timeline, event: Event): Timeline => {
                     commits: event.commits,
                     ...(event.sessionId !== undefined ? { sessionId: event.sessionId } : {}),
                     ...(event.usage !== undefined ? { usage: event.usage } : {}),
+                    ...(event.costUsd !== undefined ? { costUsd: event.costUsd } : {}),
                     ...(event.logPath !== undefined ? { logPath: event.logPath } : {}),
                   },
                 },
@@ -212,7 +233,28 @@ const apply = ({ runs, spans }: Timeline, event: Event): Timeline => {
   }
 };
 
-export const foldTimeline = (events: readonly Event[]): Timeline => closeDeadRuns(events.reduce<Timeline>(apply, { runs: [], spans: [] }));
+/** Known costs summed, the unknown ones counted; `undefined` costs are the unknown ones. */
+const sumCosts = (parts: readonly Cost[]): Cost => {
+  const known = parts.flatMap((p) => (p.costUsd !== undefined ? [p.costUsd] : []));
+  const costUnknown = parts.reduce((n, p) => n + p.costUnknown, 0);
+  return known.length === 0 ? { costUnknown } : { costUsd: known.reduce((a, b) => a + b, 0), costUnknown };
+};
+
+const withCost = <T extends Cost>(item: T, cost: Cost): T => {
+  const { costUsd: _old, ...rest } = item;
+  return { ...rest, ...cost } as T;
+};
+
+/** Every agent call counts once: its cost when it reported one, else as unknown. */
+const spanCost = (span: Span): Cost =>
+  sumCosts(span.iterations.flatMap((i) => (i.agent === undefined ? [] : [i.agent.costUsd !== undefined ? { costUsd: i.agent.costUsd, costUnknown: 0 } : { costUnknown: 1 }])));
+
+const withCosts = ({ runs, spans }: Timeline): Timeline => {
+  const costed = spans.map((span) => withCost(span, spanCost(span)));
+  return { spans: costed, runs: runs.map((run) => withCost(run, sumCosts(costed.filter((span) => span.runId === run.id)))) };
+};
+
+export const foldTimeline = (events: readonly Event[]): Timeline => withCosts(closeDeadRuns(events.reduce<Timeline>(apply, { runs: [], spans: [] })));
 
 export type Lane = { scope: string; spans: Span[] };
 

@@ -5,6 +5,7 @@ import type { StepDetail, StepNode, VisitView } from "../../server/model";
 import { AppHeader } from "../../src/components/AppHeader";
 import { focusOf } from "../../src/components/FlowGraph";
 import { actionsStatus, GitHubActions } from "../../src/components/GitHubActionsCell";
+import { RunTotal } from "../../src/components/RunTotal";
 import { StatusIcon } from "../../src/components/StatusIcon";
 import { shortModel, StepCard } from "../../src/components/StepCard";
 import { StepView } from "../../src/components/StepView";
@@ -234,10 +235,12 @@ describe("StepView", () => {
         endedAt: "2026-10-04T12:01:00.000Z",
         next: "sync",
         status: "success",
+        costUnknown: 0,
+        cost: "",
         iterations: [
           {
             n: 1,
-            agent: { kind: "claude", model: "claude-opus-5-5", startedAt: "2026-10-04T12:00:00.000Z", endedAt: "2026-10-04T12:00:40.000Z", outcome: "ok", commits: [], log: "review-1.log", usage: { inputTokens: 1000, outputTokens: 2500, cacheCreationInputTokens: 0, cacheReadInputTokens: 11_000 } },
+            agent: { kind: "claude", model: "claude-opus-5-5", startedAt: "2026-10-04T12:00:00.000Z", endedAt: "2026-10-04T12:00:40.000Z", outcome: "ok", commits: [], log: "review-1.log", cost: "", usage: { inputTokens: 1000, outputTokens: 2500, cacheCreationInputTokens: 0, cacheReadInputTokens: 11_000 } },
             eval: { startedAt: "2026-10-04T12:00:40.000Z", endedAt: "2026-10-04T12:01:00.000Z", ok: true },
           },
         ],
@@ -297,11 +300,20 @@ describe("StepView", () => {
     render(<StepView issue="84" node={node()} detail={detail} now={now} live={false} />);
     const agent = screen.getByTestId("agent-1-1");
     expect(agent.textContent).toContain("12k in / 2.5k out tokens");
+    expect(agent.textContent).not.toContain("$");
     expect(agent.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
     const evalRow = screen.getByTestId("eval-1-1");
     expect(evalRow.textContent).not.toContain("BUILD SUCCESSFUL");
     fireEvent.click(evalRow.querySelector("button")!);
     expect(evalRow.textContent).toContain("BUILD SUCCESSFUL");
+  });
+
+  it("shows an agent call's cost after its token counts", () => {
+    const visit = detail.visits[0]!;
+    const it1 = visit.iterations[0]!;
+    const costed: StepDetail = { ...detail, visits: [{ ...visit, costUsd: 1.25, cost: "$1.25", iterations: [{ ...it1, agent: { ...it1.agent!, costUsd: 1.25, cost: "$1.25" } }] }] };
+    render(<StepView issue="84" node={node()} detail={costed} now={now} live={false} />);
+    expect(screen.getByTestId("agent-1-1").textContent).toContain("12k in / 2.5k out tokens · $1.25");
   });
 
   it("shows output as JSON and commits once opened", () => {
@@ -316,7 +328,7 @@ describe("StepView", () => {
     const crashed: StepDetail = {
       id: "merge",
       routes: [],
-      visits: [{ spanId: "r1-6", runId: "r1", scope: "96", startedAt: "2026-10-04T12:00:00.000Z", status: "failure", error: "merge: refusing to merge: uncommitted changes", iterations: [] }],
+      visits: [{ spanId: "r1-6", runId: "r1", scope: "96", startedAt: "2026-10-04T12:00:00.000Z", status: "failure", error: "merge: refusing to merge: uncommitted changes", iterations: [], costUnknown: 0, cost: "" }],
     };
     render(<StepView issue="96" node={node({ id: "merge", status: "failure", startedAt: "2026-10-04T12:00:00.000Z" })} detail={crashed} now={now} live={false} />);
     expect(screen.getByTestId("step-view").textContent).toContain("failed: its run crashed before the visit closed");
@@ -328,5 +340,30 @@ describe("StepView", () => {
     render(<StepView issue="84" node={node({ status: "queued", visits: 0 })} detail={{ id: "review", routes: [], visits: [] }} now={now} live />);
     expect(screen.getByTestId("step-view").textContent).toContain("is queued");
     expect(screen.getByTestId("job-log").textContent).toContain("No visit to review in this run.");
+  });
+});
+
+describe("RunTotal", () => {
+  const run = { startedAt: "2026-10-04T12:00:00.000Z", endedAt: "2026-10-04T12:04:30.000Z" };
+
+  it("shows the run's cost with its duration", () => {
+    render(<RunTotal summary={{ ...run, costUsd: 4.5, costUnknown: 0, cost: "$4.50" }} now={now} />);
+    expect(screen.getByTestId("run-total").textContent).toBe("4m 30s · $4.50");
+    expect(screen.getByTestId("run-cost").getAttribute("title")).toBeNull();
+  });
+
+  it("marks a partial cost with + and says on hover how many calls reported none", () => {
+    render(<RunTotal summary={{ ...run, costUsd: 4.5, costUnknown: 2, cost: "$4.50+" }} now={now} />);
+    expect(screen.getByTestId("run-cost").textContent).toBe("$4.50+");
+    expect(screen.getByTestId("run-cost").getAttribute("title")).toBe("2 agent calls reported no cost");
+    cleanup();
+    render(<RunTotal summary={{ ...run, costUsd: 4.5, costUnknown: 1, cost: "$4.50+" }} now={now} />);
+    expect(screen.getByTestId("run-cost").getAttribute("title")).toBe("1 agent call reported no cost");
+  });
+
+  it("shows no cost for a run without a costed call", () => {
+    render(<RunTotal summary={{ ...run, costUnknown: 3, cost: "" }} now={now} />);
+    expect(screen.getByTestId("run-total").textContent).toBe("4m 30s");
+    expect(screen.queryByTestId("run-cost")).toBeNull();
   });
 });

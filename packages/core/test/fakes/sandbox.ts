@@ -42,7 +42,12 @@ export const envelope = (overrides: Partial<Envelope> = {}): Envelope => ({
   ...overrides,
 });
 
-export const agentResult = (sessionId: string, env: Envelope = envelope()): AgentResult => ({ envelope: env, sessionId });
+/** A successful call; `costUsd` is what the agent CLI would have reported, left out like Codex when not given. */
+export const agentResult = (sessionId: string, env: Envelope = envelope(), costUsd?: number): AgentResult => ({
+  envelope: env,
+  sessionId,
+  ...(costUsd !== undefined ? { costUsd } : {}),
+});
 
 export const ok = (stdout = ""): ExecResult => ({ code: 0, stdout, stderr: "" });
 export const fail = (stderr = "boom", code = 1): ExecResult => ({ code, stdout: "", stderr });

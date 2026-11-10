@@ -4,10 +4,11 @@ import { ActionList, ActionMenu, Button, BranchName, Flash, NavList } from "@pri
 import type { Outcome, RunView } from "../../server/model";
 import { FlowGraph } from "../components/FlowGraph";
 import { GitHubActions, useGitHubView } from "../components/GitHubActionsCell";
+import { RunTotal } from "../components/RunTotal";
 import { RunTrace } from "../components/RunTrace";
 import { STATUS_COLOR, STATUS_LABEL, StatusIcon } from "../components/StatusIcon";
 import { StepView } from "../components/StepView";
-import { elapsed, shortSha, timeAgo } from "../format";
+import { shortSha, timeAgo } from "../format";
 import { useNow } from "../live";
 import { hrefOf, navigate, onLinkClick, type Route } from "../router";
 
@@ -163,7 +164,7 @@ export const RunPage = ({ route, view, error }: { route: RunRoute; view: RunView
                   </span>
                 </Cell>
                 <Cell label="Total duration">
-                  <span className="tabular-nums">{elapsed(s.startedAt, s.endedAt, now) ?? "–"}</span>
+                  <RunTotal summary={s} now={now} />
                 </Cell>
                 <Cell label="Branch">
                   <span className="inline-flex items-center gap-1">

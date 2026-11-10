@@ -3,7 +3,8 @@
  * line. `system/init` carries the session id, each `assistant` message its
  * text and `tool_use` blocks with their full input (the skill audit reads
  * `Read.file_path` and `Skill.skill`), and the final `result` the answer
- * and the token usage of the call.
+ * with the token usage and the dollar cost of the call (`total_cost_usd`,
+ * the CLI's own figure).
  */
 import type { ToolCall } from "../../ports/sandbox.js";
 import type { TokenUsage } from "../../session/events.js";
@@ -57,7 +58,12 @@ export const claude: Provider = {
     }
     if (obj["type"] === "result") {
       const usage = usageOf(obj["usage"]);
-      return [...(typeof obj["result"] === "string" ? [{ type: "result", text: obj["result"] } as const] : []), ...(usage !== undefined ? [{ type: "usage", usage } as const] : [])];
+      const cost = obj["total_cost_usd"];
+      return [
+        ...(typeof obj["result"] === "string" ? [{ type: "result", text: obj["result"] } as const] : []),
+        ...(usage !== undefined ? [{ type: "usage", usage } as const] : []),
+        ...(typeof cost === "number" && Number.isFinite(cost) ? [{ type: "cost", usd: cost } as const] : []),
+      ];
     }
     return [];
   },

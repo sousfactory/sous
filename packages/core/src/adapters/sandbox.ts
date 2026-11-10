@@ -124,12 +124,13 @@ const openLog = (path: string): { line: (text: string) => void; close: () => Pro
   };
 };
 
-/** Collects one call's stream: what the agent said, its session, usage and tool calls. */
+/** Collects one call's stream: what the agent said, its session, usage, cost and tool calls. */
 const collect = (provider: Provider, log: { line: (text: string) => void }) => {
   const texts: string[] = [];
   let result: string | undefined;
   let sessionId: string | undefined;
   let usage: TokenUsage | undefined;
+  let costUsd: number | undefined;
   const tools: ToolCall[] = [];
   return {
     onLine: (line: string): void => {
@@ -140,6 +141,7 @@ const collect = (provider: Provider, log: { line: (text: string) => void }) => {
         } else if (event.type === "result") result = event.text;
         else if (event.type === "session") sessionId = event.id;
         else if (event.type === "usage") usage = event.usage;
+        else if (event.type === "cost") costUsd = event.usd;
         else {
           tools.push(event.call);
           log.line(`${event.call.name}(${formatToolArgs(event.call.input)})`);
@@ -157,13 +159,16 @@ const collect = (provider: Provider, log: { line: (text: string) => void }) => {
     get usage() {
       return usage;
     },
+    get costUsd() {
+      return costUsd;
+    },
     tools,
   };
 };
 
 export type RunAgentDeps = { exec: HostExec; idleTimeoutSeconds: number; signal?: AbortSignal };
 
-type Call = { output: string; sessionId: string | undefined; usage: TokenUsage | undefined; tools: ToolCall[] };
+type Call = { output: string; sessionId: string | undefined; usage: TokenUsage | undefined; costUsd: number | undefined; tools: ToolCall[] };
 
 export const createRunAgent =
   ({ exec, idleTimeoutSeconds, signal }: RunAgentDeps) =>
@@ -204,7 +209,7 @@ export const createRunAgent =
         return fail(`${provider.name} exited with code ${result.exitCode}:\n${detail}`, result.exitCode);
       }
       await log.close();
-      return { output: stream.output(), sessionId: stream.sessionId ?? resumeSession, usage: stream.usage, tools: stream.tools };
+      return { output: stream.output(), sessionId: stream.sessionId ?? resumeSession, usage: stream.usage, costUsd: stream.costUsd, tools: stream.tools };
     };
 
     let path = req.logPath;
@@ -212,6 +217,7 @@ export const createRunAgent =
     let sessionId = run.sessionId;
     let parsed = parseEnvelope(run.output, req.outputSchema);
     const tools = [...run.tools];
+    let costUsd = run.costUsd;
 
     if (!parsed.ok && sessionId !== undefined) {
       path = withAttempt(req.logPath, 2);
@@ -219,6 +225,8 @@ export const createRunAgent =
       sessionId = run.sessionId ?? sessionId;
       parsed = parseEnvelope(run.output, req.outputSchema);
       tools.push(...run.tools);
+      // Both processes were billed; a retry without a figure makes the total unknown, not lower.
+      costUsd = costUsd !== undefined && run.costUsd !== undefined ? costUsd + run.costUsd : undefined;
     }
 
     if (!parsed.ok) throw new AgentOutputError(parsed.reason, parsed.rawMatched, sessionId, path);
@@ -226,6 +234,7 @@ export const createRunAgent =
       envelope: parsed.envelope,
       ...(sessionId !== undefined ? { sessionId } : {}),
       ...(run.usage !== undefined ? { usage: run.usage } : {}),
+      ...(costUsd !== undefined ? { costUsd } : {}),
       logPath: path,
       toolCalls: tools,
     };

@@ -9,7 +9,14 @@
  * first, cancelled when it was interrupted; an unvisited node is queued while
  * the run is live, skipped after.
  */
-import { visitLanes, type Agent, type AgentOutcome, type OutputEvent, type PrepareVerdict, type RunOutcome, type RunSegment, type Session, type Span, type StepKind, type Timeline, type TokenUsage, type Topology, type TopologyNode } from "sous-factory/read";
+import { formatCost, visitLanes, type Agent, type Cost, type AgentOutcome, type OutputEvent, type PrepareVerdict, type RunOutcome, type RunSegment, type Session, type Span, type StepKind, type Timeline, type TokenUsage, type Topology, type TopologyNode } from "sous-factory/read";
+
+/**
+ * The timeline's cost fold, with `cost` as `sous status` prints it (`$3.50`,
+ * `$3.50+`, `<$0.01`, empty when none is known): the browser cannot import
+ * the core's formatter, so the server renders it once for both.
+ */
+export type CostView = Cost & { cost: string };
 
 export type Status = "success" | "failure" | "in_progress" | "queued" | "skipped" | "cancelled";
 
@@ -33,7 +40,7 @@ export type RunSummary = {
   crash?: { error: string; step?: string };
   startedAt?: string;
   endedAt?: string;
-};
+} & CostView;
 
 export type RunRow = { kind: "run"; updatedAt: string; summary: RunSummary } | { kind: "error"; updatedAt: string; issue: string; error: string };
 
@@ -88,6 +95,10 @@ export type IterationView = {
     endedAt?: string;
     outcome?: AgentOutcome;
     usage?: TokenUsage;
+    /** In US dollars, as the agent CLI reported it; absent when it reported none. */
+    costUsd?: number;
+    /** `costUsd` as `sous status` prints it; empty when the call reported none. */
+    cost: string;
     sessionId?: string;
     commits: string[];
     /** File name under `logs/<issue>/`. */
@@ -109,7 +120,7 @@ export type VisitView = {
   /** The visit's prepare call; absent for a step without one, and on a visit that reused a recorded result. */
   prepare?: PrepareView;
   iterations: IterationView[];
-};
+} & CostView;
 
 export type RouteView = { to: string; when?: string; exhausted?: true };
 
@@ -147,7 +158,7 @@ export type TraceRow = {
   outputs: TraceOutput[];
   /** The error that crashed the run while this visit was open. */
   error?: string;
-};
+} & CostView;
 
 export type RunView = {
   summary: RunSummary;
@@ -269,6 +280,8 @@ const visitView = (span: Span, outcomes: Outcomes, errors: ReadonlyMap<string, s
               ...(it.agent.endedAt !== undefined ? { endedAt: it.agent.endedAt } : {}),
               ...(it.agent.outcome !== undefined ? { outcome: it.agent.outcome } : {}),
               ...(it.agent.usage !== undefined ? { usage: it.agent.usage } : {}),
+              ...(it.agent.costUsd !== undefined ? { costUsd: it.agent.costUsd } : {}),
+              cost: formatCost(it.agent.costUsd, 0),
               ...(it.agent.sessionId !== undefined ? { sessionId: it.agent.sessionId } : {}),
             },
           }
@@ -283,7 +296,14 @@ const visitView = (span: Span, outcomes: Outcomes, errors: ReadonlyMap<string, s
           }
         : {}),
     })),
+    ...costOf(span),
   };
+};
+
+/** The timeline's fold of a span or run segment; the model never sums on its own. */
+const costOf = (item: Cost | undefined): CostView => {
+  const costUnknown = item?.costUnknown ?? 0;
+  return { ...(item?.costUsd !== undefined ? { costUsd: item.costUsd } : {}), costUnknown, cost: formatCost(item?.costUsd, costUnknown) };
 };
 
 /** Work items in order of first appearance: span scopes and lanes, then the session's records. */
@@ -507,6 +527,7 @@ const traceOf = (spans: readonly Span[], outputs: readonly OutputEvent[], outcom
       ...agentSkippedOf(span),
       outputs: (bySpan.get(span.id) ?? []).sort((a, b) => a.iteration - b.iteration),
       ...(error !== undefined ? { error } : {}),
+      ...costOf(span),
     };
   });
 };
@@ -541,6 +562,7 @@ const summarize = (session: Session, timeline: Timeline, live: boolean, run: Run
     ...(run?.endedAt !== undefined ? { endedAt: run.endedAt } : {}),
     ...(squash !== undefined ? { squash } : {}),
     ...(crash !== undefined ? { crash } : {}),
+    ...costOf(run),
   };
 };
 

@@ -19,6 +19,8 @@ const row = (patch: Partial<TraceRow>): TraceRow => ({
   next: "fix",
   iterations: 1,
   outputs: [],
+  costUnknown: 0,
+  cost: "",
   ...patch,
 });
 const trace = (rows: TraceRow[]) => render(<RunTrace rows={rows} now={now} stepHref={(s) => `/runs/84?step=${s}`} onOpen={() => {}} />);
@@ -86,6 +88,18 @@ describe("RunTrace", () => {
     // Two work items: the work column appears.
     expect(screen.getByText("Work")).toBeTruthy();
     expect(within(screen.getByTestId("trace-r1-4")).getByText("#85")).toBeTruthy();
+  });
+
+  it("has a Cost column beside Duration: a visit's total, a lower bound with +, blank when no call reported a cost", () => {
+    trace([
+      row({ spanId: "r1-1", costUsd: 3.5, cost: "$3.50" }),
+      row({ spanId: "r1-2", costUsd: 1, costUnknown: 1, cost: "$1.00+" }),
+      row({ spanId: "r1-3", costUnknown: 2 }),
+    ]);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers.slice(headers.indexOf("Duration"), headers.indexOf("Duration") + 2)).toEqual(["Duration", "Cost"]);
+    const costCell = (spanId: string) => screen.getByTestId(`cost-${spanId}`).textContent;
+    expect([costCell("r1-1"), costCell("r1-2"), costCell("r1-3")]).toEqual(["$3.50", "$1.00+", ""]);
   });
 
   it("says so before any step ran", () => {

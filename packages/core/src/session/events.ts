@@ -79,6 +79,8 @@ export type AgentEndEvent = Base & {
   commits: string[];
   sessionId?: string;
   usage?: TokenUsage;
+  /** In US dollars, as the agent CLI reported it; absent, never `0`, when it reported none. Absent in older logs. */
+  costUsd?: number;
   logPath?: string;
 };
 

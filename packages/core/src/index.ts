@@ -41,6 +41,14 @@ export type StepRecord = {
   session?: string;
   /** What the step's `prepare` returned on this visit. */
   prepared?: Prepared;
+  /**
+   * US dollars of every agent call of the step for this work item, over all
+   * visits and iterations, as the agent CLI reported them; `undefined` until
+   * a call reported a cost.
+   */
+  costUsd?: number;
+  /** The step's agent calls for this work item that reported no cost; `costUsd` is then a lower bound. */
+  costUnknown: number;
 };
 
 /** An entry not yet visited for this work item is `undefined`; read with `?.`. */

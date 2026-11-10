@@ -15,7 +15,7 @@ import { SCHEMA_VERSION, type Session } from "../exec/scope.js";
 
 const stepRecord = {
   type: "object",
-  required: ["visits", "ok", "log", "commits"],
+  required: ["visits", "ok", "log", "commits", "costUnknown"],
   additionalProperties: false,
   properties: {
     visits: { type: "integer", minimum: 1 },
@@ -24,6 +24,8 @@ const stepRecord = {
     output: {},
     commits: { type: "array", items: { type: "string" } },
     session: { type: "string" },
+    costUsd: { type: "number", minimum: 0 },
+    costUnknown: { type: "integer", minimum: 0 },
     prepared: {
       type: "object",
       required: ["agent", "output"],

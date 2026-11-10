@@ -138,7 +138,7 @@ describe("runCommand", () => {
 
     const session = await savedSession();
     expect(session).toMatchObject({
-      schemaVersion: 8,
+      schemaVersion: 9,
       closed: true,
       flow: "walk",
       issue: "7",
@@ -160,7 +160,7 @@ describe("runCommand", () => {
     expect(sandbox?.requests[0]?.logPath).toBe(join(root, "logs", "7", "r1-2-7-work-1.log"));
 
     const { runs: segments, spans } = foldTimeline(await savedEvents());
-    expect(segments).toEqual([{ id: "r1", startedAt: expect.any(String), endedAt: expect.any(String), outcome: "done", pid: 4242, host: "box", sha: "abc1234", flow: "walk", spec: "issue" }]);
+    expect(segments).toEqual([{ id: "r1", startedAt: expect.any(String), endedAt: expect.any(String), outcome: "done", pid: 4242, host: "box", sha: "abc1234", flow: "walk", spec: "issue", costUnknown: 1 }]);
     expect(spans.map((s) => [s.step, s.scope, s.next])).toEqual([
       ["start", "7", "work"],
       ["work", "7", "finish"],

@@ -207,6 +207,7 @@ export const RunTrace = ({ rows, now, stepHref, onOpen }: RunTraceProps) => {
                 <th className="w-[1%] whitespace-nowrap px-4 py-2 text-left font-semibold">Step</th>
                 {showScope ? <th className="w-[1%] whitespace-nowrap px-2 py-2 text-left font-semibold">Work</th> : null}
                 <th className="w-[1%] whitespace-nowrap px-2 py-2 text-right font-semibold">Duration</th>
+                <th className="w-[1%] whitespace-nowrap px-2 py-2 text-right font-semibold">Cost</th>
                 <th className="px-4 py-2 text-left font-semibold">Result</th>
                 <th className="w-[1%] whitespace-nowrap px-4 py-2 text-left font-semibold">Next</th>
               </tr>
@@ -227,6 +228,9 @@ export const RunTrace = ({ rows, now, stepHref, onOpen }: RunTraceProps) => {
                   <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">
                     {elapsed(row.startedAt, row.endedAt, now)}
                     {row.iterations > 1 ? <div className="text-[12px] text-fg-muted">{row.iterations} iterations</div> : null}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums" data-testid={`cost-${row.spanId}`}>
+                    {row.cost}
                   </td>
                   <td className="min-w-[280px] px-4 py-2">
                     <Result row={row} />

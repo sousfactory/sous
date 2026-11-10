@@ -123,11 +123,22 @@ describe("store", () => {
     await expect(loadSession(path)).rejects.toThrow(/session\.json: \/schemaVersion must be equal to constant/);
   });
 
+  it("accepts schema 9's step cost and rejects a schema 8 file with the another-schema error", async () => {
+    const costed: Session = { ...fresh(), scopes: { "12": { fix: { visits: 2, ok: true, log: "", output: undefined, commits: [], costUsd: 3, costUnknown: 1 } } } };
+    expect(parseSession(JSON.parse(JSON.stringify(costed)), "f")).toEqual(costed);
+    expect(() => parseSession({ ...costed, scopes: { "12": { fix: { visits: 1, ok: true, log: "", commits: [], costUsd: -1, costUnknown: 0 } } } }, "f")).toThrow(/costUsd must be >= 0/);
+
+    const path = join(dir, "session.json");
+    const { scopes: _s, ...rest } = fresh();
+    await writeFile(path, JSON.stringify({ ...rest, schemaVersion: 8, scopes: { "12": { fix: { visits: 1, ok: true, log: "", commits: [] } } } }));
+    await expect(loadSession(path)).rejects.toThrow(/session\.json: \/schemaVersion must be equal to constant/);
+  });
+
   it("parseSession checks the shape, not only the version", () => {
     expect(parseSession(fresh(), "f")).toEqual(fresh());
     expect(() => parseSession({ ...fresh(), extra: 1 }, "f")).toThrow(/additional properties \(extra\)/);
     expect(() => parseSession({ ...fresh(), work: 14 }, "f")).toThrow(/\/work must be/);
-    expect(() => parseSession({ ...fresh(), scopes: { "14": { build: { visits: 0, ok: true, log: "", commits: [] } } } }, "f")).toThrow(/visits must be >= 1/);
+    expect(() => parseSession({ ...fresh(), scopes: { "14": { build: { visits: 0, ok: true, log: "", commits: [], costUnknown: 0 } } } }, "f")).toThrow(/visits must be >= 1/);
     const { blocked: _b, ...withoutBlocked } = fresh();
     expect(() => parseSession(withoutBlocked, "f")).toThrow(/required property 'blocked'/);
   });
@@ -140,9 +151,9 @@ describe("store", () => {
 });
 
 describe("update", () => {
-  it("createSession has the session shape: schema 7, the issue on the bench, entry counter at 0, neither blocked nor closed", () => {
+  it("createSession has the session shape: schema 9, the issue on the bench, entry counter at 0, neither blocked nor closed", () => {
     expect(fresh()).toEqual({
-      schemaVersion: 8,
+      schemaVersion: 9,
       flow: "feature",
       issue: "12",
       title: "Some slug",

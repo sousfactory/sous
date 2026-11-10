@@ -37,7 +37,7 @@ describe("runFlow: agentic steps", () => {
     expect(requests[2]).toMatchObject({ resumeSession: "s2", prompt: retryPrompt("fail 2") });
 
     expect(session.current).toBe("done");
-    expect(session.scopes["1"]?.["build"]).toEqual({ visits: 1, ok: true, log: "eval of iteration 3", output: { ok: true }, commits: ["c-s3"], session: "s3" });
+    expect(session.scopes["1"]?.["build"]).toEqual({ visits: 1, ok: true, log: "eval of iteration 3", output: { ok: true }, commits: ["c-s3"], session: "s3", costUnknown: 3 });
     expect(session.iterations["build"]).toBe(3);
     expect(ports.events.of("output").map((o) => [o.iteration, o.sessionId, o.eval.ok, o.eval.logTail])).toEqual([
       [1, "s1", false, "fail 1"],
@@ -139,6 +139,33 @@ describe("runFlow: agentic steps", () => {
     expect(sandbox.requests.map((r) => r.resumeSession)).toEqual([undefined, "f1"]);
     expect(session.scopes["1"]?.["fix"]).toMatchObject({ visits: 2, session: "f2" });
     expect(session.history.map((h) => h.next)).toEqual(["again", "fix", "done"]);
+  });
+});
+
+describe("runFlow: cost", () => {
+  it("records each agent call's cost on its end event and adds it to the step across visits, so a flow routes on it", async () => {
+    const sandbox = fakeSandbox({ agent: [agentResult("f1", undefined, 1), agentResult("f2", undefined, 2)] });
+    const fix = entryOf("fix", "agent", { with: { task: "fix" }, routes: [{ to: "over", when: "steps.fix.costUsd > 2.5" }, { to: "again" }] });
+    const again = entryOf("again", "void", { routes: [{ to: "fix" }] });
+    const over = entryOf("over", "void");
+    const ports = portsOf(sandbox);
+
+    const session = await runFlow(flowOf(fix, again, over), sessionOf("fix"), ports);
+
+    expect(session.history.map((h) => h.next)).toEqual(["again", "fix", "over", "done"]);
+    expect(session.scopes["1"]?.["fix"]).toMatchObject({ visits: 2, costUsd: 3, costUnknown: 0 });
+    expect(ports.events.of("iteration.agent.end").map((e) => e.costUsd)).toEqual([1, 2]);
+  });
+
+  it("counts a call without a cost, a failed one included, and leaves costUsd out of its event", async () => {
+    const sandbox = fakeSandbox({ agent: [new AgentProcessError("claude exited with code 1"), answer("s2")] });
+    const ports = portsOf(sandbox);
+
+    const { session } = await visit(entryOf("build", "agent", { with: { task: "t" } }), undefined, ports);
+
+    expect(session.scopes["1"]?.["build"]?.costUnknown).toBe(2);
+    expect(session.scopes["1"]?.["build"]).not.toHaveProperty("costUsd");
+    for (const end of ports.events.of("iteration.agent.end")) expect(end).not.toHaveProperty("costUsd");
   });
 });
 
@@ -257,7 +284,7 @@ describe("runFlow: deterministic steps", () => {
     expect(ports.events.types()).toEqual(["span.open", "output", "span.close"]);
     expect(ports.events.of("output")[0]).toMatchObject({ step: "start", iteration: 1, scope: "1", envelope: { output: { inputs: { a: "1", b: "lit" }, work: { id: "1" }, previous: null } } });
     expect(ports.events.of("output")[0]).not.toHaveProperty("sessionId");
-    expect(session.scopes["1"]?.["start"]).toEqual({ visits: 1, ok: true, log: "", output: { inputs: { a: "1", b: "lit" }, work: expect.objectContaining({ id: "1" }), previous: null, iteration: null }, commits: [] });
+    expect(session.scopes["1"]?.["start"]).toEqual({ visits: 1, ok: true, log: "", output: { inputs: { a: "1", b: "lit" }, work: expect.objectContaining({ id: "1" }), previous: null, iteration: null }, commits: [], costUnknown: 0 });
     expect(ports.sandbox.requests).toEqual([]);
   });
 
@@ -292,7 +319,7 @@ describe("runFlow: deterministic steps", () => {
     const nothing = await visit(entryOf("noop", "void"), undefined, portsOf());
     expect(nothing.next).toBe("done");
     expect(nothing.ports.events.of("output")).toEqual([]);
-    expect(nothing.session.scopes["1"]?.["noop"]).toEqual({ visits: 1, ok: true, log: "", commits: [] });
+    expect(nothing.session.scopes["1"]?.["noop"]).toEqual({ visits: 1, ok: true, log: "", commits: [], costUnknown: 0 });
   });
 
   it("runs an eval-only step's eval once with no result and routes on it", async () => {
@@ -304,7 +331,7 @@ describe("runFlow: deterministic steps", () => {
     const { session, next } = await visit(entryOf("verify", "eval-only", { with: { pass: "no" }, routes }), undefined, ports);
 
     expect(next).toBe("fix");
-    expect(session.scopes["1"]?.["verify"]).toEqual({ visits: 1, ok: false, log: "pass=no iteration=1 result=none", commits: [] });
+    expect(session.scopes["1"]?.["verify"]).toEqual({ visits: 1, ok: false, log: "pass=no iteration=1 result=none", commits: [], costUnknown: 0 });
     expect(ports.events.types()).toEqual(["span.open", "iteration.eval.start", "iteration.eval.end", "span.close", "span.open", "span.close"]);
     expect(ports.events.of("output")).toEqual([]);
     expect(ports.sandbox.requests).toEqual([]);
@@ -605,10 +632,10 @@ describe("runFlow: events and persistence", () => {
     const records = ports.persisted.map((s) => s.scopes["1"]?.["build"]);
     // build: span open, agent call 1, agent call 2, transition; verify: span open, transition.
     expect(ports.persisted.map((s) => s.current)).toEqual(["build", "build", "build", "verify", "verify", "done"]);
-    expect(records[0]).toEqual({ visits: 1, ok: true, log: "", commits: [] });
-    expect(records[1]).toEqual({ visits: 1, ok: true, log: "", commits: [], session: "s1" });
-    expect(records[2]).toEqual({ visits: 1, ok: true, log: "", commits: [], session: "s2" });
-    expect(records[3]).toEqual({ visits: 1, ok: true, log: "eval of iteration 2", output: { ok: true }, commits: ["c-s2"], session: "s2" });
+    expect(records[0]).toEqual({ visits: 1, ok: true, log: "", commits: [], costUnknown: 0 });
+    expect(records[1]).toEqual({ visits: 1, ok: true, log: "", commits: [], session: "s1", costUnknown: 1 });
+    expect(records[2]).toEqual({ visits: 1, ok: true, log: "", commits: [], session: "s2", costUnknown: 2 });
+    expect(records[3]).toEqual({ visits: 1, ok: true, log: "eval of iteration 2", output: { ok: true }, commits: ["c-s2"], session: "s2", costUnknown: 2 });
     expect(ports.persisted.map((s) => s.iterations["build"])).toEqual([0, 1, 2, 2, 2, 2]);
     expect(ports.persisted.map((s) => s.history.length)).toEqual([0, 0, 0, 1, 1, 2]);
   });
@@ -659,7 +686,7 @@ describe("runFlow: re-entry after blocked and resume after a crash", () => {
     expect(requests).toHaveLength(0);
     expect(next).toBe("review");
     expect(session.blocked).toBe(false);
-    expect(session.scopes["1"]?.["build"]).toEqual({ visits: 1, ok: true, log: "fixed by hand", output: { ok: true, log: "fixed by hand" }, commits: ["c3"], session: "s3" });
+    expect(session.scopes["1"]?.["build"]).toEqual({ visits: 1, ok: true, log: "fixed by hand", output: { ok: true, log: "fixed by hand" }, commits: ["c3"], session: "s3", costUnknown: 0 });
     expect(session.iterations["build"]).toBe(0);
     const { spans } = foldTimeline(ports.events.events);
     expect(spans[0]?.iterations).toEqual([{ n: 0, eval: expect.objectContaining({ ok: true }) }]);
@@ -736,7 +763,7 @@ describe("runFlow: re-entry after blocked and resume after a crash", () => {
 
     const first = await visit(plain, undefined, portsOf(fakeSandbox({ agent: [crash] })));
     expect(first.next).toBe("blocked");
-    expect(first.session.scopes["1"]?.["plain"]).toEqual({ visits: 1, ok: false, log: "codex exited with code 1", output: undefined, commits: [] });
+    expect(first.session.scopes["1"]?.["plain"]).toEqual({ visits: 1, ok: false, log: "codex exited with code 1", output: undefined, commits: [], costUnknown: 1 });
 
     const second = await visit(plain, first.session, portsOf(fakeSandbox({ agent: [answer("s9")] })));
     expect(second.requests).toHaveLength(1);
@@ -752,7 +779,7 @@ describe("runFlow: re-entry after blocked and resume after a crash", () => {
 
     expect(ports.transitions.map((t) => t.to)).toEqual(["build", "done"]);
     const opened = ports.persisted.find((s) => s.scopes["1"]?.["build"]?.visits === 2);
-    expect(opened?.scopes["1"]?.["build"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [], session: "s1" });
+    expect(opened?.scopes["1"]?.["build"]).toEqual({ visits: 2, ok: true, log: "", output: undefined, commits: [], session: "s1", costUnknown: 1 });
   });
 
   it("a second visit stopped after its agent call re-enters on its own empty record, not on the first visit's output", async () => {
@@ -819,7 +846,7 @@ describe("runFlow: prepare", () => {
     expect(ports.events.types().slice(0, 6)).toEqual(["span.open", "prepare.start", "prepare.end", "iteration.eval.start", "iteration.eval.end", "span.close"]);
     expect(ports.events.of("prepare.end")[0]).toEqual(expect.objectContaining({ agent: "never", reason: "nothing to do" }));
     expect(ports.events.of("output")).toEqual([]);
-    expect(session.scopes["1"]?.["sync"]).toEqual({ visits: 1, ok: true, log: "agent=never note=never for #1 result=none iteration=1", commits: [], prepared: { agent: "never", reason: "nothing to do", output: { note: "never for #1" } } });
+    expect(session.scopes["1"]?.["sync"]).toEqual({ visits: 1, ok: true, log: "agent=never note=never for #1 result=none iteration=1", commits: [], prepared: { agent: "never", reason: "nothing to do", output: { note: "never for #1" } }, costUnknown: 0 });
     expect(session.iterations["sync"]).toBe(0);
     const { spans } = foldTimeline(ports.events.events);
     expect(spans[0]?.prepare).toEqual({ startedAt: expect.any(String), endedAt: expect.any(String), agent: "never", reason: "nothing to do" });
@@ -836,7 +863,7 @@ describe("runFlow: prepare", () => {
     expect(ports.events.types().slice(0, 6)).toEqual(["span.open", "prepare.start", "prepare.end", "iteration.eval.start", "iteration.eval.end", "span.close"]);
     expect(ports.events.of("prepare.end")[0]).toEqual(expect.objectContaining({ agent: "on-fail", reason: "checking first" }));
     expect(ports.events.of("iteration.eval.end")[0]).toEqual(expect.objectContaining({ n: 0, ok: true }));
-    expect(session.scopes["1"]?.["sync"]).toEqual({ visits: 1, ok: true, log: "agent=on-fail note=on-fail for #1 result=none iteration=0", commits: [], prepared: { agent: "on-fail", reason: "checking first", output: { note: "on-fail for #1" } } });
+    expect(session.scopes["1"]?.["sync"]).toEqual({ visits: 1, ok: true, log: "agent=on-fail note=on-fail for #1 result=none iteration=0", commits: [], prepared: { agent: "on-fail", reason: "checking first", output: { note: "on-fail for #1" } }, costUnknown: 0 });
     expect(session.iterations["sync"]).toBe(0);
   });
 
