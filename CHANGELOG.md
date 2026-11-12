@@ -5,7 +5,19 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
-## Unreleased
+## 0.8.0
+
+### Breaking
+
+- **Session schema 9.** The step record gains `costUsd` and `costUnknown`.
+  A run in flight under 0.7.0 does not survive the upgrade: `sous run` and
+  `sous status` reject its `session.json` with the another-schema error.
+  Finish or `--restart` such runs before upgrading the engine.
+- **The starter's flows change shape.** `check-issue` sits after `init`
+  in the task flow and after `next-work` in the feature flow, and
+  `implement` takes a new `divergence` input. A project on the 0.7.0
+  starter keeps working as it is; one that adopts `check-issue` copies
+  `steps/check-issue/`, the flow entries and the `divergence` input.
 
 ### Added
 
