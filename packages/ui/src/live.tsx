@@ -1,7 +1,8 @@
 /**
  * Live data: one EventSource for the whole app. Each `change` event bumps a
  * version, per issue or global; a view refetches when its version moves.
- * A global change (the lock, the set of runs) moves every version.
+ * A global change (the lock, the set of runs) moves every version. Over
+ * `repos:` a change names its repository too, and counts for that one only.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -17,20 +18,22 @@ export const LiveProvider = ({ children }: { children: ReactNode }) => {
     source.addEventListener("open", () => setVersions((v) => ({ ...v, connected: true, global: v.global + 1 })));
     source.addEventListener("error", () => setVersions((v) => ({ ...v, connected: false })));
     source.addEventListener("change", (event) => {
-      const { issue } = JSON.parse((event as MessageEvent<string>).data) as { issue: string | null };
-      setVersions((v) =>
-        issue === null ? { ...v, global: v.global + 1 } : { ...v, issues: { ...v.issues, [issue]: (v.issues[issue] ?? 0) + 1 } },
-      );
+      const { issue, repo } = JSON.parse((event as MessageEvent<string>).data) as { issue: string | null; repo?: string };
+      const key = issue === null ? null : keyOf(issue, repo);
+      setVersions((v) => (key === null ? { ...v, global: v.global + 1 } : { ...v, issues: { ...v.issues, [key]: (v.issues[key] ?? 0) + 1 } }));
     });
     return () => source.close();
   }, []);
   return <LiveContext.Provider value={versions}>{children}</LiveContext.Provider>;
 };
 
-/** A number that changes whenever data of `issue` (or of every view) may have changed. */
-export const useVersion = (issue?: string): string => {
+/** An issue's version key; over `repos:` the same issue id in two repositories counts apart. */
+const keyOf = (issue: string, repo: string | undefined): string => (repo === undefined ? issue : `${repo}\u0000${issue}`);
+
+/** A number that changes whenever data of `issue` in `repo` (or of every view) may have changed. */
+export const useVersion = (issue?: string, repo?: string): string => {
   const v = useContext(LiveContext);
-  return `${v.global}:${issue === undefined ? Object.values(v.issues).reduce((a, b) => a + b, 0) : (v.issues[issue] ?? 0)}`;
+  return `${v.global}:${issue === undefined ? Object.values(v.issues).reduce((a, b) => a + b, 0) : (v.issues[keyOf(issue, repo)] ?? 0)}`;
 };
 
 export const useConnected = (): boolean => useContext(LiveContext).connected;

@@ -107,9 +107,9 @@ steps:
       - to: done
 `;
 
-/** A project root (`<tmp>/repo/.sous`) with sous.yaml, the task flow and empty runs/logs. */
-export const tempProject = (): string => {
-  const root = join(mkdtempSync(join(tmpdir(), "sous-ui-")), "repo", ".sous");
+/** A project root (`<parent>/<repo>/.sous`, in a fresh temporary folder by default) with sous.yaml, the task flow and empty runs/logs. */
+export const tempProject = (repo = "repo", parent: string = mkdtempSync(join(tmpdir(), "sous-ui-"))): string => {
+  const root = join(parent, repo, ".sous");
   mkdirSync(join(root, "flows"), { recursive: true });
   mkdirSync(join(root, "runs"), { recursive: true });
   mkdirSync(join(root, "logs"), { recursive: true });
@@ -123,4 +123,15 @@ export const writeRun = (root: string, issue: string, s: Session | string, log?:
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "session.json"), typeof s === "string" ? s : JSON.stringify(s, null, 2));
   if (log !== undefined) writeFileSync(join(dir, "events.jsonl"), log.jsonl());
+};
+
+/**
+ * A home repository `<tmp>/home` whose `repos:` lists `../web` and `../api`
+ * by name, each a project of its own. Returns the three project roots.
+ */
+export const tempHome = (): { home: string; web: string; api: string } => {
+  const parent = mkdtempSync(join(tmpdir(), "sous-ui-"));
+  const home = tempProject("home", parent);
+  writeFileSync(join(home, "sous.yaml"), "runsDir: runs\nrepos:\n  web: ../web\n  api: ../api\n");
+  return { home, web: tempProject("web", parent), api: tempProject("api", parent) };
 };

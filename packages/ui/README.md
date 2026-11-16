@@ -18,6 +18,12 @@ uiPort: 5001              # in sous.yaml: this project's port, so two projects n
 `/runs?flow=<name>` previews a flow's graph, run or not; everything else is
 one click from the runs list.
 
+In a home repository whose `sous.yaml` lists `repos:`
+([manual, how-to 21](../../docs/manual.md#21-multi-repo-setup)), the list
+holds the runs of every listed repository, with a repository column naming
+each one's folder; the header still names the home repository. Without
+`repos:` there is no such column and nothing else changes.
+
 The first start builds the app into `packages/ui/dist/`, which is gitignored. After a
 change to `src/`, delete `dist/` or run `npm run build` here. The server
 binds to 127.0.0.1 only and has no authentication.
@@ -26,15 +32,18 @@ binds to 127.0.0.1 only and has no authentication.
 
 | URL | Shows |
 | --- | --- |
-| `/runs` | One row per issue folder under `runsDir`, newest write first. `?flow=<name>` filters, and draws that flow's graph above its runs as a preview, whether it ran or not: every step queued, every route solid grey. |
+| `/runs` | One row per issue folder under `runsDir`, newest write first; over `repos:`, of every listed repository, with the repository column. `?flow=<name>` filters, and draws that flow's graph above its runs as a preview, whether it ran or not: every step queued, every route solid grey. |
 | `?flow=<name>&step=<id>` | The preview with a step open below the graph: what it uses, its kind and model, the `description` of its `step.yaml`, and its routes. |
 | `/runs/<issue>` | The latest attempt: summary box, work items, flow graph, and under it the steps table: every visit oldest first, with its duration, the agent's summary, its output, a failed eval's log and the next step. Outputs are drawn by shape, since each step has its own schema: an object as fields, a list of objects as a table, a list of values inline, long text folded. Earlier iterations of a visit fold away; the table updates live with the graph. |
 | `?attempt=<n>` | An earlier run segment, with the visits of segments 1 to n. |
 | `?scope=<work>` | Another work item of a run with sub-issues. |
 | `?step=<id>` | The step's job view: routes, visits, agent and eval rows, output, commits. |
+| `?repo=<name>` | Over `repos:`: the listed repository the run is in, by its entry name; the list's links carry it. |
 
-A run folder whose `session.json` core cannot load, for example an older
-schema, is listed greyed with the loader's message.
+A run folder whose `session.json` core cannot load is listed greyed with
+the loader's message. One on another session schema version is listed
+greyed as unreadable with its version and the one this UI reads, under its
+title, flow and branch where those read.
 
 The step view, here `implement` mid-run: its routes with the first match
 marked, the current visit, the running agent and its output.
@@ -115,9 +124,9 @@ more). A route is solid only when its target was visited in the same lane.
 | Path | Role |
 | --- | --- |
 | `server/model.ts` | Pure view model: session, timeline and topology to statuses, edges and details. |
-| `server/runs.ts` | Reads run folders, logs and the lock through `sous-factory/read`. Retries a session caught half written. |
-| `server/watch.ts` | Change feed: `fs.watch` on `runs/`, `logs/` and the lock, debounced per issue, with mtime polling as fallback and a lock liveness poll. |
-| `server/http.ts` | `node:http`: `/api/runs`, `/api/runs/<issue>`, `/api/runs/<issue>/logs/<name>?from=`, `/api/flows/<name>` (the preview), `/api/events` (SSE), and the built app. |
+| `server/runs.ts` | Reads run folders, logs and the lock through `sous-factory/read`, of the project or of each `repos:` entry. Retries a session caught half written. |
+| `server/watch.ts` | Change feed: `fs.watch` on `runs/`, `logs/` and the lock, debounced per issue, with mtime polling as fallback and a lock liveness poll; one per listed repository, merged, each change naming its repository. |
+| `server/http.ts` | `node:http`: `/api/runs`, `/api/runs/<issue>`, `/api/runs/<issue>/logs/<name>?from=`, `/api/flows/<name>` (the preview), `/api/events` (SSE), and the built app. The run routes take `?repo=<name>` over `repos:`. |
 | `server/main.ts` | `sous ui`; core's CLI loads it by path, so core does not depend on this package. |
 | `src/` | React with Primer React components, Octicons and Tailwind utilities. The graph uses React Flow at a fixed zoom with a dagre layout. |
 

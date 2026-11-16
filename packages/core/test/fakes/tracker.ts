@@ -1,5 +1,5 @@
 import { parseBlockedBy } from "../../src/adapters/github.js";
-import { stateLabels, swapStateLabel, type Tracker, type Issue } from "../../src/ports/tracker.js";
+import { matchesList, stateLabels, swapStateLabel, type Tracker, type Issue } from "../../src/ports/tracker.js";
 
 export type FakeTracker = Tracker & {
   /** Live issue store, keyed by id; tests may read and edit it. */
@@ -84,6 +84,13 @@ export const fakeTracker = (options: FakeTrackerOptions = {}): FakeTracker => {
     comment,
     async isClosed(id) {
       return get(id).state === "closed";
+    },
+    /** The seeded issues that are open and carry every label, copied, in id order. */
+    async list({ labels }) {
+      return [...issues.values()]
+        .filter((i) => matchesList(i, labels))
+        .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
+        .map((i) => ({ ...i, labels: [...i.labels] }));
     },
   };
 };

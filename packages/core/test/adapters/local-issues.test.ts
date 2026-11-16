@@ -29,6 +29,27 @@ describe("local issues", () => {
     expect(await issues.blockers("8")).toEqual(["7"]);
   });
 
+  it("refuses a blocker in another repository, naming the reference, from blockedBy or the body's Blocked by section", async () => {
+    await writeFile(issueFile(dir, "8"), JSON.stringify({ id: "8", title: "Second", blockedBy: ["acme/api#4"] }), "utf8");
+    await writeFile(issueFile(dir, "9"), JSON.stringify({ id: "9", title: "Third", body: "## Blocked by\n- acme/web#5\n" }), "utf8");
+    const issues = createLocalTracker({ dir });
+    await expect(issues.blockers("8")).rejects.toThrow(/acme\/api#4/);
+    await expect(issues.blockers("9")).rejects.toThrow(/acme\/web#5/);
+    await expect(issues.isClosed("acme/web#5")).rejects.toThrow(/acme\/web#5/);
+  });
+
+  it("lists the open issues carrying every label from the folder's files", async () => {
+    await writeFile(issueFile(dir, "10"), JSON.stringify({ id: "10", title: "Ready", labels: ["sous:ready", "type:task"] }), "utf8");
+    await writeFile(issueFile(dir, "8"), JSON.stringify({ id: "8", title: "Also", labels: ["type:task", "sous:ready", "repo:x"] }), "utf8");
+    await writeFile(issueFile(dir, "9"), JSON.stringify({ id: "9", title: "Done", labels: ["sous:ready", "type:task"], state: "closed" }), "utf8");
+    await writeFile(commentsFile(dir, "8"), "## note\n", "utf8");
+    const issues = createLocalTracker({ dir });
+    const listed = await issues.list({ labels: ["sous:ready", "type:task"] });
+    expect(listed.map((i) => i.id)).toEqual(["8", "10"]);
+    expect(listed[0]).toEqual({ id: "8", ref: "8", title: "Also", body: "", labels: ["type:task", "sous:ready", "repo:x"], state: "open" });
+    expect(await createLocalTracker({ dir: join(dir, "none") }).list({ labels: ["sous:ready"] })).toEqual([]);
+  });
+
   it("names the missing file and refuses a file holding another id", async () => {
     const issues = createLocalTracker({ dir });
     await expect(issues.getIssue("8")).rejects.toThrow(`${issueFile(dir, "8")} does not exist`);

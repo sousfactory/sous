@@ -8,6 +8,7 @@ import { initCommand } from "./commands/init.js";
 import { confirmOnStdin, runCommand } from "./commands/run.js";
 import { statusCommand } from "./commands/status.js";
 import { validateCommand } from "./commands/validate.js";
+import { spawnChild, watchCommand, watchReposOf } from "./commands/watch.js";
 import { loadSettings, SETTINGS_FILE } from "./config/settings.js";
 import type { Tracker } from "./ports/tracker.js";
 import { PROJECT_DIR, projectRoot, repoRootOf } from "./root.js";
@@ -18,6 +19,7 @@ export { PROJECT_DIR, projectRoot, repoRootOf } from "./root.js";
 const USAGE = `usage:
   sous init [--starter <dir>] [--force] copy a starter into .sous/, install it, add the /sous-plan skill
   sous run <flow> <issue> [--restart]   validate, then start or resume a run
+  sous watch [--once] [--interval <s>]  start ready issues unattended, one run per repository at a time
   sous status <issue>                   session facts and the timeline
   sous graph <flow>                     the flow as Mermaid
   sous validate                         every flow, every step, sous.yaml
@@ -62,6 +64,8 @@ const commands = (root: string): Record<string, Command> => {
       const git = createGit();
       return runCommand(args, { root, repoRoot, git, tracker: await trackerOf(root, repoRoot), openSandbox: createOpenSandbox(git), confirm: confirmOnStdin, ...io });
     },
+    watch: async (args) =>
+      watchCommand(args, { root, ...(await watchReposOf(root, fileURLToPath(import.meta.url))), spawn: spawnChild, ...io }),
     status: (args) => statusCommand(args, { root, ...io }),
     ui: (args) => uiCommand(args, root),
   };

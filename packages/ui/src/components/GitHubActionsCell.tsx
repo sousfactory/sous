@@ -9,6 +9,7 @@ import type { ActionsRunView, GitHubView } from "../../server/github";
 import type { Status } from "../../server/model";
 import { shortSha } from "../format";
 import { useJson, useVersion } from "../live";
+import { runApi } from "../router";
 import { STATUS_LABEL, StatusIcon } from "./StatusIcon";
 
 const POLL_MS = 30_000;
@@ -74,9 +75,9 @@ export const GitHubActions = ({ view }: { view: GitHubView | undefined }) => {
 };
 
 /** Polls while a workflow run is unfinished or the commit is not pushed yet. */
-export const useGitHubView = (issue: string): GitHubView | undefined => {
+export const useGitHubView = (issue: string, repo?: string): GitHubView | undefined => {
   const [tick, setTick] = useState(0);
-  const fetched = useJson<GitHubView>(`/api/runs/${encodeURIComponent(issue)}/github`, `${useVersion(issue)}:${tick}`);
+  const fetched = useJson<GitHubView>(runApi(issue, repo, "/github"), `${useVersion(issue, repo)}:${tick}`);
   const view = fetched.data;
   const settled = view !== undefined && (view.state === "none" || (view.state === "runs" && view.final));
   useEffect(() => {

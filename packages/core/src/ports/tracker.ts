@@ -3,6 +3,7 @@
  * define the issue-body and label contract. The helpers live here so the
  * real adapter, the fake and the steps share one definition.
  */
+import { SousError } from "../exec/errors.js";
 import type { Issue as PublicIssue } from "../index.js";
 
 export type IssueState = "open" | "closed";
@@ -36,10 +37,35 @@ export type Tracker = {
   setStateLabel(id: string, label: string): Promise<void>;
   comment(id: string, body: string): Promise<void>;
   isClosed(id: string): Promise<boolean>;
+  /** The open issues carrying every label in `labels`, each with its labels and state; how the tracker is asked is its own business. */
+  list(query: { labels: readonly string[] }): Promise<Issue[]>;
 };
 
 /** What a project's own tracker module must implement; `sous validate` checks for these. */
-export const TRACKER_METHODS = ["getIssue", "children", "parent", "blockers", "claim", "block", "close", "setStateLabel", "comment", "isClosed"] as const;
+export const TRACKER_METHODS = ["getIssue", "children", "parent", "blockers", "claim", "block", "close", "setStateLabel", "comment", "isClosed", "list"] as const;
+
+/** `owner/repo#n`: an issue in another GitHub repository, as a `## Blocked by` line may name it. */
+export const QUALIFIED_REF = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d+)$/;
+
+export const isQualifiedRef = (ref: string): boolean => QUALIFIED_REF.test(ref);
+
+/**
+ * The entries under `## Blocked by` (`- #12`, `#13`, `- owner/repo#19`) in a
+ * body, the way the plan phase writes dependencies: `12` for an issue of the
+ * same tracker, `owner/repo#19` kept whole for one in another repository. A
+ * section reading "None", or no section at all, yields `[]`.
+ */
+export const parseBlockedBy = (body: string): string[] => {
+  const section = body.match(/(?:^|\n)##\s*Blocked by[^\n]*\n?([\s\S]*?)(?=\n##\s|$)/i)?.[1] ?? "";
+  return [...section.matchAll(/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#(\d+)/g)].map((m) => (m[1] !== undefined ? `${m[1]}#${m[2]}` : (m[2] ?? "")));
+};
+
+/** What a tracker that has no reach into other repositories throws for a qualified blocker; the error names the reference. */
+export const unsupportedQualifiedRef = (tracker: string, ref: string): SousError =>
+  new SousError(`${tracker}: blocker ${ref} names an issue in another repository, which only the github tracker can follow; write it as an issue of this tracker`);
+
+/** Whether `issue` answers `list({ labels })`: open and carrying every named label. */
+export const matchesList = (issue: Issue, labels: readonly string[]): boolean => issue.state === "open" && labels.every((l) => issue.labels.includes(l));
 
 /** `sous:` of `sous:running`; undefined for a label without a colon. */
 export const labelPrefixOf = (label: string): string | undefined => {

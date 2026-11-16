@@ -19,3 +19,4 @@ export { formatCost } from "./session/cost.js";
 export { RUN_OUTCOMES, AGENT_OUTCOMES, type Event, type OutputEvent, type RunOutcome, type AgentOutcome, type TokenUsage } from "./session/events.js";
 export { SCHEMA_VERSION, type Session, type HistoryEntry } from "./exec/scope.js";
 export type { PrepareVerdict, StepRecord, WorkRecord } from "./index.js";
+export { repoEntries, repoProblems, type RepoEntry } from "./config/repos.js";

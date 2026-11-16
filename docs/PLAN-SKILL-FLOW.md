@@ -74,8 +74,9 @@ flowchart TD
   K2 -- GO --> L0{"target"}
   L0 -- "base checkout" --> L1["9. add spec folder, ADRs, glossary; commit; pull --rebase; push base"]:::write
   L0 -- "worktree" --> L2["9. add the same paths in the worktree; commit on the branch; no push"]:::write
-  L1 --> M0
-  L2 --> M0
+  L1 --> R0
+  L2 --> R0
+  R0["9. set the repo label: one repo:name on the issue and every child, created when missing; the repository's own name, or the repos: entry chosen in step 1"]:::write --> M0
   M0["10. report: target, path, sha, children in order or criteria, next command"] --> Z([end])
 ```
 
@@ -111,9 +112,9 @@ commit, orange ones are the gate.
 ## Where the tracker comes in
 
 The prompt names a verb; the sheet says the command. Every sheet defines the
-same nine verbs (read the issue, parent of the issue, list the children,
+same ten verbs (read the issue, parent of the issue, list the children,
 create the issue, set the kind, update the body, create a child, add a
-blocker, set the acceptance criteria) and four conventions: how the issue is
+blocker, set the acceptance criteria, set the repo label) and four conventions: how the issue is
 written in text (`REF`), where the kind lives, which state labels the run
 phase sets, and how a child's parent and blockers are expressed. The shapes
 themselves are `starters/default/templates/`: `spec.md` and

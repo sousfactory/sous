@@ -7,7 +7,7 @@ const ok = (stdout: string): ExecResult => ({ code: 0, stdout, stderr: "" });
 const fail = (stderr: string): ExecResult => ({ code: 1, stdout: "", stderr });
 
 /** Scripts `gh` by a handler over its argument list; records every call. */
-const ghOf = (handler: (args: readonly string[]) => ExecResult | string) => {
+const ghOf = (handler: (args: readonly string[]) => ExecResult | string, repo?: string) => {
   const calls: string[][] = [];
   const slept: number[] = [];
   const warned: string[] = [];
@@ -19,6 +19,7 @@ const ghOf = (handler: (args: readonly string[]) => ExecResult | string) => {
   };
   const tracker = createGitHubTracker({
     exec,
+    ...(repo !== undefined ? { repo } : {}),
     sleep: async (ms) => {
       slept.push(ms);
     },
@@ -51,6 +52,10 @@ describe("parseBlockedBy", () => {
 
   it("is case-insensitive on the heading and ignores references elsewhere", () => {
     expect(parseBlockedBy("Closes #1\n\n## blocked BY\n- #2\n")).toEqual(["2"]);
+  });
+
+  it("keeps a reference into another repository whole, as owner/repo#n", () => {
+    expect(parseBlockedBy("## Blocked by\n- #12\n- sousfactory/planning#19\n- my-org/a.b_c#3\n")).toEqual(["12", "sousfactory/planning#19", "my-org/a.b_c#3"]);
   });
 });
 
@@ -166,6 +171,18 @@ describe("createGitHubTracker", () => {
     ]);
   });
 
+  it("list asks gh for the open issues with every label and keeps only those", async () => {
+    const rows = [
+      { number: 21, title: "Ready", body: "b", labels: [{ name: "sous:ready" }, { name: "type:task" }], state: "OPEN" },
+      { number: 22, title: "Half", body: "", labels: [{ name: "sous:ready" }], state: "OPEN" },
+      { number: 23, title: "Done", body: "", labels: [{ name: "sous:ready" }, { name: "type:task" }], state: "CLOSED" },
+    ];
+    const { tracker, calls } = ghOf(() => JSON.stringify(rows));
+    const listed = await tracker.list({ labels: ["sous:ready", "type:task"] });
+    expect(calls).toEqual([["issue", "list", "--state", "open", "--label", "sous:ready", "--label", "type:task", "--limit", "1000", "--json", "number,title,body,labels,state"]]);
+    expect(listed).toEqual([{ id: "21", ref: "#21", title: "Ready", body: "b", labels: ["sous:ready", "type:task"], state: "open" }]);
+  });
+
   it("retries transient failures with backoff and then succeeds", async () => {
     let attempt = 0;
     const { tracker, calls, slept, warned } = ghOf(() => (++attempt < 3 ? fail("HTTP 502: Bad Gateway") : issueJson()));
@@ -203,5 +220,55 @@ describe("createGitHubTracker", () => {
   it("blockers are the body's Blocked by entries that are still open", async () => {
     const { tracker } = ghOf((args) => (args[2] === "12" ? issueJson({ number: 12, state: "CLOSED" }) : issueJson({ body: "## Blocked by\n- #12\n- #13\n" })));
     expect(await tracker.blockers("14")).toEqual(["13"]);
+  });
+
+  it("asks the named repository whether an owner/repo#n blocker is closed, in blockers and isClosed", async () => {
+    const { tracker, calls } = ghOf((args) => {
+      if (args.includes("-R")) return issueJson({ number: Number(args[2]), state: args[2] === "19" ? "CLOSED" : "OPEN" });
+      return issueJson({ body: "## Blocked by\n- sousfactory/planning#19\n- sousfactory/planning#20\n" });
+    });
+    expect(await tracker.blockers("14")).toEqual(["sousfactory/planning#20"]);
+    expect(calls).toContainEqual(["issue", "view", "19", "-R", "sousfactory/planning", "--json", "number,title,body,labels,state"]);
+    expect(await tracker.isClosed("sousfactory/planning#19")).toBe(true);
+    expect(await tracker.isClosed("sousfactory/planning#20")).toBe(false);
+  });
+
+  describe("the repo option", () => {
+    /** One call of every method, answering each gh command with something it can parse. */
+    const everyCall = async (repo?: string) => {
+      const { tracker, calls } = ghOf((args) => {
+        if (args[0] === "issue" && args[1] === "list") return "[]";
+        if (args[0] === "issue" && args[1] === "view") return issueJson({ labels: [{ name: "type:task" }], body: "## Blocked by\n- #12\n- acme/api#4\n" });
+        if (args[0] === "api") return args.includes("--paginate") ? "12\n" : "10\n";
+        return "";
+      }, repo);
+      await tracker.getIssue("14");
+      await tracker.children("14");
+      await tracker.parent("14");
+      await tracker.blockers("14");
+      await tracker.claim("14", { branch: "feature/14-x" });
+      await tracker.block("14", "stop");
+      await tracker.comment("14", "hi");
+      await tracker.close("14", "bye");
+      await tracker.isClosed("14");
+      await tracker.list({ labels: ["sous:ready"] });
+      return calls;
+    };
+
+    it("addresses owner/name on every gh call: -R on each command, the path of each api endpoint", async () => {
+      const calls = await everyCall("sousfactory/planning");
+      expect(calls.length).toBeGreaterThan(10);
+      for (const call of calls) {
+        if (call[0] === "api") expect(call.join(" ")).toMatch(/ repos\/sousfactory\/planning\/issues\//);
+        else if (call.includes("acme/api")) expect(call).toEqual(["issue", "view", "4", "-R", "acme/api", "--json", "number,title,body,labels,state"]);
+        else expect(call.slice(-2)).toEqual(["-R", "sousfactory/planning"]);
+      }
+    });
+
+    it("passes no -R without the option, so gh infers the repository from the checkout", async () => {
+      const calls = await everyCall();
+      expect(calls.filter((c) => c.includes("-R") && !c.includes("acme/api"))).toEqual([]);
+      expect(calls.filter((c) => c[0] === "api").every((c) => c.join(" ").includes("repos/{owner}/{repo}/"))).toBe(true);
+    });
   });
 });

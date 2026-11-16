@@ -22,6 +22,13 @@ export const createGit = (exec: Exec = defaultExec): Git => {
   const hasConflicts = async (cwd: string) => (await run(cwd, ["diff", "--name-only", "--diff-filter=U"])).length > 0;
   const mergeInProgress = (cwd: string) => succeeds(cwd, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
 
+  const isAncestor = async (cwd: string, a: string, b: string) => {
+    const result = await git(cwd, ["merge-base", "--is-ancestor", a, b]);
+    if (result.code === 0) return true;
+    if (result.code === 1) return false;
+    throw new ExecError("git merge-base", result);
+  };
+
   const commit = async (cwd: string, message: string) => {
     if (await succeeds(cwd, ["diff", "--cached", "--quiet"])) return undefined;
     await run(cwd, ["commit", "-m", message]);
@@ -71,11 +78,19 @@ export const createGit = (exec: Exec = defaultExec): Git => {
     commit,
     headSha,
     treeSha: (cwd, ref) => run(cwd, ["rev-parse", `${ref}^{tree}`]),
-    async isAncestor(cwd, a, b) {
-      const result = await git(cwd, ["merge-base", "--is-ancestor", a, b]);
-      if (result.code === 0) return true;
-      if (result.code === 1) return false;
-      throw new ExecError("git merge-base", result);
+    isAncestor,
+    async fastForward(cwd, branch, remote) {
+      const checkedOut = await run(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
+      if (checkedOut !== branch) throw new Error(`refusing to fast-forward ${branch}: ${cwd} has ${checkedOut} checked out`);
+      const tracking = `refs/remotes/${remote}/${branch}`;
+      await run(cwd, ["fetch", "--quiet", remote, `refs/heads/${branch}:${tracking}`]);
+      if (await isAncestor(cwd, tracking, "HEAD")) return true;
+      if (!(await isAncestor(cwd, "HEAD", tracking))) return false;
+      await run(cwd, ["merge", "--ff-only", "--quiet", tracking]);
+      return true;
+    },
+    async push(cwd, branch, remote) {
+      await run(cwd, ["push", "--quiet", remote, `refs/heads/${branch}:refs/heads/${branch}`]);
     },
     async removeWorktree(cwd, path) {
       if (await exists(path)) await run(cwd, ["worktree", "remove", "--force", path]);

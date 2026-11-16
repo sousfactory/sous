@@ -10,7 +10,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { SousError } from "../exec/errors.js";
-import { stateLabels, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { safeId } from "../session/paths.js";
 import { exec as defaultExec, type Exec } from "./exec.js";
 
@@ -83,10 +83,9 @@ export const createBeadsTracker = ({ dir, cwd, labelPrefix = "sous", exec = defa
     return first as Bead;
   };
 
-  const getIssue = async (id: string): Promise<Issue> => {
-    const bead = await show(id);
-    return { id: bead.id, ref: bead.id, title: bead.title, body: bodyOf(bead), labels: labelsOf(bead), state: bead.status === "closed" ? "closed" : "open" };
-  };
+  const toIssue = (bead: Bead): Issue => ({ id: bead.id, ref: bead.id, title: bead.title, body: bodyOf(bead), labels: labelsOf(bead), state: bead.status === "closed" ? "closed" : "open" });
+
+  const getIssue = async (id: string): Promise<Issue> => toIssue(await show(id));
 
   const setStateLabel = async (id: string, label: string): Promise<void> => {
     const { add, remove } = swapStateLabel((await getIssue(id)).labels, label);
@@ -111,7 +110,10 @@ export const createBeadsTracker = ({ dir, cwd, labelPrefix = "sous", exec = defa
       return typeof parent === "string" && parent !== "" ? parent : undefined;
     },
     async blockers(id) {
-      const deps = (await show(id)).dependencies ?? [];
+      const bead = await show(id);
+      const qualified = parseBlockedBy(bodyOf(bead)).find(isQualifiedRef);
+      if (qualified !== undefined) throw unsupportedQualifiedRef("beads", qualified);
+      const deps = bead.dependencies ?? [];
       return deps.filter((d) => (d.dependency_type ?? d.type) === "blocks" && d.status !== "closed").map((d) => d.id ?? d.depends_on_id ?? "").filter((b) => b !== "");
     },
     async claim(id, { branch }) {
@@ -128,6 +130,15 @@ export const createBeadsTracker = ({ dir, cwd, labelPrefix = "sous", exec = defa
     },
     setStateLabel,
     comment,
-    isClosed: async (id) => (await getIssue(id)).state === "closed",
+    async isClosed(id) {
+      if (isQualifiedRef(id)) throw unsupportedQualifiedRef("beads", id);
+      return (await getIssue(id)).state === "closed";
+    },
+    async list({ labels }) {
+      // `type:*` and `bead:*` are labels sous adds on read; bd filters its own, the rest is matched here. bd's default leaves closed beads out.
+      const own = labels.filter((l) => !l.startsWith("type:") && !l.startsWith("bead:"));
+      const payload = await json(["list", ...own.flatMap((l) => ["--label", l]), "-n", "0", "--json"]);
+      return (Array.isArray(payload) ? (payload as Bead[]) : []).map(toIssue).filter((i) => matchesList(i, labels));
+    },
   };
 };

@@ -30,6 +30,10 @@ The folder is `trackerOptions: { dir }` in `sous.yaml`, relative to
 - **State labels:** `<labelPrefix>:running` and `<labelPrefix>:blocked`
   (`sous:running`, `sous:blocked` by default) in `labels`, set and removed
   by the run phase only. A child carrying one is mid-run.
+  `<labelPrefix>:ready` is set by a human, never by `/sous-plan`.
+- **Repo label:** `repo:<name>` in `labels`, one per issue, naming the
+  repository the work runs in. Labels are plain strings; nothing is
+  created first.
 
 ## Verbs
 
@@ -52,10 +56,13 @@ they are and the file pretty-printed.
 - **Add a blocker:** append the blocker's id to the child's `blockedBy`.
 - **Set the acceptance criteria:** replace the `## Acceptance criteria`
   section of `body`.
+- **Set the repo label:** put `repo:<name>` in `labels`, replacing any
+  other `repo:*` entry.
 
 ## Child shape
 
-A child is in shape when its `labels` hold `type:task`, the parent's
+A child is in shape when its `labels` hold `type:task` and the parent's
+`repo:<name>`, the parent's
 `children` lists it, its blockers are in `blockedBy`, and its body is
 `.sous/templates/child.md` without the `## Parent` and `## Blocked by`
 sections, which are fields here: `## What to build`, then

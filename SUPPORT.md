@@ -12,7 +12,7 @@ public, searchable and answered as time allows, usually within a few days.
 | A security problem | [A private advisory](https://github.com/sousfactory/sous/security/advisories/new), see [SECURITY.md](SECURITY.md) |
 
 Before asking, check [the manual](docs/manual.md); its
-[troubleshooting chapter](docs/manual.md#22-troubleshooting) covers the
+[troubleshooting chapter](docs/manual.md#24-troubleshooting) covers the
 common stops. A bug report wants the `sous-factory` version and the output
 of `./sous status <issue>`; for a blocked run, add the eval log of the
 blocked step from `.sous/logs/<issue>/`. The issue form asks for exactly

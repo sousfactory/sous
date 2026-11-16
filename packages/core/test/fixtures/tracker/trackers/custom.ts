@@ -14,6 +14,7 @@ const factory: TrackerFactory = (options, env) => {
     setStateLabel: async () => undefined,
     comment: async () => undefined,
     isClosed: async () => false,
+    list: async () => [],
   };
 };
 

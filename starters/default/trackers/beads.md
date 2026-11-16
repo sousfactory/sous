@@ -17,7 +17,11 @@ Everything goes through the `bd` CLI in the repository.
   under an actor named `… (sous:<branch>)`, and adds the bd label
   `<labelPrefix>:blocked` (`sous:blocked` by default) when it stops. A bead
   whose status is `in_progress` and whose owner names `sous:` is running; a
-  bead with the blocked label is blocked.
+  bead with the blocked label is blocked. `<labelPrefix>:ready` is set by
+  a human, never by `/sous-plan`.
+- **Repo label:** the bd label `repo:<name>`, one per bead, naming the
+  repository the work runs in. bd labels need no creating; the run phase
+  reads them as they are.
 
 ## Verbs
 
@@ -48,10 +52,13 @@ Everything goes through the `bd` CLI in the repository.
   Blockers are `blocks` dependencies, never text in the body.
 - **Set the acceptance criteria:** `bd update <id> --acceptance "<checklist>"`;
   the description stays as it is.
+- **Set the repo label:** `bd update <id> --add-label repo:<name>`, adding
+  `--remove-label <other>` for any other `repo:*` label the bead carries.
 
 ## Child shape
 
-A child is in shape when it is a task under the parent, its description
+A child is in shape when it is a task under the parent carrying the
+parent's `repo:<name>` label, its description
 is the `## What to build` text of `.sous/templates/child.md` (what to
 build from the user's perspective, without the heading), its
 `acceptance_criteria` field holds the checklist, and its blockers are

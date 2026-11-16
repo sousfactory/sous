@@ -95,9 +95,9 @@ export const Routes = ({ routes, taken }: { routes: RouteView[]; taken?: string 
   </div>
 );
 
-export type StepViewProps = { issue: string; node: StepNode; detail: StepDetail; now: number; live: boolean };
+export type StepViewProps = { issue: string; repo?: string | undefined; node: StepNode; detail: StepDetail; now: number; live: boolean };
 
-export const StepView = ({ issue, node, detail, now, live }: StepViewProps) => {
+export const StepView = ({ issue, repo, node, detail, now, live }: StepViewProps) => {
   const latest = detail.visits[detail.visits.length - 1];
   const record = detail.record;
   return (
@@ -176,7 +176,7 @@ export const StepView = ({ issue, node, detail, now, live }: StepViewProps) => {
                       }
                       duration={elapsed(it.agent.startedAt, it.agent.endedAt, now)}
                     >
-                      <AgentLog issue={issue} name={it.agent.log} live={live && it.agent.endedAt === undefined} />
+                      <AgentLog issue={issue} repo={repo} name={it.agent.log} live={live && it.agent.endedAt === undefined} />
                       {it.agent.commits.length > 0 ? (
                         <div className="px-4 pt-1 font-mono text-[12px]" style={{ color: "var(--log-muted)" }}>
                           commits: {it.agent.commits.map(shortSha).join(", ")}

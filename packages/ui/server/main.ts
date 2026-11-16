@@ -8,11 +8,11 @@ import { existsSync } from "node:fs";
 import type { Server } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { repoRootOf } from "sous-factory/read";
+import { loadSettings, repoProblems, repoRootOf, SETTINGS_FILE } from "sous-factory/read";
 import { createGitHubLookup, ghIn } from "./github.js";
 import { createUiServer } from "./http.js";
-import { liveLocks, openProject } from "./runs.js";
-import { createFeed } from "./watch.js";
+import { liveLocks, openProject, openRepos, type Project, type RepoSource } from "./runs.js";
+import { createFeed, mergeFeeds, type Feed } from "./watch.js";
 
 export const HOST = "127.0.0.1";
 export const USAGE = "usage: sous ui [--port <n>]";
@@ -58,6 +58,16 @@ const build = (): boolean => {
   return result.status === 0;
 };
 
+/** The change feed of one project's runs, logs and locks; `repo` tags its changes over `repos:`. */
+const feedOf = (project: Project, repo?: string): Feed =>
+  createFeed({
+    root: project.root,
+    ...(repo !== undefined ? { repo } : {}),
+    runsRoot: project.runsRoot,
+    logsRoot: project.logsRoot,
+    liveness: async () => JSON.stringify(await liveLocks(project)),
+  });
+
 export const uiMain = async (args: string[], root: string): Promise<number> => {
   const parsed = parseArgs(args);
   if (parsed === undefined) {
@@ -75,13 +85,14 @@ export const uiMain = async (args: string[], root: string): Promise<number> => {
     }
   }
   const project = openProject(root);
-  const feed = createFeed({
-    root,
-    runsRoot: project.runsRoot,
-    logsRoot: project.logsRoot,
-    liveness: async () => JSON.stringify(await liveLocks(project)),
-  });
-  const server = createUiServer({ project, feed, distDir: DIST_DIR, github: createGitHubLookup(ghIn(repoRootOf(root))) });
+  const problems = repoProblems(root, loadSettings(join(root, SETTINGS_FILE)));
+  if (problems.length > 0) {
+    for (const problem of problems) console.error(`sous ui: ${problem}`);
+    return 1;
+  }
+  const repos = openRepos(project)?.map((r): RepoSource => ({ ...r, github: createGitHubLookup(ghIn(repoRootOf(r.project.root))) }));
+  const feed = repos === undefined ? feedOf(project) : mergeFeeds(repos.map((r) => feedOf(r.project, r.name)));
+  const server = createUiServer({ project, repos, feed, distDir: DIST_DIR, github: createGitHubLookup(ghIn(repoRootOf(root))) });
   const port = resolvePort(parsed, project.uiPort);
   const failure = await listenOn(server, port);
   if (failure !== undefined) {
@@ -89,7 +100,8 @@ export const uiMain = async (args: string[], root: string): Promise<number> => {
     console.error(failure.message);
     return failure.status;
   }
-  console.log(`sous ui: http://${HOST}:${port}  (runs from ${project.runsRoot}; ctrl-c stops)`);
+  const from = repos === undefined ? project.runsRoot : `${repos.length} repositories: ${repos.map((r) => r.folder).join(", ")}`;
+  console.log(`sous ui: http://${HOST}:${port}  (runs from ${from}; ctrl-c stops)`);
   await new Promise<void>((resolve) => {
     const stop = () => resolve();
     process.once("SIGINT", stop);

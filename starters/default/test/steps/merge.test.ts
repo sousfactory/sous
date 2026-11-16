@@ -192,6 +192,79 @@ describe("merge", () => {
     await expect(merge(setup().ctx, {})).rejects.toThrow('merge: input "baseBranch" must be a non-empty string');
   });
 
+  describe("with push", () => {
+    it("fast-forwards the base from the remote before the freshness check, squashes, then pushes the base; all under the lock", async () => {
+      const f = setup();
+      const out = await merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged", resync: true, push: "origin" });
+
+      expect(out).toEqual({ summary: `merge: squashed ${BRANCH} into main as sha1, pushed main to origin`, commits: ["sha1"], output: { stale: false, sha: "sha1" } });
+      expect(f.git.calls.slice(0, 10)).toEqual([
+        `currentBranch(${REPO})`,
+        `isDirty(${REPO})`,
+        `fastForward(${REPO}, main, origin)`,
+        `branchExists(${REPO}, ${BRANCH})`,
+        `treeSha(${REPO}, ${BRANCH})`,
+        `treeSha(${REPO}, main)`,
+        `isAncestor(${REPO}, main, ${BRANCH})`,
+        `squashMerge(${REPO}, ${BRANCH}, feat(#1): Test issue)`,
+        `commit(${REPO}, feat(#1): Test issue)`,
+        `push(${REPO}, main, origin)`,
+      ]);
+      expect(f.locked).toEqual(f.git.calls.slice(0, 10));
+      expect(f.git.pushed).toEqual([{ remote: "origin", branch: "main", sha: "sha1" }]);
+      expect(f.tracker.comments[0]?.body.split("\n")[0]).toBe("Merged into `main` as sha1 and pushed to `origin`: `feat(#1): Test issue`");
+      expect(f.tracker.issues.get("1")?.labels).toEqual(["sous:merged"]);
+      expect(f.done).toEqual([{ work: "1", commits: ["sha1"] }]);
+    });
+
+    it("a remote base that moved since the last sync makes the branch stale after the fast-forward: nothing squashed or pushed", async () => {
+      const f = setup({ remoteAhead: true });
+      const out = await merge(f.ctx, { baseBranch: "main", resync: true, push: "origin" });
+      expect(out.output).toEqual({ stale: true });
+      expect(f.git.calls).toContain(`fastForward(${REPO}, main, origin)`);
+      expect(f.git.committed).toEqual([]);
+      expect(f.git.pushed).toEqual([]);
+      expect(f.git.calls.some((c) => c.startsWith("push"))).toBe(false);
+    });
+
+    it("refuses before squashing when the local base diverged from the remote base, naming both", async () => {
+      const f = setup({ diverged: true });
+      await expect(merge(f.ctx, { baseBranch: "main", push: "origin" })).rejects.toThrow("merge: refusing to merge: main has diverged from origin/main");
+      expect(f.git.calls.at(-1)).toBe(`fastForward(${REPO}, main, origin)`);
+      expect(f.git.committed).toEqual([]);
+      expect(f.sandbox.closed).toBe(false);
+      expect(f.tracker.comments).toEqual([]);
+    });
+
+    it("a failed push keeps the squash on the local base, fails with the push error and says so on the issue", async () => {
+      const f = setup({ pushError: "git push failed (exit 1): ! [rejected] main -> main (fetch first)" });
+      await expect(merge(f.ctx, { baseBranch: "main", mergedLabel: "sous:merged", push: "origin" })).rejects.toThrow(
+        "merge: squashed feature/1-test-issue into main as sha1, but pushing main to origin failed: git push failed (exit 1): ! [rejected] main -> main (fetch first)",
+      );
+      expect(f.git.committed).toEqual([{ cwd: REPO, message: "feat(#1): Test issue", sha: "sha1" }]);
+      expect(f.git.calls.some((c) => c.startsWith("reset"))).toBe(false);
+      expect(f.tracker.comments).toEqual([
+        {
+          issue: "1",
+          body: "Merged into `main` as sha1: `feat(#1): Test issue`; the merge landed locally and was not pushed to `origin`:\n\n```\ngit push failed (exit 1): ! [rejected] main -> main (fetch first)\n```",
+        },
+      ]);
+      expect(f.tracker.issues.get("1")?.labels).toEqual([]);
+      expect(f.done).toEqual([]);
+    });
+
+    it("a rerun after a failed push finds the branch already merged and pushes it", async () => {
+      const f = setup({ trees: { main: "same", [BRANCH]: "same" } });
+      const out = await merge(f.ctx, { baseBranch: "main", push: "origin" });
+      expect(out.summary).toBe(`merge: ${BRANCH} was already in main (sha0), pushed main to origin; cleaned up`);
+      expect(f.git.pushed).toEqual([{ remote: "origin", branch: "main", sha: "sha0" }]);
+    });
+
+    it("rejects a push input that is not a non-empty string", async () => {
+      await expect(merge(setup().ctx, { baseBranch: "main", push: true })).rejects.toThrow('merge: input "push" must be a non-empty string');
+    });
+  });
+
   it("without mergedLabel it sets no label, and never closes the issue itself", async () => {
     const f = setup();
     await merge(f.ctx, { baseBranch: "main" });

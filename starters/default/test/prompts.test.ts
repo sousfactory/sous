@@ -149,7 +149,7 @@ const sheet = (tracker: string): string => readFileSync(join(root, "trackers", `
 const PLANS: [string, string, string][] = [["plan.md", plan, "REF"]];
 
 /** The verbs the plan prompt uses in bold; every tracker sheet defines each of them. */
-const TRACKER_VERBS = ["Read the issue", "Parent of the issue", "List the children", "Create the issue", "Set the kind", "Update the body", "Create a child", "Add a blocker", "Set the acceptance criteria"];
+const TRACKER_VERBS = ["Read the issue", "Parent of the issue", "List the children", "Create the issue", "Set the kind", "Update the body", "Create a child", "Add a blocker", "Set the acceptance criteria", "Set the repo label"];
 
 /** Vendored skill files the prompt must send the session to. */
 const REQUIRED_SKILLS = [
@@ -194,6 +194,8 @@ describe("the /sous-plan skill and the plan prompts", () => {
 });
 
 describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
+  /** The prompt with every run of whitespace as one space, so a phrase matches however it is wrapped. */
+  const flat = text.replace(/\s+/g, " ");
   it("exists, is not empty and no longer names fcli", () => {
     expect(text.trim().length).toBeGreaterThan(0);
     expect(text).not.toMatch(/fcli|\.factory-cli/);
@@ -284,6 +286,45 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(text).not.toMatch(/\bgh (issue|api|label)\b|\bbd (create|show|update|dep)\b|sub_issue/);
   });
 
+  it("labels every planned issue repo:<name> at GO, from the repository's own name or the chosen repos: entry", () => {
+    const gate = flat.indexOf("ask for an explicit GO");
+    expect(flat.indexOf("**set the repo label**", gate)).toBeGreaterThan(gate);
+    expect(flat).toContain("exactly one `repo:<name>` label");
+    expect(flat).toContain("`name:` in `sous.yaml`, else the repository part of the `origin` remote, else the folder");
+    expect(flat).toContain("creating the label in the tracker when it is missing");
+  });
+
+  it("in a home repository asks which repos: entry the work targets and works in that checkout only", () => {
+    const issue = flat.indexOf("## 1. The issue");
+    const ask = flat.indexOf("which entry of `repos:`");
+    expect(ask).toBeGreaterThan(issue);
+    expect(ask).toBeLessThan(flat.indexOf("## 2. Preconditions"));
+    expect(flat).toContain("recommending one");
+    expect(flat).toContain("that checkout's `.sous/sous.yaml`");
+    expect(flat).toContain("Nothing is written in the home repository");
+  });
+
+  it("gives a feature's children the parent's repo label and refuses to split a feature across repositories", () => {
+    expect(flat).toContain("the parent's `repo:<name>` label");
+    expect(flat).toMatch(/never has children in different repositories/);
+    expect(flat).toMatch(/an epic/);
+  });
+
+  it("names the repo label in the task and bug shape too", () => {
+    const tasks = flat.slice(flat.indexOf("### Tasks and bugs"), flat.indexOf("## 9. GO gate"));
+    expect(tasks).toContain("`repo:<name>`");
+  });
+
+  it("never sets the ready label: a human does, and the report offers it beside the run command", () => {
+    const rules = flat.slice(flat.indexOf("## 5. Ground rules"), flat.indexOf("## 6. Clarify"));
+    expect(rules).toContain("Never set `<labelPrefix>:ready`");
+    expect(rules).toMatch(/a human sets it/);
+    const report = flat.slice(flat.indexOf("## 10. Sanity report"));
+    expect(report).toContain("./sous run <flow> <ISSUE>");
+    expect(report).toContain("`<labelPrefix>:ready`");
+    expect(report.indexOf("`<labelPrefix>:ready`")).toBeGreaterThan(report.indexOf("./sous run <flow> <ISSUE>"));
+  });
+
   it("contains no shell-expansion sequences", () => {
     expect(text).not.toMatch(/!`/);
   });
@@ -302,6 +343,12 @@ describe.each(["github", "beads", "local"])("trackers/%s.md", (tracker) => {
 
   it("defines every verb the plan prompt uses", () => {
     for (const verb of TRACKER_VERBS) expect(text, `defines **${verb}**`).toContain(`- **${verb}:**`);
+  });
+
+  it("says how the repo label is set and, where labels must exist first, created", () => {
+    const verb = text.slice(text.indexOf("- **Set the repo label:**")).replace(/\s+/g, " ");
+    expect(verb.slice(0, verb.indexOf(" - **", 1) > 0 ? verb.indexOf(" - **", 1) : undefined)).toContain("repo:<name>");
+    expect(text).toContain("**Repo label:**");
   });
 
   it("contains no shell-expansion sequences", () => {
@@ -323,6 +370,8 @@ describe("trackers/github.md speaks gh", () => {
     expect(text).toContain('-F sub_issue_id="$cid"');
     expect(text).toContain("gh issue create");
     expect(text).not.toMatch(/\bbd (create|show|update|dep)\b/);
+    expect(text).toContain("gh label create repo:<name>");
+    expect(text).toContain("--add-label repo:<name>");
   });
 });
 
@@ -374,10 +423,12 @@ describe("templates/", () => {
     expect(child).toContain("None — can start immediately");
     expect(child).toMatch(/up to the next\s+`## ` heading/);
     expect(child).toMatch(/never the\s+repository's build or test commands/);
+    expect(child).toMatch(/`repo:<name>`[^]*parent's/);
     const task = template("task");
     for (const h of ["## What to build", "## Acceptance criteria"]) expect(task).toContain(h);
     for (const h of ["## Parent", "## Blocked by"]) expect(task).not.toContain(h);
     expect(task).toContain("**set the acceptance criteria**");
+    expect(task).toMatch(/`repo:<name>`/);
   });
 
   it("the plan step writes the spec in the template's shape and its eval reads sections the template has", () => {

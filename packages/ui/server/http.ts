@@ -6,7 +6,12 @@
  *   GET /api/runs/:issue/logs/:name?from=  an agent log from byte `from` on
  *   GET /api/runs/:issue/github            the GitHub Actions runs of the squash commit (`gh`, cached)
  *   GET /api/flows/:name                   a flow file as a preview graph, run or not
- *   GET /api/events                        Server-Sent Events: `change` with `{issue}`
+ *   GET /api/events                        Server-Sent Events: `change` with `{issue}`, and `repo` over `repos:`
+ *
+ * With `repos:` in the home project the list holds the runs of every listed
+ * repository, each row tagged with it, and the run, log and github routes
+ * take `?repo=<name>`; without it they read the first repository holding
+ * the issue.
  *
  * Anything else is the built app from `dist/`; an unknown path gets its
  * `index.html`, since the app routes in the browser.
@@ -17,10 +22,19 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { basename, extname, join, normalize, sep } from "node:path";
 import { repoRootOf } from "sous-factory/read";
 import type { GitHubLookup } from "./github.js";
-import { flowNames, listRows, liveLocks, readFlow, readLog, readRun, type Project } from "./runs.js";
+import { flowNames, listRepoRows, listRows, liveLocks, projectFor, readFlow, readLog, readRun, repoLiveLocks, type Project, type RepoSource } from "./runs.js";
 import type { Feed } from "./watch.js";
 
-export type ServerOptions = { project: Project; feed: Feed; distDir: string; github: GitHubLookup; heartbeatMs?: number };
+export type ServerOptions = {
+  /** The home project: the header's repository, and the only one read without `repos`. */
+  project: Project;
+  /** The repositories of `repos:`, read in place of the home project's own runs. */
+  repos?: readonly RepoSource[] | undefined;
+  feed: Feed;
+  distDir: string;
+  github: GitHubLookup;
+  heartbeatMs?: number;
+};
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -76,18 +90,27 @@ const handle = async (req: IncomingMessage, res: ServerResponse, options: Server
   const path = url.pathname;
   if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { error: "method not allowed" });
   if (path === "/api/events") return events(req, res, options.feed, options.heartbeatMs ?? 15_000);
+  const { repos } = options;
+  const projects = repos === undefined ? [options.project] : repos.map((r) => r.project);
   if (path === "/api/runs") {
-    const [rows, live] = await Promise.all([listRows(options.project), liveLocks(options.project)]);
-    return json(res, 200, { repo: basename(repoRootOf(options.project.root)), flows: flowNames(options.project), rows, live });
+    const [rows, live] = await Promise.all(repos === undefined ? [listRows(options.project), liveLocks(options.project)] : [listRepoRows(repos), repoLiveLocks(repos)]);
+    const flows = [...new Set(projects.flatMap(flowNames))].sort();
+    return json(res, 200, { repo: basename(repoRootOf(options.project.root)), flows, rows, live });
   }
   const flow = /^\/api\/flows\/([^/]+)$/.exec(path);
   if (flow !== null) {
-    const view = readFlow(options.project, decodeURIComponent(flow[1] ?? ""));
+    const name = decodeURIComponent(flow[1] ?? "");
+    const view = projects.map((p) => readFlow(p, name)).find((v) => v !== undefined);
     return view === undefined ? json(res, 404, { error: `no flow ${flow[1]}` }) : json(res, 200, view);
   }
+  const repo = url.searchParams.get("repo") ?? undefined;
+  const missing = (issue: string) => json(res, 404, { error: repo === undefined || repos === undefined ? `no run for ${issue}` : `no run for ${issue} in ${repo}` });
   const log = /^\/api\/runs\/([^/]+)\/logs\/([^/]+)$/.exec(path);
   if (log !== null) {
-    const read = await readLog(options.project, decodeURIComponent(log[1] ?? ""), decodeURIComponent(log[2] ?? ""), intParam(url.searchParams.get("from")) ?? 0);
+    const issue = decodeURIComponent(log[1] ?? "");
+    const project = projectFor(options.project, repos, issue, repo);
+    if (project === undefined) return missing(issue);
+    const read = await readLog(project, issue, decodeURIComponent(log[2] ?? ""), intParam(url.searchParams.get("from")) ?? 0);
     if (read.kind === "invalid") return json(res, 400, { error: "not a log file name" });
     if (read.kind === "missing") return json(res, 404, { error: "no such log" });
     res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-log-start": String(read.start), "x-log-size": String(read.size) });
@@ -96,18 +119,21 @@ const handle = async (req: IncomingMessage, res: ServerResponse, options: Server
   const github = /^\/api\/runs\/([^/]+)\/github$/.exec(path);
   if (github !== null) {
     const issue = decodeURIComponent(github[1] ?? "");
-    const read = await readRun(options.project, issue);
-    if (read.kind === "missing") return json(res, 404, { error: `no run for ${issue}` });
+    const project = projectFor(options.project, repos, issue, repo);
+    const read = project === undefined ? ({ kind: "missing" } as const) : await readRun(project, issue);
+    if (read.kind === "missing") return missing(issue);
     if (read.kind === "error") return json(res, 422, { error: read.error });
-    return json(res, 200, await options.github(read.view.summary.squash));
+    const lookup = repos?.find((r) => r.project === project)?.github ?? options.github;
+    return json(res, 200, await lookup(read.view.summary.squash));
   }
   const run = /^\/api\/runs\/([^/]+)$/.exec(path);
   if (run !== null) {
     const issue = decodeURIComponent(run[1] ?? "");
     const attempt = intParam(url.searchParams.get("attempt"));
     const scope = url.searchParams.get("scope");
-    const read = await readRun(options.project, issue, { ...(attempt !== undefined ? { attempt } : {}), ...(scope !== null ? { scope } : {}) });
-    if (read.kind === "missing") return json(res, 404, { error: `no run for ${issue}` });
+    const project = projectFor(options.project, repos, issue, repo);
+    const read = project === undefined ? ({ kind: "missing" } as const) : await readRun(project, issue, { ...(attempt !== undefined ? { attempt } : {}), ...(scope !== null ? { scope } : {}) });
+    if (read.kind === "missing") return missing(issue);
     if (read.kind === "error") return json(res, 422, { error: read.error });
     return json(res, 200, read.view);
   }

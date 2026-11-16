@@ -4,18 +4,16 @@ import { AppHeader } from "./components/AppHeader";
 import { useJson, useVersion } from "./live";
 import { RunPage } from "./pages/RunPage";
 import { RunsPage } from "./pages/RunsPage";
-import { useRoute, type Route } from "./router";
+import { runApi, useRoute, type Route } from "./router";
 
-const runUrl = (route: Extract<Route, { page: "run" }>): string => {
-  const q = new URLSearchParams();
-  if (route.attempt !== undefined) q.set("attempt", String(route.attempt));
-  if (route.scope !== undefined) q.set("scope", route.scope);
-  const query = q.toString();
-  return `/api/runs/${encodeURIComponent(route.issue)}${query !== "" ? `?${query}` : ""}`;
-};
+const runUrl = (route: Extract<Route, { page: "run" }>): string =>
+  runApi(route.issue, route.repo, "", {
+    ...(route.attempt !== undefined ? { attempt: String(route.attempt) } : {}),
+    ...(route.scope !== undefined ? { scope: route.scope } : {}),
+  });
 
 const RunScreen = ({ route }: { route: Extract<Route, { page: "run" }> }) => {
-  const run = useJson<RunView>(runUrl(route), useVersion(route.issue));
+  const run = useJson<RunView>(runUrl(route), useVersion(route.issue, route.repo));
   return <RunPage route={route} view={run.data?.summary.issue === route.issue ? run.data : undefined} error={run.error} />;
 };
 

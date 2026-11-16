@@ -73,6 +73,19 @@ describe("beads adapter", () => {
     expect(calls).toEqual([["show", A, "--json"]]);
   });
 
+  it("lists the open beads carrying every label, asking bd for its own labels and matching the type label itself", async () => {
+    const rows = [
+      bead(A, { issue_type: "task", labels: ["sous:ready"] }),
+      bead(B, { issue_type: "bug", labels: ["sous:ready"] }),
+      bead("proj-c.3", { issue_type: "task", labels: ["sous:ready"], status: "closed" }),
+    ];
+    const { beads, calls } = bdOf({}, (args) => (args[0] === "list" ? ok(JSON.stringify(rows)) : undefined));
+    const listed = await beads.list({ labels: ["sous:ready", "type:task"] });
+    expect(calls).toEqual([["list", "--label", "sous:ready", "-n", "0", "--json"]]);
+    expect(listed.map((i) => i.id)).toEqual([A]);
+    expect(listed[0]).toMatchObject({ labels: ["sous:ready", "type:task", `bead:${A}`], state: "open", title: `Title of ${A}` });
+  });
+
   it("claims under the git user and the run's branch, blocks with the label and a comment, closes with the reason", async () => {
     const { beads, calls } = bdOf({ [A]: bead(A) }, (args) => (args[0] === "update" || args[0] === "--actor" || args[0] === "close" ? ok("") : undefined));
     await beads.claim(A, { branch: "sous/a-1" });
@@ -124,6 +137,12 @@ describe("beads adapter", () => {
     expect(await beads.parent(epic)).toBeUndefined();
     expect(await beads.blockers("proj-e.1.3")).toEqual(["proj-e.1.2"]);
     expect(await beads.blockers(epic)).toEqual([]);
+  });
+
+  it("refuses a blocker in another repository named under Blocked by, naming the reference", async () => {
+    const { beads } = bdOf({ [A]: bead(A, { description: "Do it.\n\n## Blocked by\n- acme/api#4\n" }) });
+    await expect(beads.blockers(A)).rejects.toThrow(/acme\/api#4/);
+    await expect(beads.isClosed("acme/api#4")).rejects.toThrow(/acme\/api#4/);
   });
 
   it("refuses an id bd does not know", async () => {

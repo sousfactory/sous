@@ -7,7 +7,7 @@
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SousError } from "../exec/errors.js";
-import { stateLabels, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { safeId } from "../session/paths.js";
 
 export const issueFile = (dir: string, id: string): string => join(dir, `${safeId(id)}.json`);
@@ -33,9 +33,12 @@ export const createLocalTracker = ({ dir, labelPrefix = "sous", clock = () => ne
     await mkdir(dir, { recursive: true });
     await writeFile(issueFile(dir, stored.id), `${JSON.stringify(stored, null, 2)}\n`, "utf8");
   };
-  const getIssue = async (id: string): Promise<Issue> => {
-    const s = await read(id);
-    return { id: s.id, ref: s.id, title: s.title, body: s.body ?? "", labels: s.labels ?? [], state: s.state === "closed" ? "closed" : "open" };
+  const toIssue = (s: Stored): Issue => ({ id: s.id, ref: s.id, title: s.title, body: s.body ?? "", labels: s.labels ?? [], state: s.state === "closed" ? "closed" : "open" });
+  const getIssue = async (id: string): Promise<Issue> => toIssue(await read(id));
+  /** Every issue file in the folder; an absent folder holds none. */
+  const all = async (): Promise<Stored[]> => {
+    const files = (await readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith(".json"));
+    return Promise.all(files.map(async (file) => JSON.parse(await readFile(join(dir, file), "utf8")) as Stored));
   };
   const setStateLabel = async (id: string, label: string): Promise<void> => {
     const stored = await read(id);
@@ -53,15 +56,14 @@ export const createLocalTracker = ({ dir, labelPrefix = "sous", clock = () => ne
     children: async (parent) => [...((await read(parent)).children ?? [])],
     async parent(id) {
       await read(id);
-      for (const file of (await readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith(".json"))) {
-        const stored = JSON.parse(await readFile(join(dir, file), "utf8")) as Stored;
-        if (stored.children?.includes(id)) return stored.id;
-      }
-      return undefined;
+      return (await all()).find((stored) => stored.children?.includes(id))?.id;
     },
     async blockers(id) {
+      const stored = await read(id);
+      const qualified = [...(stored.blockedBy ?? []), ...parseBlockedBy(stored.body ?? "")].find(isQualifiedRef);
+      if (qualified !== undefined) throw unsupportedQualifiedRef("local issues", qualified);
       const open: string[] = [];
-      for (const blocker of (await read(id)).blockedBy ?? []) if ((await getIssue(blocker)).state !== "closed") open.push(blocker);
+      for (const blocker of stored.blockedBy ?? []) if ((await getIssue(blocker)).state !== "closed") open.push(blocker);
       return open;
     },
     claim: (id) => setStateLabel(id, running),
@@ -75,6 +77,13 @@ export const createLocalTracker = ({ dir, labelPrefix = "sous", clock = () => ne
     },
     setStateLabel,
     comment,
-    isClosed: async (id) => (await getIssue(id)).state === "closed",
+    async isClosed(id) {
+      if (isQualifiedRef(id)) throw unsupportedQualifiedRef("local issues", id);
+      return (await getIssue(id)).state === "closed";
+    },
+    async list({ labels }) {
+      const issues = (await all()).map(toIssue).filter((i) => matchesList(i, labels));
+      return issues.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    },
   };
 };

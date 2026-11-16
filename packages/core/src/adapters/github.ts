@@ -3,13 +3,19 @@
  * are retried with a short backoff so a flaky connection does not fail a
  * long run; anything else throws with stderr.
  */
-import { stateLabels, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { matchesList, parseBlockedBy, QUALIFIED_REF, stateLabels, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { exec as defaultExec, ExecError, must, type Exec } from "./exec.js";
 
 export type GitHubOptions = {
   exec?: Exec;
   /** Repository checkout `gh` resolves `{owner}/{repo}` from. */
   cwd?: string;
+  /**
+   * `owner/name` of the repository the issues live in, when it is not the
+   * checkout's: `-R` on every command, the path of every `gh api` endpoint
+   * (which has no `-R`). `trackerOptions.repo` in `sous.yaml`.
+   */
+  repo?: string;
   /** `sous` of `sous:running`; the project's `labelPrefix` setting. */
   labelPrefix?: string;
   /** Retries after the first failed attempt. */
@@ -26,15 +32,7 @@ export const isTransient = (stderr: string): boolean => TRANSIENT.test(stderr);
 
 const ISSUE_FIELDS = "number,title,body,labels,state";
 
-/**
- * Issue numbers listed under `## Blocked by` (`- #12`, `#13`, …) in a
- * body, the way the plan phase writes dependencies. A section reading
- * "None", or no section at all, yields `[]`.
- */
-export const parseBlockedBy = (body: string): string[] => {
-  const section = body.match(/(?:^|\n)##\s*Blocked by[^\n]*\n?([\s\S]*?)(?=\n##\s|$)/i)?.[1] ?? "";
-  return [...section.matchAll(/#(\d+)/g)].map((m) => m[1] ?? "");
-};
+export { parseBlockedBy } from "../ports/tracker.js";
 
 export type LabelSpec = { color: string; description: string };
 
@@ -78,7 +76,16 @@ export const createGitHubTracker = (options: GitHubOptions = {}): Tracker => {
 
   const what = (args: readonly string[]) => `gh ${args.slice(0, 2).join(" ")}`;
 
-  const ghResult = async (args: readonly string[]) => {
+  /** Addresses `options.repo`, unless the call names its own repository (`-R` of a qualified blocker). */
+  const addressed = (args: readonly string[], own: boolean): readonly string[] => {
+    const { repo } = options;
+    if (repo === undefined || own) return args;
+    if (args[0] === "api") return args.map((a) => a.replace("repos/{owner}/{repo}/", `repos/${repo}/`));
+    return [...args, "-R", repo];
+  };
+
+  const ghResult = async (command: readonly string[], own = false) => {
+    const args = addressed(command, own);
     for (let attempt = 1; ; attempt++) {
       const result = await exec("gh", args, execOptions);
       if (result.code === 0 || attempt > retries || !isTransient(result.stderr)) return result;
@@ -87,12 +94,20 @@ export const createGitHubTracker = (options: GitHubOptions = {}): Tracker => {
     }
   };
 
-  const gh = async (args: readonly string[]): Promise<string> => must(await ghResult(args), what(args));
+  const gh = async (args: readonly string[], own = false): Promise<string> => must(await ghResult(args, own), what(args));
 
   /** `#96` and `96` name the same issue. */
   const numberOf = (id: string): string => id.replace(/^#/, "");
 
   const getIssue = async (id: string): Promise<Issue> => toIssue(JSON.parse(await gh(["issue", "view", numberOf(id), "--json", ISSUE_FIELDS])) as RawIssue);
+
+  /** An `owner/repo#n` blocker is asked of its own repository; anything else is an issue of this one. */
+  const stateOf = async (ref: string): Promise<Issue["state"]> => {
+    const qualified = QUALIFIED_REF.exec(ref);
+    if (qualified === null) return (await getIssue(ref)).state;
+    const [, repo = "", number = ""] = qualified;
+    return toIssue(JSON.parse(await gh(["issue", "view", number, "-R", repo, "--json", ISSUE_FIELDS], true)) as RawIssue).state;
+  };
 
   // A label must exist in the repository before an issue can carry it; once per process is enough.
   const ensured = new Set<string>();
@@ -138,7 +153,7 @@ export const createGitHubTracker = (options: GitHubOptions = {}): Tracker => {
     async blockers(id) {
       const listed = parseBlockedBy((await getIssue(id)).body);
       const open: string[] = [];
-      for (const blocker of listed) if ((await getIssue(blocker)).state !== "closed") open.push(blocker);
+      for (const blocker of listed) if ((await stateOf(blocker)) !== "closed") open.push(blocker);
       return open;
     },
     claim: (id) => setStateLabel(id, running),
@@ -152,6 +167,11 @@ export const createGitHubTracker = (options: GitHubOptions = {}): Tracker => {
     },
     setStateLabel,
     comment,
-    isClosed: async (id) => (await getIssue(id)).state === "closed",
+    isClosed: async (id) => (await stateOf(id)) === "closed",
+    async list({ labels }) {
+      // gh ANDs repeated --label flags; the filter keeps that contract whatever gh returns.
+      const out = await gh(["issue", "list", "--state", "open", ...labels.flatMap((l) => ["--label", l]), "--limit", "1000", "--json", ISSUE_FIELDS]);
+      return (JSON.parse(out) as RawIssue[]).map(toIssue).filter((i) => matchesList(i, labels));
+    },
   };
 };

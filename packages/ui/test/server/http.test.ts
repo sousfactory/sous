@@ -58,6 +58,7 @@ describe("api", () => {
     expect(body.repo).toBe("repo");
     expect(body.flows).toEqual(["task"]);
     expect(body.rows.map((r) => r.kind)).toEqual(["run", "run"]);
+    expect(body.rows.filter((r) => "repo" in r)).toEqual([]);
     expect(body.live).toEqual([]);
   });
 

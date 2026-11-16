@@ -21,6 +21,12 @@ export type FakeGitState = {
   trees: Record<string, string>;
   /** Where each branch is checked out, as `worktreeOf` reports it; `addWorktree` adds to it. */
   worktrees: Record<string, string>;
+  /** The remote's branch has commits the local one lacks: `fastForward` brings them in, so the branch is no longer an ancestor of anything in `ancestors`. */
+  remoteAhead: boolean;
+  /** `fastForward` answers false (local and remote diverged) while true. */
+  diverged: boolean;
+  /** `push` rejects with this message when set. */
+  pushError?: string;
 };
 
 export type FakeGit = Git & {
@@ -31,6 +37,8 @@ export type FakeGit = Git & {
   readonly committed: { cwd: string; message: string; sha: string }[];
   /** Worktree paths removed through `removeWorktree`. */
   readonly removedWorktrees: string[];
+  /** Successful `push` calls, with the sha the branch stood at: what the remote now holds. */
+  readonly pushed: { remote: string; branch: string; sha: string }[];
 };
 
 export const fakeGit = (overrides: Partial<FakeGitState> & { existing?: string[] } = {}): FakeGit => {
@@ -45,12 +53,15 @@ export const fakeGit = (overrides: Partial<FakeGitState> & { existing?: string[]
     commits: [],
     trees: {},
     worktrees: {},
+    remoteAhead: false,
+    diverged: false,
     ...overrides,
   };
   const existing = new Set(overrides.existing ?? ["main"]);
   const calls: string[] = [];
   const committed: FakeGit["committed"] = [];
   const removedWorktrees: string[] = [];
+  const pushed: FakeGit["pushed"] = [];
   let seq = 0;
   let merges = 0;
   /** HEAD after a clean merge that moved it; the next commit clears it. */
@@ -72,6 +83,7 @@ export const fakeGit = (overrides: Partial<FakeGitState> & { existing?: string[]
     calls,
     committed,
     removedWorktrees,
+    pushed,
     async currentBranch(cwd) {
       record("currentBranch", cwd);
       return state.branches[cwd] ?? "main";
@@ -134,6 +146,20 @@ export const fakeGit = (overrides: Partial<FakeGitState> & { existing?: string[]
     async isAncestor(cwd, a, b) {
       record("isAncestor", cwd, a, b);
       return state.ancestors.has(`${a}..${b}`);
+    },
+    async fastForward(cwd, branch, remote) {
+      record("fastForward", cwd, branch, remote);
+      if (state.diverged) return false;
+      if (state.remoteAhead) {
+        for (const pair of [...state.ancestors]) if (pair.startsWith(`${branch}..`)) state.ancestors.delete(pair);
+        state.remoteAhead = false;
+      }
+      return true;
+    },
+    async push(cwd, branch, remote) {
+      record("push", cwd, branch, remote);
+      if (state.pushError !== undefined) throw new Error(state.pushError);
+      pushed.push({ remote, branch, sha: mergeHead ?? committed.at(-1)?.sha ?? "sha0" });
     },
     async removeWorktree(cwd, path) {
       record("removeWorktree", cwd, path);

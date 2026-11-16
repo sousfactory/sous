@@ -44,6 +44,8 @@ describe("routes", () => {
     expect(parseRoute("/runs", "?flow=task")).toEqual({ page: "runs", flow: "task" });
     expect(parseRoute("/runs/84", "?attempt=2&scope=51&step=review")).toEqual({ page: "run", issue: "84", attempt: 2, scope: "51", step: "review" });
     expect(parseRoute("/runs/84", "?attempt=x")).toEqual({ page: "run", issue: "84" });
+    expect(parseRoute("/runs/84", "?repo=api&step=init")).toEqual({ page: "run", issue: "84", repo: "api", step: "init" });
+    expect(hrefOf({ page: "run", issue: "84", repo: "api", attempt: 2 })).toBe("/runs/84?repo=api&attempt=2");
     expect(hrefOf({ page: "run", issue: "84", step: "review-full" })).toBe("/runs/84?step=review-full");
     expect(hrefOf({ page: "runs", flow: "task" })).toBe("/runs?flow=task");
     expect(parseRoute("/runs", "?flow=task&step=review")).toEqual({ page: "runs", flow: "task", step: "review" });

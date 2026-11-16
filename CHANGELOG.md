@@ -5,6 +5,87 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
+## Unreleased
+
+### Changed
+
+- **`sous run` prints what a code step did.** After a module step's
+  `start` line the run prints the step's summary, so the output shows
+  `merge: squashed … into main as abc1234, pushed main to origin`, the
+  line `sous watch` passes on for the runs it starts.
+- **`/sous-plan` labels what it plans `repo:<name>`.** At GO the issue and
+  every child get one `repo:<name>` label, created in the tracker when
+  missing: the repository's own name, or in a home repository the `repos:`
+  entry the session asks for first, whose checkout then supplies the
+  settings, tracker and templates and receives the spec and its commit. A
+  feature's children carry the parent's label; a feature split across
+  repositories is refused as an epic. The session never sets `sous:ready`;
+  its report offers that label beside `./sous run`. The tracker sheets
+  gain **set the repo label**, and `templates/child.md` names the label.
+
+### Breaking
+
+- **A project tracker module implements `list`.** `sous validate` and
+  `sous run` report a module without it as lacking `list`; one that has
+  no way to search returns the matching issues it knows of, or `[]`.
+
+### Added
+
+- **`tracker.list({ labels })`: the open issues carrying every named
+  label.** The GitHub tracker asks `gh issue list`, beads asks `bd list`,
+  the local tracker scans its folder, and `fakeTracker` in
+  `sous-factory/testing` answers from its seeded issues. Closed issues and
+  issues carrying only some of the labels are left out.
+- **The starter `merge` step pushes what it merged, when asked.** With
+  `push: origin` on its entry it fast-forwards the base branch from
+  `origin` before the freshness check (a moved remote base routes back to
+  `sync` under `resync`), squashes, and pushes the base branch, all under
+  the repository lock; the summary and the issue comment name the push. A
+  base that diverged from the remote's fails the step before squashing; a
+  failed push keeps the squash locally and says so on the issue. Without
+  the input nothing is fetched or pushed. The starter flows show the line
+  commented out. The git port gains `fastForward(cwd, branch, remote)` and
+  `push(cwd, branch, remote)`, and `fakeGit` in `sous-factory/testing`
+  scripts them (`remoteAhead`, `diverged`, `pushError`, `pushed`).
+- **`sous watch` runs the repository unattended.** It polls the tracker
+  (every 60 seconds, `--interval <seconds>`) for open issues labelled
+  `<prefix>:ready` with no open blockers and starts the repository's own
+  `sous run <flow> <issue>` for the lowest-numbered one whose `type:*`
+  label exactly one flow accepts, one run at a time, counting a run
+  started by hand. A blocked issue runs again once it also carries ready;
+  a `<prefix>:running` issue with a stale lock is rerun once, and blocked
+  with a comment naming its log folder when the rerun crashes too.
+  `--once` makes one pass and waits for its run; Ctrl-C is forwarded to
+  the run, which records the interrupt. One `sous watch` per project
+  (`.sous/locks/watch.pid`); skips are reported once, a quiet pass prints
+  nothing. Manual how-to 20, "Run as an automated loop".
+- **A blocker in another GitHub repository.** A `## Blocked by` line
+  `owner/repo#n` is asked of that repository by the GitHub tracker in
+  `blockers()` and `isClosed()`; the beads and local trackers fail with
+  an error naming the reference, and `sous watch` skips the issue.
+- **A home repository serves several repositories.** `repos:` in its
+  `sous.yaml` maps names to checkout paths (relative to the repository,
+  absolute or `~`; a plain list of paths is named by folder), each with
+  its own `.sous/`; `sous validate` reports a path without one. `sous
+  watch` there asks each listed repository's tracker and starts its own
+  `.sous/sous run <flow> <issue>` in it, one run per repository,
+  repositories in parallel. An issue runs in the entry its `repo:<name>`
+  label names; one without the label or naming no entry is reported once
+  and skipped. Without `repos:`, `sous watch` skips an issue labelled for
+  another repository, whose name is `name:` in `sous.yaml`, else the
+  `origin` remote's repository, else the folder.
+- **The GitHub tracker takes `trackerOptions: { repo: owner/name }`.**
+  Every `gh` call addresses that repository (`-R`, or the path of a `gh
+  api` endpoint), so a repository whose issues live elsewhere needs no
+  `GH_REPO`. Without it `gh` infers the repository from the checkout.
+- **`sous ui` over `repos:` lists the runs of every listed repository.**
+  One list with the repository's folder in a column; a run opens with its
+  flow graph, steps and logs as before, and a step change in any listed
+  repository reaches the open page live. A run record on another session
+  schema version is listed with its issue, title, flow and branch where
+  they read, marked unreadable with its version, and the rest of the page
+  renders. Without `repos:` the UI is unchanged.
+
 ## 0.8.0
 
 ### Breaking

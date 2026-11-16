@@ -15,7 +15,11 @@ from the checkout.
   `gh label create <name>` adds one.
 - **State labels:** `<labelPrefix>:running` and `<labelPrefix>:blocked`
   (`sous:running`, `sous:blocked` by default), set and removed by the run
-  phase only. A child carrying one is mid-run.
+  phase only. A child carrying one is mid-run. `<labelPrefix>:ready` is set
+  by a human, never by `/sous-plan`.
+- **Repo label:** `repo:<name>`, one per issue, naming the repository the
+  work runs in. A label must exist in the repository before it is applied:
+  `gh label list --search repo:` shows what exists.
 
 ## Verbs
 
@@ -46,10 +50,15 @@ from the checkout.
   **update the body**.
 - **Set the acceptance criteria:** replace the `## Acceptance criteria`
   section of the body and **update the body**.
+- **Set the repo label:** when `repo:<name>` is missing from
+  `gh label list --search repo:`, `gh label create repo:<name>` first; then
+  `gh issue edit <n> --add-label repo:<name>`, removing any other `repo:*`
+  label with `--remove-label`.
 
 ## Child shape
 
-A child is in shape when it has the `type:task` label and its body is
+A child is in shape when it has the `type:task` label and the parent's
+`repo:<name>` label, and its body is
 `.sous/templates/child.md` as written, all four sections: `## Parent` with
 `#<parent>`, `## What to build`, `## Acceptance criteria`, `## Blocked by`
 with one `- #<m>` per blocker. A slice with no blockers writes

@@ -119,6 +119,9 @@ steps:
       baseBranch: ${{ ctx.baseBranch }}
       mergedLabel: sous:merged
       resync: ${{ true }}
+      # Land the result on a remote too: fast-forward the base branch from it
+      # first, push it after the squash.
+      # push: origin
     routes:
       # Another run merged into the base branch since the last sync: sync again,
       # so its new commits are merged in, checked and reviewed before anything

@@ -42,7 +42,27 @@ export type RunSummary = {
   endedAt?: string;
 } & CostView;
 
-export type RunRow = { kind: "run"; updatedAt: string; summary: RunSummary } | { kind: "error"; updatedAt: string; issue: string; error: string };
+/** The repository a row comes from when the project lists `repos:`: its entry name, for requests, and its folder, for the column. */
+export type RepoTag = { name: string; folder: string };
+
+/**
+ * A run folder core cannot load. When its record is on another session
+ * schema version, `schema` names the versions and the fields that read
+ * cleanly are kept for the list.
+ */
+export type ErrorRow = {
+  kind: "error";
+  updatedAt: string;
+  issue: string;
+  error: string;
+  schema?: { found: number; expected: number };
+  title?: string;
+  flow?: string;
+  branch?: string;
+  repo?: RepoTag;
+};
+
+export type RunRow = { kind: "run"; updatedAt: string; summary: RunSummary; repo?: RepoTag } | ErrorRow;
 
 export type Attempt = {
   n: number;

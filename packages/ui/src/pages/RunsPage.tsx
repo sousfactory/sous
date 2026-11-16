@@ -1,18 +1,29 @@
 /**
  * The runs list, as GitHub's "All workflows" page: flows in the side
  * nav, one row per issue with its latest attempt. Rows of run folders core
- * cannot read are greyed with the reason. A selected flow shows its graph
- * above its runs, whether it ever ran or not.
+ * cannot read are greyed with the reason, and with the fields a record on
+ * another schema version still has. Over `repos:` each row names its
+ * repository's folder in a column. A selected flow shows its graph above
+ * its runs, whether it ever ran or not.
  */
-import { AlertIcon, CalendarIcon, StopwatchIcon, WorkflowIcon } from "@primer/octicons-react";
+import { AlertIcon, CalendarIcon, RepoIcon, StopwatchIcon, WorkflowIcon } from "@primer/octicons-react";
 import { BranchName, Flash, NavList } from "@primer/react";
 import type { RunsResponse } from "../../server/api";
-import type { RunRow } from "../../server/model";
+import type { RepoTag, RunRow } from "../../server/model";
 import { FlowPreview } from "../components/FlowPreview";
 import { StatusIcon } from "../components/StatusIcon";
 import { elapsed, timeAgo } from "../format";
 import { useNow } from "../live";
 import { hrefOf, navigate, onLinkClick } from "../router";
+
+/** The repository column of a row over `repos:`; nothing without it. */
+const RepoCell = ({ repo }: { repo: RepoTag | undefined }) =>
+  repo === undefined ? null : (
+    <div className="flex w-[140px] shrink-0 items-center gap-1 truncate text-[12px] text-fg-muted" title={repo.name} data-testid="run-repo">
+      <RepoIcon size={14} />
+      <span className="truncate">{repo.folder}</span>
+    </div>
+  );
 
 const RunLine = ({ row, now }: { row: RunRow; now: number }) => {
   if (row.kind === "error") {
@@ -22,9 +33,18 @@ const RunLine = ({ row, now }: { row: RunRow; now: number }) => {
           <AlertIcon size={16} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-fg-muted">Run folder {row.issue}</div>
-          <div className="mt-1 break-words text-[12px] text-fg-muted">core cannot read this session: {row.error}</div>
+          <div className="font-semibold text-fg-muted">{row.title ?? `Run folder ${row.issue}`}</div>
+          {row.schema !== undefined ? (
+            <div className="mt-1 truncate text-[12px] text-fg-muted">
+              {row.flow !== undefined ? <span className="font-semibold">{row.flow} </span> : null}
+              {row.issue}: unreadable, session schema version {row.schema.found}; this sous ui reads {row.schema.expected}
+              {row.branch !== undefined ? ` · ${row.branch}` : ""}
+            </div>
+          ) : (
+            <div className="mt-1 break-words text-[12px] text-fg-muted">core cannot read this session: {row.error}</div>
+          )}
         </div>
+        <RepoCell repo={row.repo} />
         <div className="hidden w-[160px] shrink-0 text-[12px] text-fg-muted sm:block">
           <div className="flex items-center gap-1">
             <CalendarIcon size={14} />
@@ -35,7 +55,7 @@ const RunLine = ({ row, now }: { row: RunRow; now: number }) => {
     );
   }
   const s = row.summary;
-  const href = hrefOf({ page: "run", issue: s.issue });
+  const href = hrefOf({ page: "run", issue: s.issue, ...(row.repo !== undefined ? { repo: row.repo.name } : {}) });
   const duration = elapsed(s.startedAt, s.endedAt, now);
   return (
     <li className="flex items-start gap-3 border-t border-line px-4 py-3 first:border-t-0 hover:bg-canvas-muted" data-testid="run-row">
@@ -58,6 +78,7 @@ const RunLine = ({ row, now }: { row: RunRow; now: number }) => {
           )}
         </div>
       </div>
+      <RepoCell repo={row.repo} />
       <div className="hidden w-[240px] shrink-0 justify-end md:flex">
         <BranchName as="span" title={s.branch} className="max-w-full truncate whitespace-nowrap">
           {s.branch}
@@ -126,7 +147,7 @@ export const RunsPage = ({ data, error, flow, step }: RunsPageProps) => {
           ) : (
             <ul className="m-0 list-none p-0">
               {rows.map((row) => (
-                <RunLine key={row.kind === "run" ? row.summary.issue : row.issue} row={row} now={now} />
+                <RunLine key={`${row.repo?.name ?? ""}\u0000${row.kind === "run" ? row.summary.issue : row.issue}`} row={row} now={now} />
               ))}
             </ul>
           )}

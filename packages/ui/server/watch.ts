@@ -9,11 +9,17 @@ import { existsSync, readdirSync, statSync, watch, type FSWatcher } from "node:f
 import { join, sep } from "node:path";
 import { LOCKS_DIR } from "sous-factory/read";
 
-/** `issue: null` means something every view shares changed: a lock, or the set of runs. */
-export type Change = { issue: string | null };
+/**
+ * `issue: null` means something every view shares changed: a lock, or the
+ * set of runs. `repo` names the listed repository the change happened in,
+ * when the home project lists `repos:`.
+ */
+export type Change = { issue: string | null; repo?: string };
 
 export type FeedOptions = {
   root: string;
+  /** The `repos:` entry this feed watches; its changes carry the name. */
+  repo?: string;
   runsRoot: string;
   logsRoot: string;
   /** Liveness of the locks; compared on each poll. */
@@ -83,7 +89,8 @@ export const createFeed = (options: FeedOptions): Feed => {
   const watchers: FSWatcher[] = [];
   let closed = false;
   const pending = debouncer<string | null>(options.debounceMs ?? 150, (issue) => {
-    for (const listener of listeners) listener({ issue });
+    const change: Change = options.repo === undefined ? { issue } : { issue, repo: options.repo };
+    for (const listener of listeners) listener(change);
   });
 
   const emit = (issue: string | null) => {
@@ -156,3 +163,14 @@ export const createFeed = (options: FeedOptions): Feed => {
     },
   };
 };
+
+/** One feed over several: every change of each, until closed together. */
+export const mergeFeeds = (feeds: readonly Feed[]): Feed => ({
+  subscribe(listener) {
+    const unsubscribes = feeds.map((f) => f.subscribe(listener));
+    return () => unsubscribes.forEach((u) => u());
+  },
+  close() {
+    for (const f of feeds) f.close();
+  },
+});

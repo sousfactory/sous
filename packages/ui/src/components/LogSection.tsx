@@ -3,6 +3,7 @@ import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Status } from "../../server/model";
 import { useVersion } from "../live";
+import { runApi } from "../router";
 import { StatusIcon } from "./StatusIcon";
 
 export const LogLines = ({ text, empty = "No output." }: { text: string; empty?: string }) => {
@@ -46,8 +47,8 @@ export const LogSection = ({ title, status, duration, defaultOpen = false, child
 };
 
 /** Tails the log while `live`. Mounted only while its section is open, so closed rows fetch nothing. */
-export const AgentLog = ({ issue, name, live }: { issue: string; name: string; live: boolean }) => {
-  const version = useVersion(issue);
+export const AgentLog = ({ issue, repo, name, live }: { issue: string; repo?: string | undefined; name: string; live: boolean }) => {
+  const version = useVersion(issue, repo);
   const [text, setText] = useState<string | undefined>(undefined);
   const [missing, setMissing] = useState(false);
   const size = useRef(0);
@@ -56,7 +57,7 @@ export const AgentLog = ({ issue, name, live }: { issue: string; name: string; l
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const res = await fetch(`/api/runs/${encodeURIComponent(issue)}/logs/${encodeURIComponent(name)}?from=${size.current}`);
+      const res = await fetch(runApi(issue, repo, `/logs/${encodeURIComponent(name)}`, { from: String(size.current) }));
       if (cancelled) return;
       if (!res.ok) {
         setMissing(true);
@@ -71,7 +72,7 @@ export const AgentLog = ({ issue, name, live }: { issue: string; name: string; l
     return () => {
       cancelled = true;
     };
-  }, [issue, name, live ? version : "settled"]);
+  }, [issue, repo, name, live ? version : "settled"]);
 
   useEffect(() => {
     if (live) bottom.current?.scrollIntoView({ block: "nearest" });

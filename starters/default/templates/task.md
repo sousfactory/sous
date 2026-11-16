@@ -16,6 +16,10 @@ text stays under `## What to build` unchanged; the checklist is what
 the criteria live in the bead's own field. Copy the sections, not this
 comment.
 
+Beside the body, the issue carries the label `repo:<name>`, the
+repository it runs in; /sous-plan sets it at GO (the sheet's **set the
+repo label**).
+
 The run phase hands the body to the implement and review steps verbatim,
 so `## Acceptance criteria` is their definition of done; the `plan` step
 derives a spec from it when the branch has none. Criteria are behaviour

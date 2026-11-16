@@ -288,6 +288,15 @@ describe("runFlow: deterministic steps", () => {
     expect(ports.sandbox.requests).toEqual([]);
   });
 
+  it("prints a module step's summary between its start and its route, so a run's output says what a code step did", async () => {
+    const lines: string[] = [];
+    const ports = portsOf(fakeSandbox(), { log: { info: (line) => lines.push(line), warn: () => undefined } });
+    await visit(entryOf("start", "echo"), undefined, ports);
+    await visit(entryOf("noop", "void"), undefined, portsOf(fakeSandbox(), { log: { info: (line) => lines.push(line), warn: () => undefined } }));
+
+    expect(lines).toEqual(["start: start", "echo", "start -> done", "noop: start", "noop -> done"]);
+  });
+
   it("reads ctx.baseBranch, the base branch setting, in inputs and routes; main unless a run sets another", async () => {
     const entry = entryOf("start", "echo", { with: { a: '${{ ctx.baseBranch + "...HEAD" }}', b: "lit" }, routes: [{ to: "blocked", when: "ctx.baseBranch !== 'dev'" }, { to: "done" }] });
 

@@ -42,7 +42,7 @@ init too.
   how-tos.
 - [The starter](https://github.com/sousfactory/sous/tree/main/starters/default):
   the flows and steps `sous init` copies, with a README per step.
-- [`sous-factory/testing`](https://github.com/sousfactory/sous/blob/main/docs/manual.md#20-test-steps-and-flows):
+- [`sous-factory/testing`](https://github.com/sousfactory/sous/blob/main/docs/manual.md#22-test-steps-and-flows):
   the fakes and the harness for a project's own tests.
 
 MIT.

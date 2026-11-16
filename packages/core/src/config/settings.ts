@@ -3,6 +3,7 @@
  * Every `*Dir` is relative to the project root (`.sous/`).
  */
 import { resolve } from "node:path";
+import { SousError } from "../exec/errors.js";
 import { checker, readYaml } from "./schema.js";
 
 export type Settings = {
@@ -30,8 +31,16 @@ export type Settings = {
    * tracker sous does not ship can be plugged in without forking the core.
    */
   tracker: string;
-  /** Handed to the tracker: `local` takes `{ dir }`; a module takes whatever it documents. */
+  /** Handed to the tracker: `local` takes `{ dir }`, `github` takes `{ repo }`; a module takes whatever it documents. */
   trackerOptions: Record<string, unknown>;
+  /** The repository's name in `repo:<name>` labels; unset, the `origin` remote's repository part, else the folder. */
+  name?: string;
+  /**
+   * The repositories `sous watch` serves from this one, the home repository:
+   * name to checkout path (relative to the repository root, absolute or `~`),
+   * or a list of paths named by their folders. Each holds its own `.sous/`.
+   */
+  repos?: Record<string, string> | string[];
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -73,14 +82,26 @@ const check = checker<Partial<Settings>>({
     uiPort: { type: "integer", minimum: 1, maximum: 65535 },
     tracker: { type: "string", minLength: 1 },
     trackerOptions: { type: "object" },
+    name: { type: "string", minLength: 1 },
+    repos: {},
   },
 });
 
+/** Checked by hand rather than by schema: an `anyOf` of map and list words a wrong entry as three unrelated complaints. */
+const checkRepos = (repos: unknown, file: string): void => {
+  if (repos === undefined) return;
+  const isMap = typeof repos === "object" && repos !== null && !Array.isArray(repos);
+  if (!isMap && !Array.isArray(repos)) throw new SousError(`${file}: repos must be a map of name to path or a list of paths`);
+  const entries: [string, unknown][] = Array.isArray(repos) ? repos.map((path, i) => [`repos[${i}]`, path]) : Object.entries(repos).map(([name, path]) => [`repos.${name}`, path]);
+  for (const [key, path] of entries) if (typeof path !== "string" || path === "") throw new SousError(`${file}: ${key} must be a path, not ${JSON.stringify(path)}`);
+};
+
 /** `doc` is `null` for an empty file. */
-export const parseSettings = (doc: unknown, file: string = SETTINGS_FILE): Settings => ({
-  ...DEFAULT_SETTINGS,
-  ...check(doc ?? {}, file),
-});
+export const parseSettings = (doc: unknown, file: string = SETTINGS_FILE): Settings => {
+  const settings = check(doc ?? {}, file);
+  checkRepos(settings.repos, file);
+  return { ...DEFAULT_SETTINGS, ...settings };
+};
 
 export const loadSettings = (file: string): Settings => parseSettings(readYaml(file, true), file);
 

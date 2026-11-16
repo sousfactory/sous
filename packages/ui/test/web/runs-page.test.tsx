@@ -40,6 +40,31 @@ describe("RunsPage", () => {
     expect(row.textContent).toContain("/schemaVersion must be equal to constant");
   });
 
+  it("names each row's repository in a column over repos:, and links the run in it", () => {
+    const tag = (folder: string) => ({ name: folder, folder });
+    const run = data.rows[0]!;
+    const repos: RunsResponse = {
+      ...data,
+      rows: [
+        { ...run, repo: tag("web") } as RunsResponse["rows"][number],
+        { ...run, updatedAt: "2026-10-04T12:04:00.000Z", repo: tag("api") } as RunsResponse["rows"][number],
+        { kind: "error", updatedAt: "2026-10-03T12:00:00.000Z", issue: "70", error: "/schemaVersion must be equal to constant", schema: { found: 4, expected: 9 }, title: "old run", flow: "task", repo: tag("web") },
+      ],
+    };
+    render(<RunsPage data={repos} error={undefined} flow={undefined} />);
+    expect(screen.getAllByTestId("run-repo").map((c) => c.textContent)).toEqual(["web", "api", "web"]);
+    expect(screen.getAllByRole("link", { name: "shorten the KDoc" }).map((a) => a.getAttribute("href"))).toEqual(["/runs/84?repo=web", "/runs/84?repo=api"]);
+    const foreign = screen.getByTestId("run-row-error");
+    expect(foreign.textContent).toContain("old run");
+    expect(foreign.textContent).toContain("task 70");
+    expect(foreign.textContent).toContain("70: unreadable, session schema version 4; this sous ui reads 9");
+  });
+
+  it("has no repository column without repos:", () => {
+    render(<RunsPage data={data} error={undefined} flow={undefined} />);
+    expect(screen.queryByTestId("run-repo")).toBeNull();
+  });
+
   it("filters by flow", () => {
     render(<RunsPage data={data} error={undefined} flow="feature" />);
     expect(screen.getByText("0 flow runs")).toBeTruthy();

@@ -19,7 +19,9 @@ in YAML, like a GitHub Actions workflow, so the agents do the work and the
 graph decides what happens next.
 
 CLI first, with an optional live UI. Runs locally with the `claude` or
-`codex` CLI you already have; not a hosted service.
+`codex` CLI you already have; not a hosted service. A run is either steered from a
+session with `sous run`, or started in the background by `sous watch`
+once a human labels its issue `sous:ready`.
 
 ## What it looks like
 
@@ -145,6 +147,7 @@ Daily use:
 ./sous status <issue>         # facts + timeline
 ./sous graph task             # the flow as a diagram
 ./sous ui                     # live, at http://127.0.0.1:4680 (uiPort in sous.yaml)
+./sous watch                  # unattended: runs issues labelled sous:ready, one at a time
 ```
 
 A run that cannot go on stops `blocked`: the issue gets a comment saying

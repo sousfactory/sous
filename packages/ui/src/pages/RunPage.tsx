@@ -27,9 +27,9 @@ const OUTCOME_LABEL: Record<Outcome, string> = {
 };
 
 /** The summary cell for the squash commit on GitHub; only rendered once `merge` recorded one. */
-const GitHubCell = ({ issue }: { issue: string }) => (
+const GitHubCell = ({ issue, repo }: { issue: string; repo: string | undefined }) => (
   <Cell label="GitHub Actions">
-    <GitHubActions view={useGitHubView(issue)} />
+    <GitHubActions view={useGitHubView(issue, repo)} />
   </Cell>
 );
 
@@ -142,7 +142,7 @@ export const RunPage = ({ route, view, error }: { route: RunRoute; view: RunView
 
         <main className="min-w-0 flex-1">
           {step !== undefined && detail !== undefined ? (
-            <StepView issue={s.issue} node={step} detail={detail} now={now} live={running} />
+            <StepView issue={s.issue} repo={route.repo} node={step} detail={detail} now={now} live={running} />
           ) : (
             <>
               {route.step !== undefined ? (
@@ -174,7 +174,7 @@ export const RunPage = ({ route, view, error }: { route: RunRoute; view: RunView
                     </BranchName>
                   </span>
                 </Cell>
-                {s.squash !== undefined ? <GitHubCell issue={s.issue} /> : null}
+                {s.squash !== undefined ? <GitHubCell issue={s.issue} repo={route.repo} /> : null}
               </div>
 
               {s.crash !== undefined ? (

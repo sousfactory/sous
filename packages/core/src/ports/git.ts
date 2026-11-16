@@ -41,6 +41,15 @@ export type Git = {
   treeSha(cwd: string, ref: string): Promise<string>;
   /** True when `a` is reachable from `b`. */
   isAncestor(cwd: string, a: string, b: string): Promise<boolean>;
+  /**
+   * Fetches `branch` from `remote` into `<remote>/<branch>` and fast-forwards
+   * `branch`, which must be the branch checked out at `cwd`, to it. True when
+   * the branch now contains the remote's (fast-forwarded, already level, or
+   * ahead); false when the two diverged, and nothing was changed.
+   */
+  fastForward(cwd: string, branch: string, remote: string): Promise<boolean>;
+  /** `git push <remote> <branch>`: lands the local branch on the remote's branch of the same name; never forces. */
+  push(cwd: string, branch: string, remote: string): Promise<void>;
   /** Force-removes the worktree at `path`; a no-op when it is not a registered worktree. */
   removeWorktree(cwd: string, path: string): Promise<void>;
   /** The path `branch` is checked out at, the primary checkout included; undefined when it is not. Prunes stale worktrees first. */

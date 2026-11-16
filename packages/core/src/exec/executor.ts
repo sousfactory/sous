@@ -442,7 +442,10 @@ export const runFlow = async (flow: Flow, initial: Session, ports: ExecutorPorts
     }
     if (step.run.kind !== "module") throw new SousError(`${entry.id}: not a module or shell step`);
     const run = await importDefault<RunFn>(step.run.module);
-    return withWrites(async (ctx) => (await run(ctx, inputs)) ?? undefined);
+    const envelope = await withWrites(async (ctx) => (await run(ctx, inputs)) ?? undefined);
+    // What a code step did (`merge: squashed …, pushed main to origin`) is a line of the run's output, which `sous watch` passes on.
+    if (envelope !== undefined && envelope.summary.trim() !== "") log.info(envelope.summary.trim());
+    return envelope;
   };
 
   const runDeterministic = async (entry: LoadedEntry, key: string, inputs: Inputs): Promise<VisitResult> => {

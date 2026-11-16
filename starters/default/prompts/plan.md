@@ -35,9 +35,28 @@ sous repository draws the same sequence as one diagram.
   unless changed), the `branch` template, `labelPrefix` (`sous` unless
   changed) and `specsDir` (`../specs` from `.sous`, so `specs/` at the
   repository root).
+- **The repository** the work belongs to, and its `<name>` for the
+  `repo:<name>` label. Every issue this session plans ends up with
+  exactly one `repo:<name>` label, so `sous watch` knows where to run it.
+  Without `repos:` in `.sous/sous.yaml` the repository is this one, and
+  its name is `name:` in `sous.yaml`, else the repository part of the
+  `origin` remote, else the folder (`git remote get-url origin`: the last
+  path segment without `.git`). With `repos:` this is a home repository,
+  and step 1 picks the repository from its entries.
 
 ## 1. The issue
 
+- **A home repository** (`repos:` in `.sous/sous.yaml`, a map of name to
+  checkout path, or a list of paths each named by its folder): before
+  anything else, ask the human which entry of `repos:` the task or
+  feature targets, recommending one (the entry the conversation or the
+  issue's existing `repo:*` label points at, else the one whose code the
+  problem is about). `<name>` is that entry's name. From then on work as
+  if `/sous-plan` had been invoked in that checkout (`cd <path>`): every
+  setting above, the tracker sheet and the templates come from that
+  checkout's `.sous/sous.yaml` and `.sous/`, the preconditions are checked
+  there, and the spec is written and committed there. The home repository
+  supplies only the list. Nothing is written in the home repository.
 - **No `ISSUE`:** there is no issue yet. Ask the human for a one-line title
   and the problem to solve, unless the conversation already contains both,
   and which kind of work it is: a **feature** (several vertical slices, each
@@ -62,7 +81,8 @@ Stop with a clear message if one fails:
   is empty); children are planned through their parent.
 - You are in the primary checkout on the base branch (`git branch
   --show-current` prints `baseBranch`) and the tree is clean (`git status
-  --porcelain` prints nothing).
+  --porcelain` prints nothing). In a home repository this is the chosen
+  entry's checkout, with that checkout's `baseBranch`.
 
 ## 3. Run state and target
 
@@ -113,6 +133,10 @@ Look for an existing spec in the target: `ls -d specs/<ISSUE>-*/ 2>/dev/null`.
   vendored copy under `.sous/skills/`. The issue, its children and the spec
   file are the outputs; the kinds are the only classification you ever set.
   Never set a state label: the run phase owns the `sous:*` labels.
+  Besides the kinds, the one label you set is `repo:<name>`, at GO.
+- Never set `<labelPrefix>:ready` (`sous:ready`), the label `sous watch`
+  starts work from: a human sets it, by hand or on the tracker's web
+  page, when the work may start.
 - Facts live in the repo: look them up instead of asking. Decisions are the
   human's: ask, recommend an answer, wait.
 <!-- ADAPT: The folders the session may write: spec folder, decision records, glossary. -->
@@ -214,6 +238,12 @@ gets published is defined here.
    the order the sheet describes, so publishing in dependency order also
    gives a sensible default order.
 
+A feature's children carry the parent's `repo:<name>` label: the feature
+runs as one flow in one checkout, so it never has children in different
+repositories. If the slices belong in different repositories, stop: that
+is cross-repository work, an epic whose children are features or tasks
+each planned on its own, and this procedure does not plan an epic.
+
 <!-- ADAPT: The body sections your steps parse (here `## What to build` and `## Acceptance criteria`, which implement and review receive as one body) are `.sous/templates/child.md`; the tracker sheet says how the parent and the blockers are expressed. -->
 The acceptance criteria of a slice are the implement agent's definition of done
 and the slice reviewer's yardstick; the slice body is passed to both verbatim.
@@ -240,7 +270,8 @@ as a slice's criteria (behaviour or a named test, never a gate command).
 If the issue already has criteria that match the spec, leave them.
 Otherwise draft them from the spec, show them to the human, and after
 their approval **set the acceptance criteria**, which replaces the
-existing checklist rather than appending to it.
+existing checklist rather than appending to it. Like a feature, a task or
+bug carries one `repo:<name>` label, set at GO (step 9).
 
 ## 9. GO gate
 
@@ -257,6 +288,7 @@ to the spec folder, `docs/adr/` and the glossary.
   - the ADRs and glossary changes, if any;
   - the children: id, title and blockers, with the ones you rewrote marked;
     or the acceptance criteria added to a task or bug;
+  - the `repo:<name>` label the issue and its children will carry;
   - every issue edit you made.
 
   Then ask for an explicit GO. This is a soft gate: nothing enforces it, so
@@ -287,6 +319,12 @@ No push: the amendment reaches the base with the run's merge and dies with
 a `--restart`. Add only the paths named above; the worktree may hold the
 run's uncommitted work.
 
+Then, still after GO, **set the repo label** on the issue and, for a
+feature, on every child: exactly one `repo:<name>` label each, creating
+the label in the tracker when it is missing, removing any other `repo:*`
+label. With nothing to commit, set it where it is missing all the same,
+announced like any other issue edit.
+
 Plain commit message, no `Co-Authored-By` and no other trailers. Never create
 a branch, never force-push. If the rebase conflicts, stop and show the human.
 
@@ -301,8 +339,12 @@ Finish with a short report (nothing is enforced, this is for the human):
   acceptance criteria;
 - for a worktree commit: the amendment is on the branch and reaches the
   base with the merge;
-- the next command: `./sous run <flow> <ISSUE>`, where `<flow>` is the flow
-  in `.sous/flows/` whose `allowedLabels` include the `type:*` label the
-  tracker reports for the issue's kind (`sous run` refuses any other). For
-  a blocked run that is the same command the blocked comment names; the run
-  re-enters at the blocked step.
+- the `repo:<name>` label the issue and its children carry;
+- the next command: `./sous run <flow> <ISSUE>` in the target repository,
+  where `<flow>` is the flow in `.sous/flows/` whose `allowedLabels` include the
+  `type:*` label the tracker reports for the issue's kind (`sous run`
+  refuses any other). For a blocked run that is the same
+  command the blocked comment names; the run re-enters at the blocked
+  step. The alternative: a human sets `<labelPrefix>:ready` on the issue
+  when the work may start, and `sous watch` runs it; this session never
+  sets it.

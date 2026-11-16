@@ -42,7 +42,11 @@ const optionString = (options: Record<string, unknown>, key: string, tracker: st
 export const loadTracker = async (settings: Pick<Settings, "tracker" | "trackerOptions">, env: TrackerEnv): Promise<Tracker> => {
   const { tracker, trackerOptions } = settings;
   const { labelPrefix } = env;
-  if (tracker === "github") return createGitHubTracker({ cwd: env.repoRoot, labelPrefix });
+  if (tracker === "github") {
+    const repo = trackerOptions["repo"] === undefined ? undefined : optionString(trackerOptions, "repo", tracker);
+    if (repo !== undefined && !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new SousError(`tracker github: trackerOptions.repo must be owner/name, not "${repo}"`);
+    return createGitHubTracker({ cwd: env.repoRoot, labelPrefix, ...(repo !== undefined ? { repo } : {}) });
+  }
   if (tracker === "beads") return createBeadsTracker({ dir: env.runsDir, cwd: env.repoRoot, labelPrefix });
   if (tracker === "local") return createLocalTracker({ dir: resolve(env.root, optionString(trackerOptions, "dir", tracker)), labelPrefix });
   const file = trackerModulePath(env.root, tracker);

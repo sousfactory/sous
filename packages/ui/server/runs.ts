@@ -18,7 +18,10 @@ import {
   logDir,
   parseEvents,
   parseFlow,
+  PROJECT_DIR,
   projectDirs,
+  repoEntries,
+  SCHEMA_VERSION,
   sessionFile,
   SETTINGS_FILE,
   topology,
@@ -28,7 +31,8 @@ import {
   type Timeline,
   type Topology,
 } from "sous-factory/read";
-import { deriveFlow, deriveRun, summarizeRun, type FlowView, type RunRow, type RunView } from "./model.js";
+import type { GitHubLookup } from "./github.js";
+import { deriveFlow, deriveRun, summarizeRun, type ErrorRow, type FlowView, type RepoTag, type RunRow, type RunView } from "./model.js";
 
 export type Project = {
   /** The project root, `.sous/`. */
@@ -47,6 +51,17 @@ export const openProject = (root: string, isAlive: (pid: number) => boolean = is
   const dirs = projectDirs(root, settings);
   return { root, runsRoot: dirs.runs, logsRoot: dirs.logs, flowsRoot: dirs.flows, stepsRoot: dirs.steps, uiPort: settings.uiPort, isAlive };
 };
+
+/** A repository of the home project's `repos:` list, read as a project of its own; `github` asks `gh` in its checkout. */
+export type RepoSource = RepoTag & { project: Project; github?: GitHubLookup };
+
+/** The repositories `repos:` lists, each opened from its own `.sous/`; `undefined` without `repos:`. */
+export const openRepos = (home: Project): RepoSource[] | undefined =>
+  repoEntries(home.root, loadSettings(join(home.root, SETTINGS_FILE)))?.map(({ name, path }) => ({
+    name,
+    folder: basename(path),
+    project: openProject(join(path, PROJECT_DIR), home.isAlive),
+  }));
 
 /** The locks of the live `sous run`s, one per issue; a stale or unreadable lock is no live run. */
 export const liveLocks = (project: Project): Promise<LockInfo[]> => readLiveLocks(project.root, project.isAlive);
@@ -112,15 +127,64 @@ export const readRow = async (project: Project, issue: string, locks: readonly L
     const timeline = await readTimeline(eventsFile(project.runsRoot, issue));
     return { kind: "run", updatedAt: updated, summary: summarizeRun(session, timeline, holds(locks, session.issue)) };
   } catch (error) {
-    return { kind: "error", updatedAt: updated, issue, error: withoutPath(message(error), file) };
+    return { kind: "error", updatedAt: updated, issue, error: withoutPath(message(error), file), ...(await foreignFields(file)) };
   }
 };
+
+const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+
+/**
+ * What a record on another schema version still says: the versions, and
+ * the title, flow and branch where they are strings. Nothing for a record
+ * on this version, or one that is no JSON object at all.
+ */
+const foreignFields = async (file: string): Promise<Pick<ErrorRow, "schema" | "title" | "flow" | "branch">> => {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(file, "utf8"));
+  } catch {
+    return {};
+  }
+  if (typeof raw !== "object" || raw === null) return {};
+  const record = raw as Record<string, unknown>;
+  const found = record.schemaVersion;
+  if (typeof found !== "number" || found === SCHEMA_VERSION) return {};
+  const fields = { title: text(record.title), flow: text(record.flow), branch: text(record.branch) };
+  return {
+    schema: { found, expected: SCHEMA_VERSION },
+    ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)),
+  };
+};
+
+const newestFirst = (rows: RunRow[]): RunRow[] => rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
 /** Every run folder, most recently written first. */
 export const listRows = async (project: Project): Promise<RunRow[]> => {
   const locks = await liveLocks(project);
-  const rows = await Promise.all(runIssues(project).map((issue) => readRow(project, issue, locks)));
-  return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return newestFirst(await Promise.all(runIssues(project).map((issue) => readRow(project, issue, locks))));
+};
+
+/** Every run folder of every listed repository in one list, most recently written first, each row tagged with its repository. */
+export const listRepoRows = async (repos: readonly RepoSource[]): Promise<RunRow[]> => {
+  const lists = await Promise.all(
+    repos.map(async ({ name, folder, project }) => (await listRows(project)).map((row): RunRow => ({ ...row, repo: { name, folder } }))),
+  );
+  return newestFirst(lists.flat());
+};
+
+/** The live locks of every listed repository, each naming its repository. */
+export const repoLiveLocks = async (repos: readonly RepoSource[]): Promise<(LockInfo & { repo: string })[]> =>
+  (await Promise.all(repos.map(async ({ name, project }) => (await liveLocks(project)).map((lock) => ({ ...lock, repo: name }))))).flat();
+
+/**
+ * The project a request about `issue` reads: the home project without
+ * `repos:`; with it, the repository `repo` names, or else the first one
+ * holding a run folder for the issue. `undefined` when none fits.
+ */
+export const projectFor = (home: Project, repos: readonly RepoSource[] | undefined, issue: string, repo: string | undefined): Project | undefined => {
+  if (repos === undefined) return home;
+  if (repo !== undefined) return repos.find((r) => r.name === repo)?.project;
+  return repos.find((r) => runIssues(r.project).includes(issue))?.project;
 };
 
 const flowTopology = (project: Project, name: string): Topology | { error: string } => {

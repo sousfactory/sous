@@ -27,9 +27,11 @@ The reference for people who run, extend and adapt a sous project. The
 17. [Adapt the plan phase](#17-adapt-the-plan-phase)
 18. [Use another tracker](#18-use-another-tracker)
 19. [Run with `lifecycle: steps`](#19-run-with-lifecycle-steps)
-20. [Test steps and flows](#20-test-steps-and-flows)
-21. [Vendored skills](#21-vendored-skills)
-22. [Troubleshooting](#22-troubleshooting)
+20. [Run as an automated loop](#20-run-as-an-automated-loop)
+21. [Multi-repo setup](#21-multi-repo-setup)
+22. [Test steps and flows](#22-test-steps-and-flows)
+23. [Vendored skills](#23-vendored-skills)
+24. [Troubleshooting](#24-troubleshooting)
 
 ---
 
@@ -181,7 +183,7 @@ init: still to do by hand:
 | --- | --- | --- |
 | Engine | executor, CLI, trackers, sandbox, run record, `sous-factory/testing` | the npm package `sous-factory` |
 | Project | `sous.yaml`, `flows/`, `steps/`, `skills/`, `prompts/`, tests | `.sous/` in your repository |
-| UI | `sous ui`, the run viewer | bundled into the package under `dist/ui/` |
+| UI | `sous ui`, the run viewer; over `repos:` every listed repository's runs ([how-to 21](#21-multi-repo-setup)) | bundled into the package under `dist/ui/` |
 
 The engine never imports the project. It reads `sous.yaml`, loads the
 flows from YAML and your steps and tracker module through `tsx`, so a
@@ -243,10 +245,19 @@ branch, `merge` squashes it onto the base branch, and the issue is closed.
 If the base branch moved after the last `sync` (another run merged in the
 meantime), `merge` lands nothing and the flow goes back to `sync`
 (`resync: ${{ true }}` on the `merge` entry, with a route on `result.output.stale`).
+`merge` never pushes unless its entry names a remote: with `push: origin`
+it fast-forwards the base branch from `origin` before the freshness
+check, so commits landed there count as a moved base, and pushes the base
+branch to `origin` after the squash. A local base that diverged from the
+remote's fails the step before anything is squashed; a failed push keeps
+the squash locally, fails the step with the push error and says so on the
+issue. The starter flows carry the line commented out.
 
 Watch it in a second terminal with `./sous status <id>` or in the browser
 with `./sous ui`. The UI lists every run, draws the flow with the visited
-steps coloured, and opens any step's visits, agent log and output.
+steps coloured, and opens any step's visits, agent log and output; in a
+home repository it lists the runs of every repository it serves
+([how-to 21](#21-multi-repo-setup)).
 
 **When a run stops `blocked`**, the issue gets a comment with the step,
 the eval's last log and the worktree path. Open the worktree, fix what the
@@ -376,7 +387,7 @@ them after the call.
   `Tracker`, `TrackerFactory`, `TrackerEnv`, `Event`; `SousError`;
   `loadFlow`, `loadStep`, `validateProject`, `renderGraph`.
 - `sous-factory/testing`: in-memory fakes and the harness
-  ([how-to 20](#20-test-steps-and-flows)).
+  ([how-to 22](#22-test-steps-and-flows)).
 
 ## 6. Flows
 
@@ -546,7 +557,9 @@ lifecycle: core                                   # core: the run claims, blocks
 idleTimeoutSeconds: 1800                          # agent idle timeout
 uiPort: 4680                                      # sous ui on 127.0.0.1:<uiPort>; one per project on a machine, --port wins
 tracker: github                                   # github, beads, local, or the path of a project module
-trackerOptions: {}                                # handed to the tracker; local takes { dir }
+trackerOptions: {}                                # handed to the tracker; local takes { dir }, github { repo }
+name: api                                         # this repository in repo:<name> labels; unset: origin's repo part, else the folder
+repos: { api: ../api }                            # the repositories sous watch serves from here; unset: this one
 specsDir: ../specs                                # spec folders: <specsDir>/<issue>-<slug>/
 flowsDir: flows
 stepsDir: steps
@@ -556,7 +569,9 @@ logsDir: logs                                     # gitignored
 runsDir: runs                                     # gitignored
 ```
 
-Folders are relative to `.sous/`. Models, caps and commands live in flows
+Folders are relative to `.sous/`; `repos` paths to the repository
+([how-to 21](#21-multi-repo-setup)). `name` and `repos` have no default.
+Models, caps and commands live in flows
 and steps, not here.
 
 `baseBranch` is what every run's worktree forks from. Flows, modules and
@@ -583,6 +598,7 @@ engine talks to it through one port, `Tracker`, which steps reach as
 | `setStateLabel(id, label)` | Add `label` and remove every other label with the same `<prefix>:`. |
 | `comment(id, body)` | A comment. |
 | `isClosed(id)` | Whether the issue is closed. |
+| `list({ labels })` | The open issues carrying every label in `labels`, as `getIssue` returns them. |
 
 `claim`, `block` and `close` are the run's lifecycle
 ([chapter 11](#11-run-record-lifecycle-resume)); `setStateLabel` and
@@ -591,15 +607,23 @@ engine talks to it through one port, `Tracker`, which steps reach as
 
 ### Built-in trackers
 
-**`github`** (default). Issues are read with `gh issue view`, children are
+**`github`** (default). Issues are read with `gh issue view` and listed
+with `gh issue list --state open --label …`, children are
 native sub-issues ordered by number, blockers are the issue numbers under
-a `## Blocked by` heading in the body (as `/sous-plan` writes them).
+a `## Blocked by` heading in the body (as `/sous-plan` writes them); a
+line `owner/repo#n` names an issue of another repository, which `gh` is
+asked about (`blockers()` and `isClosed()`).
 `claim` sets `<labelPrefix>:running`, `block` sets `<labelPrefix>:blocked`
 and comments, `close` closes. Labels are created on first use. `#96` and
-`96` name the same issue.
+`96` name the same issue. `gh` infers the repository from the checkout;
+`trackerOptions: { repo: owner/name }` addresses that repository instead
+on every call (`-R owner/name`, and the path of each `gh api` endpoint),
+for a repository whose issues live in another one
+([how-to 21](#21-multi-repo-setup)).
 
 **`beads`** (`bd`). `sous run <flow> <bead-id>`. Issues are read live with
-`bd show --json`; an epic's beads are its children, by priority then age;
+`bd show --json` and listed with `bd list --label …` (the `type:*` and
+`bead:*` labels sous adds are matched after bd answers); an epic's beads are its children, by priority then age;
 `blocks` edges are the blockers; bd's own labels are kept and a
 `type:<issue_type>` label is added so `allowedLabels` match without
 labelling by hand. `claim` is `bd update --claim` under an actor that names
@@ -609,8 +633,13 @@ close`; comments go to `<runsDir>/<id>/comments.md`, since bd has none.
 **`local`**. Issues as files for a repository whose tracker sous must not
 touch: `trackerOptions: { dir: issues }`, one `<id>.json` per issue with
 `{ id, title, body, labels, state }` and optional `children` and
-`blockedBy` id lists; comments are appended to `<id>.comments.md`.
-Nothing leaves the machine.
+`blockedBy` id lists; comments are appended to `<id>.comments.md`;
+`list` scans the folder. Nothing leaves the machine.
+
+`beads` and `local` cannot follow a blocker in another repository: an
+`owner/repo#n` under `## Blocked by` (or in `blockedBy`) makes
+`blockers()` fail with an error naming it, and `sous watch` skips the
+issue saying so.
 
 ### Writing a tracker module
 
@@ -635,6 +664,7 @@ const factory: TrackerFactory = (options, env) => {
     setStateLabel: async () => undefined,
     comment: async (id, body) => { /* POST /issue/<id>/comment */ },
     isClosed: async (id) => false,
+    list: async ({ labels }) => [], /* search open issues carrying every label */
   };
   return tracker;
 };
@@ -648,7 +678,9 @@ tracker: trackers/jira.ts
 trackerOptions: { project: CA }
 ```
 
-`sous validate` builds the module and lists any port method it lacks.
+`sous validate` builds the module and lists any port method it lacks;
+a module written before `list` joined the port is reported as lacking
+`list`.
 The only parsing the engine does on issue text is none at all: what a
 body means is the adapter's business, which is why the GitHub adapter
 owns the `## Blocked by` rule.
@@ -743,7 +775,9 @@ changes nothing). Everything else on the tracker, such as the
   synced, checked and reviewed code lands. The check and the squash run
   under `ctx.repoLock` (`.sous/locks/repo.mutex`), so two merges never
   interleave: the second waits, then sees the base move and routes back
-  to `sync`. A stale `repo.mutex` from a crashed run is taken over.
+  to `sync`. With `push: <remote>` the fast-forward from the remote and
+  the push run inside the same lock. A stale `repo.mutex` from a crashed
+  run is taken over.
 - Modules should be idempotent; they run again on re-entry.
 
 ## 12. CLI
@@ -754,7 +788,8 @@ sous run <flow> <issue> [--restart]   # validate, then start or continue; <issue
 sous status <issue>                   # session facts and the timeline
 sous graph <flow>                     # Mermaid diagram from the YAML
 sous validate                         # sous.yaml, every flow and step, the tracker module
-sous ui [--port n]                    # the run viewer on 127.0.0.1:4680, or the uiPort of sous.yaml
+sous watch [--once] [--interval s]    # start ready issues unattended, one run per repository at a time (how-tos 20, 21)
+sous ui [--port n]                    # the run viewer on 127.0.0.1:4680, or the uiPort of sous.yaml; every listed repository's runs over repos: (how-to 21)
 ```
 
 The starter's `.sous/sous` wrapper runs the installed `sous` from any
@@ -762,7 +797,9 @@ directory. The project root is `SOUS_ROOT`, else the cwd when it is named
 `.sous`, else `<cwd>/.sous`; the repository is its parent. Exit codes: 2
 bad arguments, validation errors or an issue the flow's `allowedLabels`
 refuse; 1 blocked, crashed, lock held or flow mismatch; 0 done; 130/143
-interrupted.
+interrupted. `sous watch --once` exits 0 after its pass, 1 when the
+tracker could not be asked; `sous watch` exits 130/143 on a signal and 1
+when another one is live ([how-to 20](#20-run-as-an-automated-loop)).
 
 ---
 
@@ -930,7 +967,7 @@ in the routes.
 **Check:** a step folder needs `step.yaml` plus a `README.md` in the
 starter's format (one table, one paragraph; `test/prompts.test.ts` pins
 that). `./sous validate` loads every step a flow uses. Test the module
-alone with `ctxOf` ([how-to 20](#20-test-steps-and-flows)).
+alone with `ctxOf` ([how-to 22](#22-test-steps-and-flows)).
 
 ## 16. Add or change a flow
 
@@ -1058,10 +1095,20 @@ refuses, a blocked one with its worktree here amends on the branch, no run
 amends the base), pick create or amend mode from the spec folder in the
 target, clarify, write or amend the spec, reconcile a feature's existing
 children into the child shape and draft the missing slices (or set a task's
-acceptance criteria), then the GO gate and the commit. A rerun on a planned
+acceptance criteria), then the GO gate, the commit and the repo label. A rerun on a planned
 issue with no new scope changes nothing and commits nothing, which is what
 makes the skill safe to call twice and lets it bring a hand-filed feature
 into shape.
+
+At GO the issue and every child get exactly one `repo:<name>` label,
+created in the tracker when missing, which tells `sous watch` where the
+work runs ([how-to 21](#21-multi-repo-setup)): the repository's own name,
+or in a home repository the `repos:` entry the session asked for in its
+first step, whose checkout then holds the spec, the commit and the
+settings. A feature's children carry the parent's label; work spanning
+repositories is an epic, which the procedure does not plan. The session
+never sets `sous:ready`: a human sets it when the work may start, the
+alternative the report offers to `./sous run`.
 
 The spec format is `templates/spec.md`: the headings, and under each a
 placeholder saying what the section holds and who writes it. The plan
@@ -1163,7 +1210,116 @@ either way.
 tracker saw after a walk; `fakeTracker().claims` and `.comments` show the
 writes.
 
-## 20. Test steps and flows
+## 20. Run as an automated loop
+
+**When:** issues should start without anyone typing `sous run`: a
+machine that works through the queue overnight, or a cron entry.
+
+**Files:** none; label issues and start `./sous watch` in the repository.
+
+```sh
+./sous watch                  # poll every 60 seconds until Ctrl-C
+./sous watch --interval 5     # poll every five seconds
+./sous watch --once           # one pass, wait for the run it started, exit 0
+```
+
+**What it picks up.** A human marks an issue ready for the factory with
+`<labelPrefix>:ready` (`sous:ready`), by hand or on the tracker's web page;
+`/sous-plan` never sets it. Each pass takes the open issues carrying it,
+lowest number first, and starts `.sous/sous run <flow> <issue>` in the
+repository for the first one that has no open blockers (`blockers()`)
+and a `type:*` label exactly one flow's `allowedLabels` accept. One run
+at a time: while a run holds a live lock in `.sous/locks/`, its own or one
+a human started by hand, nothing else starts. The run's claim swaps
+`sous:ready` for `sous:running`, so an issue never starts twice. An
+issue labelled `repo:<name>` for another repository is skipped; a home
+repository serving several is [how-to 21](#21-multi-repo-setup).
+
+**What it says.** One line per action: started, rerun, a push a run
+reported, a run that exited with an error, an issue skipped and why. A
+skipped issue (an open blocker, no or several accepting flows, a live
+lock, a blocker the tracker cannot follow) is reported once per daemon,
+again only when the reason changes. A quiet pass prints nothing. The
+run's own output goes to its record (`sous status`, `sous ui`), not to
+the daemon's.
+
+**The hand-back after blocked.** A `sous:blocked` issue is left alone.
+Fix what the comment asks, then add `sous:ready`: the next pass runs the
+same command, and the run re-enters at the blocked step as it would for a
+human. An issue whose run ended still carrying `sous:ready` (it failed
+before its claim) is not started again until its labels change.
+
+**Crashes.** A `sous:running` issue whose lock names a dead pid crashed:
+the daemon removes the stale lock, says so, and reruns it once; the run
+resumes from its session. A `sous:running` issue without a lock is left
+alone (its run may be on another machine); add `sous:ready` to resume an
+interrupted one. When that rerun crashes as well,
+the issue is set `sous:blocked` with a comment naming its log folder,
+its stale lock is removed, and this daemon does not run it again; a
+human hands it back with `sous:ready` to a new daemon or runs it by
+hand. A ready issue whose lock names a dead pid has its lock removed
+before it starts.
+
+**Stopping it.** Ctrl-C or SIGTERM is forwarded to the run in progress,
+which records the interrupt and stays resumable (by hand, or by the
+next daemon once the issue carries `sous:ready`); the daemon then exits
+130 / 143. One `sous watch` per project: a second refuses to start and
+names the live one's pid (`.sous/locks/watch.pid`). The merge step pushes
+the result when its flow entry sets `push: origin`.
+
+**Check:** label a small `type:task` issue `sous:ready` and run
+`./sous watch --once`; the issue carries `sous:running`, then closes.
+
+## 21. Multi-repo setup
+
+**When:** one `sous watch` should serve several repositories, say a
+planning repository and the code repositories its issues are about.
+
+**Files:** `.sous/sous.yaml` of the home repository, the repository you
+start `sous watch` in.
+
+```yaml
+repos:                 # name: checkout path, relative to this repository; absolute and ~ allowed
+  api: ../api
+  web: ~/src/web
+  planning: .          # the home repository itself, only when listed
+# or a plain list, each named by its folder: repos: [../api, ../web]
+```
+
+Each listed repository keeps its own `.sous/` (`sous init` there): its
+flows, its tracker, its engine version. `sous validate` in the home
+repository reports a path without a `.sous/sous.yaml`. A pass asks every
+listed repository's tracker for ready issues and starts a run as that
+repository's `.sous/sous run <flow> <issue>`, in that repository: one run
+per repository at a time, repositories in parallel. The home repository
+runs nothing unless the list names it.
+
+**The repo label.** With `repos:`, an issue runs where its `repo:<name>`
+label says, even when several repositories share one tracker; an issue
+reachable through two trackers is considered once. An issue without a
+`repo:*` label, or naming no entry, is reported once and skipped: nothing
+is inferred from the tracker it lives in. Without `repos:`, `sous watch`
+serves its own repository and skips an issue labelled with another
+repository's name. A repository's name is `name:` in its `sous.yaml`,
+else the repository part of its `origin` remote, else its folder.
+
+**Issues kept elsewhere.** A GitHub-tracked repository whose issues live
+in another repository sets `trackerOptions: { repo: owner/name }`
+([chapter 10](#10-trackers)). Under `## Blocked by`, `owner/repo#n` names
+a blocker in another GitHub repository.
+
+**The run viewer.** `./sous ui` in the home repository lists the runs of
+every listed repository in one list, the repository's folder in a column,
+and opens each run as usual; a step change in any of them updates the
+open page. It reads each repository's `runs/` and `logs/` with its own
+engine version, so a run recorded on another session schema version is
+listed with the fields that read, marked unreadable with its version.
+Without `repos:` it shows the current repository alone.
+
+**Check:** `./sous validate` in the home repository, then
+`./sous watch --once`: each started run's line names its repository.
+
+## 22. Test steps and flows
 
 **When:** every change to a step or flow. No test calls a real agent.
 
@@ -1202,7 +1358,7 @@ session's `history` is the step sequence; `ports.tracker.comments`,
 `ports.git.committed` and `ports.sandbox.execs` show the side effects.
 `test/flows.test.ts` is the template.
 
-## 21. Vendored skills
+## 23. Vendored skills
 
 **When:** updating the skills the prompts point at, or replacing them.
 
@@ -1220,7 +1376,7 @@ what to skip or change in the skill.
 
 **Check:** `npx vitest run test/prompts.test.ts`.
 
-## 22. Troubleshooting
+## 24. Troubleshooting
 
 | Symptom | Cause and fix |
 | --- | --- |

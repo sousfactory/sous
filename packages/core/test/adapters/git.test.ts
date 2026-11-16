@@ -1,5 +1,5 @@
 import { realpath, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { exec } from "../../src/adapters/exec.js";
 import { createGit, worktreeList } from "../../src/adapters/git.js";
@@ -183,6 +183,66 @@ describe("git adapter (real repository)", () => {
     await git.addWorktree(main, again, "feature/2-y", "main");
     expect(await git.currentBranch(again)).toBe("feature/2-y");
     expect(await git.headSha(again)).toBe(sha);
+  });
+
+  describe("with a bare remote", () => {
+    let remote: string;
+    let other: string;
+
+    beforeEach(async () => {
+      remote = join(dirname(main), "remote.git");
+      other = join(dirname(main), "other");
+      await repo.git(["init", "-q", "--bare", "-b", "main", remote]);
+      await repo.git(["remote", "add", "origin", remote]);
+      await repo.git(["push", "-q", "origin", "main"]);
+      await repo.git(["clone", "-q", remote, other], dirname(main));
+      await repo.git(["config", "user.name", "other"], other);
+      await repo.git(["config", "user.email", "other@test"], other);
+      await repo.git(["config", "commit.gpgsign", "false"], other);
+    });
+
+    const remoteHead = () => repo.git(["rev-parse", "refs/heads/main"], remote);
+
+    it("fastForward brings the remote's commits into the checked-out branch", async () => {
+      const ahead = await repo.commitFile("r.txt", "r\n", "feat: remote", other);
+      await repo.git(["push", "-q", "origin", "main"], other);
+
+      expect(await git.fastForward(main, "main", "origin")).toBe(true);
+      expect(await git.headSha(main)).toBe(ahead);
+      expect(await git.isDirty(main)).toBe(false);
+    });
+
+    it("fastForward leaves a branch that is ahead of the remote or level with it as it is", async () => {
+      expect(await git.fastForward(main, "main", "origin")).toBe(true);
+      const local = await repo.commitFile("l.txt", "l\n", "feat: local");
+      expect(await git.fastForward(main, "main", "origin")).toBe(true);
+      expect(await git.headSha(main)).toBe(local);
+    });
+
+    it("fastForward answers false and changes nothing when the branch diverged from the remote", async () => {
+      await repo.commitFile("r.txt", "r\n", "feat: remote", other);
+      await repo.git(["push", "-q", "origin", "main"], other);
+      const local = await repo.commitFile("l.txt", "l\n", "feat: local");
+
+      expect(await git.fastForward(main, "main", "origin")).toBe(false);
+      expect(await git.headSha(main)).toBe(local);
+    });
+
+    it("fastForward fails on an unknown remote", async () => {
+      await expect(git.fastForward(main, "main", "nope")).rejects.toThrow(/git fetch failed/);
+    });
+
+    it("push lands the branch on the remote, and fails with git's error when the remote moved", async () => {
+      const local = await repo.commitFile("l.txt", "l\n", "feat: local");
+      await git.push(main, "main", "origin");
+      expect(await remoteHead()).toBe(local);
+
+      await repo.git(["pull", "-q", "--ff-only"], other);
+      await repo.commitFile("r.txt", "r\n", "feat: remote", other);
+      await repo.git(["push", "-q", "origin", "main"], other);
+      await repo.commitFile("l2.txt", "l\n", "feat: local 2");
+      await expect(git.push(main, "main", "origin")).rejects.toThrow(/git push failed.*rejected/s);
+    });
   });
 
   it("worktreeList reads the porcelain blocks", () => {
