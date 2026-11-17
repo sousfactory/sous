@@ -39,9 +39,10 @@ describe("loadTracker", () => {
 });
 
 describe("fakeTracker list", () => {
-  it("answers from its seeded issues: open and carrying every label", async () => {
+  it("answers from its seeded issues: open and carrying every label, in ascending numeric id order", async () => {
     const tracker = fakeTracker({
       issues: [
+        issue({ id: "10", labels: ["sous:ready", "type:task"] }),
         issue({ id: "4", labels: ["sous:ready", "type:task"] }),
         issue({ id: "2", labels: ["sous:ready", "type:task", "repo:web"] }),
         issue({ id: "3", labels: ["sous:ready"] }),
@@ -49,7 +50,7 @@ describe("fakeTracker list", () => {
       ],
     });
     const listed = await tracker.list({ labels: ["sous:ready", "type:task"] });
-    expect(listed.map((i) => i.id)).toEqual(["2", "4"]);
+    expect(listed.map((i) => i.id)).toEqual(["2", "4", "10"]);
     expect(listed[0]).toMatchObject({ labels: ["sous:ready", "type:task", "repo:web"], state: "open" });
   });
 });

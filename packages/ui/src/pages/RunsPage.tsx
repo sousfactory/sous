@@ -2,7 +2,8 @@
  * The runs list, as GitHub's "All workflows" page: flows in the side
  * nav, one row per issue with its latest attempt. Rows of run folders core
  * cannot read are greyed with the reason, and with the fields a record on
- * another schema version still has. Over `repos:` each row names its
+ * another schema version still has; so is a listed repository whose
+ * settings it cannot read. Over `repos:` each row names its
  * repository's folder in a column. A selected flow shows its graph above
  * its runs, whether it ever ran or not.
  */
@@ -33,8 +34,10 @@ const RunLine = ({ row, now }: { row: RunRow; now: number }) => {
           <AlertIcon size={16} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-fg-muted">{row.title ?? `Run folder ${row.issue}`}</div>
-          {row.schema !== undefined ? (
+          <div className="font-semibold text-fg-muted">{row.settings === true ? `Repository ${row.repo?.folder ?? ""}` : (row.title ?? `Run folder ${row.issue}`)}</div>
+          {row.settings === true ? (
+            <div className="mt-1 break-words text-[12px] text-fg-muted">this sous ui cannot read its .sous/sous.yaml: {row.error}</div>
+          ) : row.schema !== undefined ? (
             <div className="mt-1 truncate text-[12px] text-fg-muted">
               {row.flow !== undefined ? <span className="font-semibold">{row.flow} </span> : null}
               {row.issue}: unreadable, session schema version {row.schema.found}; this sous ui reads {row.schema.expected}

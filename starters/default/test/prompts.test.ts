@@ -242,9 +242,9 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(text.slice(tasks)).toContain("never a gate command");
   });
 
-  it("covers the amend mode and the `sous:*` labels the run phase owns", () => {
+  it("covers the amend mode and the state labels the run phase owns", () => {
     expect(text).toContain("## Amendment — <short title>");
-    expect(text).toContain("`sous:*` labels");
+    expect(text).toContain("the run phase owns the state labels");
   });
 
   it("has the GO gate before commit and push, without trailers or branches, for both targets", () => {
@@ -319,6 +319,7 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     const rules = flat.slice(flat.indexOf("## 5. Ground rules"), flat.indexOf("## 6. Clarify"));
     expect(rules).toContain("Never set `<labelPrefix>:ready`");
     expect(rules).toMatch(/a human sets it/);
+    expect(rules).toContain("the run phase owns the state labels apart from `sous:ready`, which a human sets");
     const report = flat.slice(flat.indexOf("## 10. Sanity report"));
     expect(report).toContain("./sous run <flow> <ISSUE>");
     expect(report).toContain("`<labelPrefix>:ready`");

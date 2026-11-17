@@ -37,7 +37,12 @@ export type Tracker = {
   setStateLabel(id: string, label: string): Promise<void>;
   comment(id: string, body: string): Promise<void>;
   isClosed(id: string): Promise<boolean>;
-  /** The open issues carrying every label in `labels`, each with its labels and state; how the tracker is asked is its own business. */
+  /**
+   * Every open issue carrying every label in `labels`, each with its labels
+   * and state, in ascending numeric id order: ids compared with their
+   * numbers as numbers, so `9` comes before `10` and `bd-9` before `bd-10`.
+   * How the tracker is asked is its own business.
+   */
   list(query: { labels: readonly string[] }): Promise<Issue[]>;
 };
 
@@ -63,6 +68,9 @@ export const parseBlockedBy = (body: string): string[] => {
 /** What a tracker that has no reach into other repositories throws for a qualified blocker; the error names the reference. */
 export const unsupportedQualifiedRef = (tracker: string, ref: string): SousError =>
   new SousError(`${tracker}: blocker ${ref} names an issue in another repository, which only the github tracker can follow; write it as an issue of this tracker`);
+
+/** The order of `list`: ascending by id, numbers compared as numbers (`#9` before `#10`, `bd-9` before `bd-10`). */
+export const byId = (a: Issue, b: Issue): number => a.id.localeCompare(b.id, undefined, { numeric: true });
 
 /** Whether `issue` answers `list({ labels })`: open and carrying every named label. */
 export const matchesList = (issue: Issue, labels: readonly string[]): boolean => issue.state === "open" && labels.every((l) => issue.labels.includes(l));

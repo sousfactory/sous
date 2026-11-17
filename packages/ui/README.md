@@ -21,8 +21,10 @@ one click from the runs list.
 In a home repository whose `sous.yaml` lists `repos:`
 ([manual, how-to 21](../../docs/manual.md#21-multi-repo-setup)), the list
 holds the runs of every listed repository, with a repository column naming
-each one's folder; the header still names the home repository. Without
-`repos:` there is no such column and nothing else changes.
+each one's folder; the header still names the home repository. A listed
+repository whose `sous.yaml` this UI cannot read is one error row naming
+the problem. Without `repos:` there is no such column and nothing else
+changes.
 
 The first start builds the app into `packages/ui/dist/`, which is gitignored. After a
 change to `src/`, delete `dist/` or run `npm run build` here. The server

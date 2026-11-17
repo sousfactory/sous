@@ -44,6 +44,19 @@ export const repoProblems = (root: string, settings: Pick<Settings, "repos">): s
   return problems;
 };
 
+/** The wrapper in a project folder that runs the project's own engine version. */
+export const WRAPPER = "sous";
+
+/**
+ * The listed projects `sous watch` cannot start a run in: no `.sous/sous`,
+ * so nothing names their engine, and the home engine never stands in. Kept
+ * apart from `repoProblems`: the daemon skips these and serves the rest.
+ */
+export const unrunnableRepos = (root: string, settings: Pick<Settings, "repos">): { name: string; reason: string }[] =>
+  (repoEntries(root, settings) ?? [])
+    .filter(({ path }) => existsSync(join(path, PROJECT_DIR, SETTINGS_FILE)) && !existsSync(join(path, PROJECT_DIR, WRAPPER)))
+    .map(({ name, path }) => ({ name, reason: `${path} holds no ${PROJECT_DIR}/${WRAPPER} to run it on its own engine; sous watch starts nothing there` }));
+
 /** `acme/web` of `git@github.com:acme/web.git` or `https://github.com/acme/web`: the last path part, without `.git`. */
 const repoPartOf = (url: string): string | undefined => {
   const part = url.trim().replace(/\/+$/, "").split(/[/:]/).at(-1)?.replace(/\.git$/, "");

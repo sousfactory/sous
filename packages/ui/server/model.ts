@@ -60,6 +60,8 @@ export type ErrorRow = {
   flow?: string;
   branch?: string;
   repo?: RepoTag;
+  /** The row stands for a listed repository whose `sous.yaml` this engine cannot read, not for a run folder; `error` says why. */
+  settings?: true;
 };
 
 export type RunRow = { kind: "run"; updatedAt: string; summary: RunSummary; repo?: RepoTag } | ErrorRow;

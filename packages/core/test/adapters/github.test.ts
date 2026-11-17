@@ -171,16 +171,26 @@ describe("createGitHubTracker", () => {
     ]);
   });
 
-  it("list asks gh for the open issues with every label and keeps only those", async () => {
+  it("list pages through every open issue with every label, leaves pull requests out and keeps only matches", async () => {
     const rows = [
-      { number: 21, title: "Ready", body: "b", labels: [{ name: "sous:ready" }, { name: "type:task" }], state: "OPEN" },
-      { number: 22, title: "Half", body: "", labels: [{ name: "sous:ready" }], state: "OPEN" },
-      { number: 23, title: "Done", body: "", labels: [{ name: "sous:ready" }, { name: "type:task" }], state: "CLOSED" },
+      { number: 22, title: "Half", body: "", labels: [{ name: "sous:ready" }], state: "open" },
+      { number: 21, title: "Ready", body: "b", labels: [{ name: "sous:ready" }, { name: "type:task" }], state: "open" },
+      { number: 24, title: "A pull request", body: "", labels: [{ name: "sous:ready" }, { name: "type:task" }], state: "open", pull_request: { url: "x" } },
+      { number: 23, title: "Done", body: "", labels: [{ name: "sous:ready" }, { name: "type:task" }], state: "closed" },
     ];
-    const { tracker, calls } = ghOf(() => JSON.stringify(rows));
+    const { tracker, calls } = ghOf(() => rows.filter((r) => r.pull_request === undefined).map((r) => `${JSON.stringify(r)}\n`).join(""));
     const listed = await tracker.list({ labels: ["sous:ready", "type:task"] });
-    expect(calls).toEqual([["issue", "list", "--state", "open", "--label", "sous:ready", "--label", "type:task", "--limit", "1000", "--json", "number,title,body,labels,state"]]);
+    expect(calls).toEqual([["api", "--paginate", "repos/{owner}/{repo}/issues?state=open&per_page=100&labels=sous%3Aready%2Ctype%3Atask", "--jq", ".[] | select(.pull_request == null)"]]);
     expect(listed).toEqual([{ id: "21", ref: "#21", title: "Ready", body: "b", labels: ["sous:ready", "type:task"], state: "open" }]);
+  });
+
+  it("list returns more than 1000 matching issues, in ascending number order", async () => {
+    const numbers = Array.from({ length: 1205 }, (_, i) => 1205 - i);
+    const { tracker } = ghOf(() => numbers.map((n) => `${JSON.stringify({ number: n, title: `t${n}`, body: "", labels: [{ name: "sous:ready" }], state: "open" })}\n`).join(""));
+    const listed = await tracker.list({ labels: ["sous:ready"] });
+    expect(listed).toHaveLength(1205);
+    expect(listed.slice(0, 3).map((i) => i.id)).toEqual(["1", "2", "3"]);
+    expect(listed.at(-1)?.id).toBe("1205");
   });
 
   it("retries transient failures with backoff and then succeeds", async () => {
@@ -237,7 +247,7 @@ describe("createGitHubTracker", () => {
     /** One call of every method, answering each gh command with something it can parse. */
     const everyCall = async (repo?: string) => {
       const { tracker, calls } = ghOf((args) => {
-        if (args[0] === "issue" && args[1] === "list") return "[]";
+        if (args[0] === "api" && args[2]?.includes("/issues?")) return "";
         if (args[0] === "issue" && args[1] === "view") return issueJson({ labels: [{ name: "type:task" }], body: "## Blocked by\n- #12\n- acme/api#4\n" });
         if (args[0] === "api") return args.includes("--paginate") ? "12\n" : "10\n";
         return "";
@@ -259,7 +269,7 @@ describe("createGitHubTracker", () => {
       const calls = await everyCall("sousfactory/planning");
       expect(calls.length).toBeGreaterThan(10);
       for (const call of calls) {
-        if (call[0] === "api") expect(call.join(" ")).toMatch(/ repos\/sousfactory\/planning\/issues\//);
+        if (call[0] === "api") expect(call.join(" ")).toMatch(/ repos\/sousfactory\/planning\/issues[/?]/);
         else if (call.includes("acme/api")) expect(call).toEqual(["issue", "view", "4", "-R", "acme/api", "--json", "number,title,body,labels,state"]);
         else expect(call.slice(-2)).toEqual(["-R", "sousfactory/planning"]);
       }

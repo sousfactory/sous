@@ -10,7 +10,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { SousError } from "../exec/errors.js";
-import { isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { byId, isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { safeId } from "../session/paths.js";
 import { exec as defaultExec, type Exec } from "./exec.js";
 
@@ -138,7 +138,10 @@ export const createBeadsTracker = ({ dir, cwd, labelPrefix = "sous", exec = defa
       // `type:*` and `bead:*` are labels sous adds on read; bd filters its own, the rest is matched here. bd's default leaves closed beads out.
       const own = labels.filter((l) => !l.startsWith("type:") && !l.startsWith("bead:"));
       const payload = await json(["list", ...own.flatMap((l) => ["--label", l]), "-n", "0", "--json"]);
-      return (Array.isArray(payload) ? (payload as Bead[]) : []).map(toIssue).filter((i) => matchesList(i, labels));
+      return (Array.isArray(payload) ? (payload as Bead[]) : [])
+        .map(toIssue)
+        .filter((i) => matchesList(i, labels))
+        .sort(byId);
     },
   };
 };

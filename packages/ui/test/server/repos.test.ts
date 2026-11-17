@@ -88,6 +88,18 @@ describe("api over repos:", () => {
     expect((await fetch(`${base}/api/runs/84?repo=nope`)).status).toBe(404);
   });
 
+  it("starts over a listed repository whose sous.yaml the home engine cannot read, listing it as an error row beside the others' runs", async () => {
+    const roots = twoRepos();
+    writeFileSync(join(roots.api, "sous.yaml"), "runsDir: runs\nfromTheFuture: true\n");
+    const base = await serve(roots.home);
+    const body = (await (await fetch(`${base}/api/runs`)).json()) as { rows: { kind: string; issue?: string; error?: string; settings?: boolean; repo?: { name: string } }[] };
+    expect(body.rows.map((r) => r.repo?.name).sort()).toEqual(["api", "web", "web"]);
+    const broken = body.rows.find((r) => r.repo?.name === "api");
+    expect(broken).toMatchObject({ kind: "error", settings: true });
+    expect(broken?.error).toContain("fromTheFuture");
+    expect((await fetch(`${base}/api/runs/84?repo=api`)).status).toBe(404);
+  });
+
   it("finds a run without a repository named when one repository holds it", async () => {
     const base = await serve(twoRepos().home);
     const res = await fetch(`${base}/api/runs/12`);

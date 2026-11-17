@@ -1,5 +1,5 @@
 import { parseBlockedBy } from "../../src/adapters/github.js";
-import { matchesList, stateLabels, swapStateLabel, type Tracker, type Issue } from "../../src/ports/tracker.js";
+import { byId, matchesList, stateLabels, swapStateLabel, type Tracker, type Issue } from "../../src/ports/tracker.js";
 
 export type FakeTracker = Tracker & {
   /** Live issue store, keyed by id; tests may read and edit it. */
@@ -89,7 +89,7 @@ export const fakeTracker = (options: FakeTrackerOptions = {}): FakeTracker => {
     async list({ labels }) {
       return [...issues.values()]
         .filter((i) => matchesList(i, labels))
-        .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
+        .sort(byId)
         .map((i) => ({ ...i, labels: [...i.labels] }));
     },
   };

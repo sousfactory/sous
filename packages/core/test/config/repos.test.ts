@@ -7,12 +7,13 @@ import { repoEntries, repoNameOf } from "../../src/config/repos.js";
 import { DEFAULT_SETTINGS, parseSettings } from "../../src/config/settings.js";
 import { validateProject } from "../../src/config/validate.js";
 
-/** A home repository at `<tmp>/home` whose `.sous/sous.yaml` is `yaml`, with sibling checkouts `a` and `b` holding a project. */
+/** A home repository at `<tmp>/home` whose `.sous/sous.yaml` is `yaml`, with sibling checkouts `a` and `b` holding a project, `bare` one without its `.sous/sous`. */
 const workspace = (yaml: string) => {
   const dir = mkdtempSync(join(tmpdir(), "sous-repos-"));
-  for (const repo of ["a", "b"]) {
+  for (const repo of ["a", "b", "bare"]) {
     mkdirSync(join(dir, repo, ".sous"), { recursive: true });
     writeFileSync(join(dir, repo, ".sous", "sous.yaml"), "");
+    if (repo !== "bare") writeFileSync(join(dir, repo, ".sous", "sous"), "#!/bin/sh\n");
   }
   mkdirSync(join(dir, "c"));
   const root = join(dir, "home", ".sous");
@@ -62,6 +63,11 @@ describe("sous validate with repos", () => {
       ["settings", `repos.c: ${join(dir, "c")} holds no .sous/sous.yaml`],
       ["settings", `repos.gone: ${join(dir, "gone")} holds no .sous/sous.yaml`],
     ]);
+  });
+
+  it("reports a listed project without its .sous/sous, which would leave sous watch no engine of its own to run it on", () => {
+    const { dir, root } = workspace("repos: { a: ../a, bare: ../bare }\n");
+    expect(validateProject(root).errors.map((e) => [e.rule, e.message])).toEqual([["settings", `repos.bare: ${join(dir, "bare")} holds no .sous/sous to run it on its own engine; sous watch starts nothing there`]]);
   });
 
   it("reports a repos entry that is not a string", () => {

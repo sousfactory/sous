@@ -55,13 +55,24 @@ export const openProject = (root: string, isAlive: (pid: number) => boolean = is
 /** A repository of the home project's `repos:` list, read as a project of its own; `github` asks `gh` in its checkout. */
 export type RepoSource = RepoTag & { project: Project; github?: GitHubLookup };
 
+/** A listed repository whose settings this engine cannot load, a newer one say: listed as one error row, read for nothing else. */
+export type BrokenRepo = RepoTag & { error: string };
+
+export type ListedRepo = RepoSource | BrokenRepo;
+
+export const isOpen = (repo: ListedRepo): repo is RepoSource => "project" in repo;
+
 /** The repositories `repos:` lists, each opened from its own `.sous/`; `undefined` without `repos:`. */
-export const openRepos = (home: Project): RepoSource[] | undefined =>
-  repoEntries(home.root, loadSettings(join(home.root, SETTINGS_FILE)))?.map(({ name, path }) => ({
-    name,
-    folder: basename(path),
-    project: openProject(join(path, PROJECT_DIR), home.isAlive),
-  }));
+export const openRepos = (home: Project): ListedRepo[] | undefined =>
+  repoEntries(home.root, loadSettings(join(home.root, SETTINGS_FILE)))?.map(({ name, path }): ListedRepo => {
+    const folder = basename(path);
+    const root = join(path, PROJECT_DIR);
+    try {
+      return { name, folder, project: openProject(root, home.isAlive) };
+    } catch (error) {
+      return { name, folder, error: withoutPath(message(error), join(root, SETTINGS_FILE)) };
+    }
+  });
 
 /** The locks of the live `sous run`s, one per issue; a stale or unreadable lock is no live run. */
 export const liveLocks = (project: Project): Promise<LockInfo[]> => readLiveLocks(project.root, project.isAlive);
@@ -164,25 +175,32 @@ export const listRows = async (project: Project): Promise<RunRow[]> => {
   return newestFirst(await Promise.all(runIssues(project).map((issue) => readRow(project, issue, locks))));
 };
 
-/** Every run folder of every listed repository in one list, most recently written first, each row tagged with its repository. */
-export const listRepoRows = async (repos: readonly RepoSource[]): Promise<RunRow[]> => {
+/**
+ * Every run folder of every listed repository in one list, most recently
+ * written first, each row tagged with its repository; a repository whose
+ * settings did not load is one error row at the top.
+ */
+export const listRepoRows = async (repos: readonly ListedRepo[]): Promise<RunRow[]> => {
   const lists = await Promise.all(
-    repos.map(async ({ name, folder, project }) => (await listRows(project)).map((row): RunRow => ({ ...row, repo: { name, folder } }))),
+    repos.filter(isOpen).map(async ({ name, folder, project }) => (await listRows(project)).map((row): RunRow => ({ ...row, repo: { name, folder } }))),
   );
-  return newestFirst(lists.flat());
+  const now = new Date().toISOString();
+  const broken = repos.filter((r): r is BrokenRepo => !isOpen(r)).map(({ name, folder, error }): RunRow => ({ kind: "error", settings: true, updatedAt: now, issue: "", error, repo: { name, folder } }));
+  return [...broken, ...newestFirst(lists.flat())];
 };
 
 /** The live locks of every listed repository, each naming its repository. */
-export const repoLiveLocks = async (repos: readonly RepoSource[]): Promise<(LockInfo & { repo: string })[]> =>
-  (await Promise.all(repos.map(async ({ name, project }) => (await liveLocks(project)).map((lock) => ({ ...lock, repo: name }))))).flat();
+export const repoLiveLocks = async (repos: readonly ListedRepo[]): Promise<(LockInfo & { repo: string })[]> =>
+  (await Promise.all(repos.filter(isOpen).map(async ({ name, project }) => (await liveLocks(project)).map((lock) => ({ ...lock, repo: name }))))).flat();
 
 /**
  * The project a request about `issue` reads: the home project without
  * `repos:`; with it, the repository `repo` names, or else the first one
  * holding a run folder for the issue. `undefined` when none fits.
  */
-export const projectFor = (home: Project, repos: readonly RepoSource[] | undefined, issue: string, repo: string | undefined): Project | undefined => {
-  if (repos === undefined) return home;
+export const projectFor = (home: Project, listed: readonly ListedRepo[] | undefined, issue: string, repo: string | undefined): Project | undefined => {
+  if (listed === undefined) return home;
+  const repos = listed.filter(isOpen);
   if (repo !== undefined) return repos.find((r) => r.name === repo)?.project;
   return repos.find((r) => runIssues(r.project).includes(issue))?.project;
 };

@@ -3,7 +3,7 @@
  * are retried with a short backoff so a flaky connection does not fail a
  * long run; anything else throws with stderr.
  */
-import { matchesList, parseBlockedBy, QUALIFIED_REF, stateLabels, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { byId, matchesList, parseBlockedBy, QUALIFIED_REF, stateLabels, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { exec as defaultExec, ExecError, must, type Exec } from "./exec.js";
 
 export type GitHubOptions = {
@@ -169,9 +169,16 @@ export const createGitHubTracker = (options: GitHubOptions = {}): Tracker => {
     comment,
     isClosed: async (id) => (await stateOf(id)) === "closed",
     async list({ labels }) {
-      // gh ANDs repeated --label flags; the filter keeps that contract whatever gh returns.
-      const out = await gh(["issue", "list", "--state", "open", ...labels.flatMap((l) => ["--label", l]), "--limit", "1000", "--json", ISSUE_FIELDS]);
-      return (JSON.parse(out) as RawIssue[]).map(toIssue).filter((i) => matchesList(i, labels));
+      // The REST endpoint pages to the end where `gh issue list` stops at its --limit. Its `labels` ANDs a
+      // comma-separated list, so a label with a comma in it is matched here only; pull requests are left out.
+      const asked = labels.filter((l) => !l.includes(","));
+      const query = `state=open&per_page=100${asked.length > 0 ? `&labels=${encodeURIComponent(asked.join(","))}` : ""}`;
+      const out = await gh(["api", "--paginate", `repos/{owner}/{repo}/issues?${query}`, "--jq", ".[] | select(.pull_request == null)"]);
+      const rows = out.split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line) as RawIssue);
+      return rows
+        .map(toIssue)
+        .filter((i) => matchesList(i, labels))
+        .sort(byId);
     },
   };
 };

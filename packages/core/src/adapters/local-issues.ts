@@ -7,7 +7,7 @@
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SousError } from "../exec/errors.js";
-import { isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { byId, isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { safeId } from "../session/paths.js";
 
 export const issueFile = (dir: string, id: string): string => join(dir, `${safeId(id)}.json`);
@@ -83,7 +83,7 @@ export const createLocalTracker = ({ dir, labelPrefix = "sous", clock = () => ne
     },
     async list({ labels }) {
       const issues = (await all()).map(toIssue).filter((i) => matchesList(i, labels));
-      return issues.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+      return issues.sort(byId);
     },
   };
 };

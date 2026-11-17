@@ -598,7 +598,7 @@ engine talks to it through one port, `Tracker`, which steps reach as
 | `setStateLabel(id, label)` | Add `label` and remove every other label with the same `<prefix>:`. |
 | `comment(id, body)` | A comment. |
 | `isClosed(id)` | Whether the issue is closed. |
-| `list({ labels })` | The open issues carrying every label in `labels`, as `getIssue` returns them. |
+| `list({ labels })` | Every open issue carrying every label in `labels`, as `getIssue` returns them, in ascending numeric id order (`9` before `10`, `bd-9` before `bd-10`). |
 
 `claim`, `block` and `close` are the run's lifecycle
 ([chapter 11](#11-run-record-lifecycle-resume)); `setStateLabel` and
@@ -608,7 +608,8 @@ engine talks to it through one port, `Tracker`, which steps reach as
 ### Built-in trackers
 
 **`github`** (default). Issues are read with `gh issue view` and listed
-with `gh issue list --state open --label …`, children are
+with `gh api --paginate` over the open issues with the labels, every page,
+pull requests left out; children are
 native sub-issues ordered by number, blockers are the issue numbers under
 a `## Blocked by` heading in the body (as `/sous-plan` writes them); a
 line `owner/repo#n` names an issue of another repository, which `gh` is
@@ -1255,15 +1256,17 @@ resumes from its session. A `sous:running` issue without a lock is left
 alone (its run may be on another machine); add `sous:ready` to resume an
 interrupted one. When that rerun crashes as well,
 the issue is set `sous:blocked` with a comment naming its log folder,
-its stale lock is removed, and this daemon does not run it again; a
-human hands it back with `sous:ready` to a new daemon or runs it by
-hand. A ready issue whose lock names a dead pid has its lock removed
+its stale lock is removed, and the daemon leaves it alone until a
+human hands it back with `sous:ready` (the same daemon then runs it, with
+its one rerun after a crash back) or runs it by hand. A ready issue whose lock names a dead pid has its lock removed
 before it starts.
 
-**Stopping it.** Ctrl-C or SIGTERM is forwarded to the run in progress,
-which records the interrupt and stays resumable (by hand, or by the
-next daemon once the issue carries `sous:ready`); the daemon then exits
-130 / 143. One `sous watch` per project: a second refuses to start and
+**Stopping it.** Ctrl-C or SIGTERM is forwarded to the process group of
+the run in progress (the `.sous/sous` wrapper, the run under it and its
+agents, as a Ctrl-C reaches a foreground `sous run`), and no run starts
+after it, wherever the pass was. The run records the interrupt and
+stays resumable (by hand, or by the next daemon once the issue carries
+`sous:ready`); the daemon then exits 130 / 143. One `sous watch` per project: a second refuses to start and
 names the live one's pid (`.sous/locks/watch.pid`). The merge step pushes
 the result when its flow entry sets `push: origin`.
 
@@ -1288,10 +1291,13 @@ repos:                 # name: checkout path, relative to this repository; absol
 
 Each listed repository keeps its own `.sous/` (`sous init` there): its
 flows, its tracker, its engine version. `sous validate` in the home
-repository reports a path without a `.sous/sous.yaml`. A pass asks every
-listed repository's tracker for ready issues and starts a run as that
-repository's `.sous/sous run <flow> <issue>`, in that repository: one run
-per repository at a time, repositories in parallel. The home repository
+repository reports a path without a `.sous/sous.yaml`, and one whose
+`.sous/` has no `sous` wrapper. A pass asks every listed repository's
+tracker for ready issues and starts a run as that repository's
+`.sous/sous run <flow> <issue>`, in that repository: one run per
+repository at a time, repositories in parallel. A run never starts on the
+home repository's engine: an entry without `.sous/sous` is reported once
+and runs nothing, and the other entries are served. The home repository
 runs nothing unless the list names it.
 
 **The repo label.** With `repos:`, an issue runs where its `repo:<name>`
@@ -1313,8 +1319,10 @@ every listed repository in one list, the repository's folder in a column,
 and opens each run as usual; a step change in any of them updates the
 open page. It reads each repository's `runs/` and `logs/` with its own
 engine version, so a run recorded on another session schema version is
-listed with the fields that read, marked unreadable with its version.
-Without `repos:` it shows the current repository alone.
+listed with the fields that read, marked unreadable with its version. A
+listed repository whose `sous.yaml` this engine cannot read, a key a
+newer engine added say, is one error row naming the problem. Without
+`repos:` it shows the current repository alone.
 
 **Check:** `./sous validate` in the home repository, then
 `./sous watch --once`: each started run's line names its repository.

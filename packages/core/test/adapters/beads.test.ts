@@ -86,6 +86,12 @@ describe("beads adapter", () => {
     expect(listed[0]).toMatchObject({ labels: ["sous:ready", "type:task", `bead:${A}`], state: "open", title: `Title of ${A}` });
   });
 
+  it("lists beads in ascending id order, numbers compared as numbers", async () => {
+    const rows = ["proj-a.10", "proj-a.9", "proj-a.1"].map((id) => bead(id, { issue_type: "task", labels: ["sous:ready"] }));
+    const { beads } = bdOf({}, (args) => (args[0] === "list" ? ok(JSON.stringify(rows)) : undefined));
+    expect((await beads.list({ labels: ["sous:ready"] })).map((i) => i.id)).toEqual(["proj-a.1", "proj-a.9", "proj-a.10"]);
+  });
+
   it("claims under the git user and the run's branch, blocks with the label and a comment, closes with the reason", async () => {
     const { beads, calls } = bdOf({ [A]: bead(A) }, (args) => (args[0] === "update" || args[0] === "--actor" || args[0] === "close" ? ok("") : undefined));
     await beads.claim(A, { branch: "sous/a-1" });

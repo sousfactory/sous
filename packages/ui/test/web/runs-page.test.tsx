@@ -60,6 +60,17 @@ describe("RunsPage", () => {
     expect(foreign.textContent).toContain("70: unreadable, session schema version 4; this sous ui reads 9");
   });
 
+  it("lists a repository whose sous.yaml this sous ui cannot read as one row naming it and why", () => {
+    const repos: RunsResponse = {
+      ...data,
+      rows: [{ kind: "error", settings: true, updatedAt: "2026-10-04T12:00:00.000Z", issue: "", error: "/ must NOT have additional properties (fromTheFuture)", repo: { name: "api", folder: "api" } }],
+    };
+    render(<RunsPage data={repos} error={undefined} flow={undefined} />);
+    const row = screen.getByTestId("run-row-error");
+    expect(row.textContent).toContain("Repository api");
+    expect(row.textContent).toContain("this sous ui cannot read its .sous/sous.yaml: / must NOT have additional properties (fromTheFuture)");
+  });
+
   it("has no repository column without repos:", () => {
     render(<RunsPage data={data} error={undefined} flow={undefined} />);
     expect(screen.queryByTestId("run-repo")).toBeNull();

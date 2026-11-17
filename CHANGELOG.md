@@ -7,6 +7,13 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ## Unreleased
 
+### Breaking
+
+- **A project tracker module implements `list`.** `sous validate` and
+  `sous run` report a module without it as lacking `list`; one that has
+  no way to search returns the matching issues it knows of, or `[]`, in
+  ascending numeric id order, as the `Tracker` port now says.
+
 ### Changed
 
 - **`sous run` prints what a code step did.** After a module step's
@@ -23,19 +30,14 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   its report offers that label beside `./sous run`. The tracker sheets
   gain **set the repo label**, and `templates/child.md` names the label.
 
-### Breaking
-
-- **A project tracker module implements `list`.** `sous validate` and
-  `sous run` report a module without it as lacking `list`; one that has
-  no way to search returns the matching issues it knows of, or `[]`.
-
 ### Added
 
 - **`tracker.list({ labels })`: the open issues carrying every named
-  label.** The GitHub tracker asks `gh issue list`, beads asks `bd list`,
-  the local tracker scans its folder, and `fakeTracker` in
-  `sous-factory/testing` answers from its seeded issues. Closed issues and
-  issues carrying only some of the labels are left out.
+  label, in ascending numeric id order.** The GitHub tracker pages through
+  every matching issue with `gh api --paginate` (no cap; pull requests
+  left out), beads asks `bd list`, the local tracker scans its folder, and
+  `fakeTracker` in `sous-factory/testing` answers from its seeded issues.
+  Closed issues and issues carrying only some of the labels are left out.
 - **The starter `merge` step pushes what it merged, when asked.** With
   `push: origin` on its entry it fast-forwards the base branch from
   `origin` before the freshness check (a moved remote base routes back to
@@ -54,9 +56,13 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   label exactly one flow accepts, one run at a time, counting a run
   started by hand. A blocked issue runs again once it also carries ready;
   a `<prefix>:running` issue with a stale lock is rerun once, and blocked
-  with a comment naming its log folder when the rerun crashes too.
-  `--once` makes one pass and waits for its run; Ctrl-C is forwarded to
-  the run, which records the interrupt. One `sous watch` per project
+  with a comment naming its log folder when the rerun crashes too; setting
+  ready on it hands it back to the same daemon. A ready issue whose lock
+  names a dead pid has the lock removed before it starts. `--once` makes
+  one pass and waits for its run; Ctrl-C or SIGTERM goes to the run's
+  whole process group (the `.sous/sous` wrapper and the run under it),
+  which records the interrupt, and once a signal has arrived no run
+  starts, wherever the pass was. One `sous watch` per project
   (`.sous/locks/watch.pid`); skips are reported once, a quiet pass prints
   nothing. Manual how-to 20, "Run as an automated loop".
 - **A blocker in another GitHub repository.** A `## Blocked by` line
@@ -66,9 +72,11 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 - **A home repository serves several repositories.** `repos:` in its
   `sous.yaml` maps names to checkout paths (relative to the repository,
   absolute or `~`; a plain list of paths is named by folder), each with
-  its own `.sous/`; `sous validate` reports a path without one. `sous
-  watch` there asks each listed repository's tracker and starts its own
-  `.sous/sous run <flow> <issue>` in it, one run per repository,
+  its own `.sous/`; `sous validate` reports a path without one, and one
+  whose `.sous/` has no `sous` wrapper. `sous watch` there asks each
+  listed repository's tracker and starts its own `.sous/sous run <flow>
+  <issue>` in it, never on the home repository's engine: an entry without
+  `.sous/sous` is reported once and runs nothing. One run per repository,
   repositories in parallel. An issue runs in the entry its `repo:<name>`
   label names; one without the label or naming no entry is reported once
   and skipped. Without `repos:`, `sous watch` skips an issue labelled for
@@ -84,7 +92,19 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   repository reaches the open page live. A run record on another session
   schema version is listed with its issue, title, flow and branch where
   they read, marked unreadable with its version, and the rest of the page
-  renders. Without `repos:` the UI is unchanged.
+  renders. A listed repository whose `sous.yaml` the home engine cannot
+  read (a newer engine's key, say) is one error row naming the problem,
+  and the server starts. Without `repos:` the UI is unchanged.
+- **`sous ui` refuses to start on a `repos:` problem.** A listed path
+  without a `.sous/sous.yaml`, or two entries under one name, is printed
+  and the UI exits 1, as `sous watch` does.
+- **`name:` in `sous.yaml`.** The repository's name in `repo:<name>`
+  labels; unset, the repository part of the `origin` remote, else the
+  folder.
+- **`sous-factory/read` exports `repoEntries`, `repoProblems` and
+  `RepoEntry`.** The listed repositories of a home project with absolute
+  paths, and what `sous validate` says about them, for tools that read
+  a project beside the engine.
 
 ## 0.8.0
 

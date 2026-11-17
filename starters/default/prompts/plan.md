@@ -132,7 +132,8 @@ Look for an existing spec in the target: `ls -d specs/<ISSUE>-*/ 2>/dev/null`.
 - Where a vendored skill names another skill by slash command, use the
   vendored copy under `.sous/skills/`. The issue, its children and the spec
   file are the outputs; the kinds are the only classification you ever set.
-  Never set a state label: the run phase owns the `sous:*` labels.
+  Never set a state label: the run phase owns the state labels apart from
+  `sous:ready`, which a human sets.
   Besides the kinds, the one label you set is `repo:<name>`, at GO.
 - Never set `<labelPrefix>:ready` (`sous:ready`), the label `sous watch`
   starts work from: a human sets it, by hand or on the tracker's web

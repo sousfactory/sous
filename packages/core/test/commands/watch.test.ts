@@ -72,6 +72,31 @@ describe("spawnChild", () => {
     expect(await child.exited).toMatchObject({ code: 0 });
     expect(lines).toEqual(["root=unset", "other=kept"]);
   });
+
+  it("delivers the forwarded signal to the process the wrapper started, not only to the wrapper", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sous-signal-"));
+    const record = join(dir, "interrupted");
+    const run = `process.on("SIGINT", () => { require("node:fs").writeFileSync(${JSON.stringify(record)}, "SIGINT"); process.exit(130); }); console.log("ready"); setInterval(() => undefined, 1000);`;
+    // Like `.sous/sous`: a shell that starts node without exec, so node is the wrapper's child.
+    await writeFile(join(dir, "wrapper.sh"), `#!/bin/sh\n"${process.execPath}" -e '${run}'\necho "after"\n`);
+    let started!: () => void;
+    const isReady = new Promise<void>((resolve) => (started = resolve));
+    const child = spawnChild("/bin/sh", [join(dir, "wrapper.sh")], { cwd: dir, onOutput: (line) => (line === "ready" ? started() : undefined) });
+    try {
+      await isReady;
+      child.kill("SIGINT");
+      await Promise.race([child.exited, new Promise((resolve) => setTimeout(resolve, 3000))]);
+      expect(existsSync(record)).toBe(true);
+    } finally {
+      // Without delivery the node grandchild would outlive the test.
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("sous watch", () => {
@@ -238,9 +263,34 @@ describe("sous watch", () => {
     expect(tracker.comments).toEqual([{ issue: "7", body: expect.stringContaining(join(".sous", "logs", "7")) }]);
     expect(out.at(-1)).toBe("#7: crashed again; set sous:blocked, logs in .sous/logs/7");
 
-    tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:running", "sous:ready"] }));
+  });
+
+  it("runs an issue it gave up on again in the same daemon once a human sets sous:ready, with its one rerun back", async () => {
+    seed(issue({ id: "7", labels: ["type:task", "sous:running"] }));
+    await holdLock("7", 999999);
+    const watcher = createWatcher(deps());
+    await watcher.pass();
+    spawned.children[0]?.exit({ code: 1, stderr: "boom\n" });
+    await watcher.idle();
+    expect(tracker.issues.get("7")?.labels).toEqual(["type:task", "sous:blocked"]);
     await watcher.pass();
     expect(spawned.children).toHaveLength(1);
+
+    tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:blocked", "sous:ready"] }));
+    await watcher.pass();
+    expect(spawned.children.map((c) => c.args)).toEqual([
+      ["run", "task", "7"],
+      ["run", "task", "7"],
+    ]);
+
+    // The handed-back run crashes: the issue is rerun once, as a new daemon would.
+    tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:running"] }));
+    await holdLock("7", 999997);
+    spawned.children[1]?.exit({ code: 1 });
+    await watcher.idle();
+    await watcher.pass();
+    expect(spawned.children).toHaveLength(3);
+    expect(out.at(-1)).toBe("#7: removed the stale lock of pid 999997; rerunning sous run task 7 after a crash (pid 1002)");
   });
 
   it("removes the stale lock a second crash left, so the hand-back with ready starts in a new daemon", async () => {
@@ -344,6 +394,42 @@ describe("sous watch", () => {
     await handling;
     expect(await command).toBe(143);
     expect(existsSync(watchLockPath(root))).toBe(false);
+  });
+
+  it("starts no run after a signal that lands while the pass waits on the tracker, and exits with the signal's code", async () => {
+    seed(ready("7"));
+    let handler: SignalHandler | undefined;
+    let listing!: () => void;
+    const answered = new Promise<void>((resolve) => (listing = resolve));
+    let asked = false;
+    const list = tracker.list.bind(tracker);
+    tracker.list = async (query) => {
+      asked = true;
+      await answered;
+      return list(query);
+    };
+    const command = watchCommand(["--interval", "60"], deps({ onSignal: (h) => ((handler = h), () => undefined), sleep: () => new Promise(() => undefined) }));
+    await vi.waitFor(() => expect(asked).toBe(true));
+    await handler!("SIGINT");
+    listing();
+    expect(await command).toBe(130);
+    expect(spawned.children).toEqual([]);
+  });
+
+  it("starts no run after a signal that lands while the pass waits on the blockers", async () => {
+    seed(ready("7"));
+    let handler: SignalHandler | undefined;
+    let asking!: () => void;
+    tracker.blockers = async () => {
+      await new Promise<void>((resolve) => (asking = resolve));
+      return [];
+    };
+    const command = watchCommand(["--interval", "60"], deps({ onSignal: (h) => ((handler = h), () => undefined), sleep: () => new Promise(() => undefined) }));
+    await vi.waitFor(() => expect(asking).toBeDefined());
+    await handler!("SIGTERM");
+    asking();
+    expect(await command).toBe(143);
+    expect(spawned.children).toEqual([]);
   });
 
   it("refuses a second watch on the project, naming the live one, and is not listed as a run", async () => {
@@ -485,6 +571,26 @@ describe("sous watch", () => {
       expect(built.listed).toBe(true);
       expect(built.repos.map(({ name, root, repoRoot, sous }) => ({ name, root, repoRoot, sous }))).toEqual([{ name: "a", root: a.root, repoRoot: a.repoRoot, sous: [join(a.root, "sous")] }]);
       expect(await built.repos[0]?.tracker.list({ labels: ["sous:ready"] })).toEqual([]);
+    });
+
+    it("sets an entry without .sous/sous aside, reports it once and serves the others, never on the engine's own CLI", async () => {
+      const home = join(repoRoot, ".sous");
+      const a = await listedRepo("a");
+      const bare = await listedRepo("bare");
+      for (const listed of [a, bare]) await writeFile(join(listed.root, "sous.yaml"), "tracker: local\ntrackerOptions: { dir: issues }\n");
+      await writeFile(join(a.root, "sous"), "#!/bin/sh\n");
+      await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot}, bare: ${bare.repoRoot} }\n`);
+      const built = await watchReposOf(home, "/engine/cli.js");
+      expect(built.repos.map((r) => r.name)).toEqual(["a"]);
+      expect(built.unrunnable).toEqual([{ name: "bare", reason: `${bare.repoRoot} holds no .sous/sous to run it on its own engine; sous watch starts nothing there` }]);
+
+      a.tracker.issues.set("3", ready("3", ["type:task", "repo:a"]));
+      a.tracker.issues.set("4", ready("4", ["type:task", "repo:bare"]));
+      const watcher = createWatcher(deps({ repos: [a], unrunnable: built.unrunnable, listed: true }));
+      await watcher.pass();
+      await watcher.pass();
+      expect(starts()).toEqual([{ command: join(a.root, "sous"), args: ["run", "task", "3"], cwd: a.repoRoot }]);
+      expect(out).toEqual([`bare skipped: ${bare.repoRoot} holds no .sous/sous to run it on its own engine; sous watch starts nothing there`, "a #3: started sous run task 3 (pid 1000)"]);
     });
 
     it("refuses to build an entry whose path holds no project", async () => {

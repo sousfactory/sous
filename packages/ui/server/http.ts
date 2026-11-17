@@ -11,7 +11,8 @@
  * With `repos:` in the home project the list holds the runs of every listed
  * repository, each row tagged with it, and the run, log and github routes
  * take `?repo=<name>`; without it they read the first repository holding
- * the issue.
+ * the issue. A listed repository whose settings did not load is one error
+ * row in the list and serves nothing else.
  *
  * Anything else is the built app from `dist/`; an unknown path gets its
  * `index.html`, since the app routes in the browser.
@@ -22,14 +23,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { basename, extname, join, normalize, sep } from "node:path";
 import { repoRootOf } from "sous-factory/read";
 import type { GitHubLookup } from "./github.js";
-import { flowNames, listRepoRows, listRows, liveLocks, projectFor, readFlow, readLog, readRun, repoLiveLocks, type Project, type RepoSource } from "./runs.js";
+import { flowNames, isOpen, listRepoRows, listRows, liveLocks, projectFor, readFlow, readLog, readRun, repoLiveLocks, type ListedRepo, type Project } from "./runs.js";
 import type { Feed } from "./watch.js";
 
 export type ServerOptions = {
   /** The home project: the header's repository, and the only one read without `repos`. */
   project: Project;
-  /** The repositories of `repos:`, read in place of the home project's own runs. */
-  repos?: readonly RepoSource[] | undefined;
+  /** The repositories of `repos:`, read in place of the home project's own runs; one that did not open is an error row. */
+  repos?: readonly ListedRepo[] | undefined;
   feed: Feed;
   distDir: string;
   github: GitHubLookup;
@@ -91,7 +92,7 @@ const handle = async (req: IncomingMessage, res: ServerResponse, options: Server
   if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { error: "method not allowed" });
   if (path === "/api/events") return events(req, res, options.feed, options.heartbeatMs ?? 15_000);
   const { repos } = options;
-  const projects = repos === undefined ? [options.project] : repos.map((r) => r.project);
+  const projects = repos === undefined ? [options.project] : repos.filter(isOpen).map((r) => r.project);
   if (path === "/api/runs") {
     const [rows, live] = await Promise.all(repos === undefined ? [listRows(options.project), liveLocks(options.project)] : [listRepoRows(repos), repoLiveLocks(repos)]);
     const flows = [...new Set(projects.flatMap(flowNames))].sort();
@@ -123,7 +124,7 @@ const handle = async (req: IncomingMessage, res: ServerResponse, options: Server
     const read = project === undefined ? ({ kind: "missing" } as const) : await readRun(project, issue);
     if (read.kind === "missing") return missing(issue);
     if (read.kind === "error") return json(res, 422, { error: read.error });
-    const lookup = repos?.find((r) => r.project === project)?.github ?? options.github;
+    const lookup = repos?.filter(isOpen).find((r) => r.project === project)?.github ?? options.github;
     return json(res, 200, await lookup(read.view.summary.squash));
   }
   const run = /^\/api\/runs\/([^/]+)$/.exec(path);

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { loadSettings, repoProblems, repoRootOf, SETTINGS_FILE } from "sous-factory/read";
 import { createGitHubLookup, ghIn } from "./github.js";
 import { createUiServer } from "./http.js";
-import { liveLocks, openProject, openRepos, type Project, type RepoSource } from "./runs.js";
+import { isOpen, liveLocks, openProject, openRepos, type ListedRepo, type Project } from "./runs.js";
 import { createFeed, mergeFeeds, type Feed } from "./watch.js";
 
 export const HOST = "127.0.0.1";
@@ -90,8 +90,10 @@ export const uiMain = async (args: string[], root: string): Promise<number> => {
     for (const problem of problems) console.error(`sous ui: ${problem}`);
     return 1;
   }
-  const repos = openRepos(project)?.map((r): RepoSource => ({ ...r, github: createGitHubLookup(ghIn(repoRootOf(r.project.root))) }));
-  const feed = repos === undefined ? feedOf(project) : mergeFeeds(repos.map((r) => feedOf(r.project, r.name)));
+  const repos = openRepos(project)?.map((r): ListedRepo => (isOpen(r) ? { ...r, github: createGitHubLookup(ghIn(repoRootOf(r.project.root))) } : r));
+  // A repository whose settings did not load is an error row in the list; the others serve as usual.
+  for (const r of repos ?? []) if (!isOpen(r)) console.error(`sous ui: repos.${r.name}: ${r.error}`);
+  const feed = repos === undefined ? feedOf(project) : mergeFeeds(repos.filter(isOpen).map((r) => feedOf(r.project, r.name)));
   const server = createUiServer({ project, repos, feed, distDir: DIST_DIR, github: createGitHubLookup(ghIn(repoRootOf(root))) });
   const port = resolvePort(parsed, project.uiPort);
   const failure = await listenOn(server, port);
