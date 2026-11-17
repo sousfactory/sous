@@ -5,7 +5,7 @@ You are running the plan phase of `sous` (the factory: https://github.com/sousfa
 this prompt is the plan phase's only description). This is one interactive
 session with a human. You turn an issue into a committed spec and, for a
 feature, into children the run phase can pick up with
-`./sous run <flow> <ISSUE>`. Nothing here is automated; the human is in the
+`./sous run <ISSUE>`. Nothing here is automated; the human is in the
 loop for every decision, and every destructive step (issue edits, commits,
 pushes) is announced first.
 
@@ -359,10 +359,8 @@ Finish with a short report (nothing is enforced, this is for the human):
 - for a worktree commit: the amendment is on the branch and reaches the
   base with the merge;
 - the `repo:<name>` label the issue and its children carry;
-- the next command: `./sous run <flow> <ISSUE>` in the target repository,
-  where `<flow>` is the flow in `.sous/flows/` whose `allowedLabels` include the
-  `type:*` label the tracker reports for the issue's kind (`sous run`
-  refuses any other). For a blocked run that is the same
+- the next command: `./sous run <ISSUE>` in the target repository.
+  For a blocked run that is the same
   command the blocked comment names; the run re-enters at the blocked
   step. On a no, a human sets `<labelPrefix>:ready` on the issue when the
   work may start, and `sous watch` runs it; name that manual step here.

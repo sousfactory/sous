@@ -18,7 +18,8 @@ export { PROJECT_DIR, projectRoot, repoRootOf } from "./root.js";
 
 const USAGE = `usage:
   sous init [--starter <dir>] [--force] copy a starter into .sous/, install it, add the /sous-plan skill
-  sous run <flow> <issue> [--restart]   validate, then start or resume a run
+  sous run <issue> [--flow <name>] [--restart]
+                                        validate, then start or resume a run; the flow from the issue's labels unless named
   sous watch [--once] [--interval <s>]  start ready issues unattended, one run per repository at a time
   sous status <issue>                   session facts and the timeline
   sous graph <flow>                     the flow as Mermaid

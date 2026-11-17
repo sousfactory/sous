@@ -149,7 +149,7 @@ init: still to do by hand:
   2. .sous/sous.yaml: tracker, baseBranch, branch template, lifecycle
   3. .sous/flows/*.yaml: agent models and allowedLabels; create the labels on the tracker
   4. .sous/prompts/plan.md: follow its ADAPT notes; it speaks to the tracker through .sous/trackers/<tracker>.md and writes the shapes in .sous/templates/
-  5. cd .sous && ./sous validate && npx vitest run; then ./sous run bench <issue>
+  5. cd .sous && ./sous validate && npx vitest run; then ./sous run <issue> --flow bench
 ```
 
 1. **`steps/verify/eval.ts`.** `CHECKS` is the list of commands that
@@ -218,7 +218,7 @@ against your `.sous/` when you want to pick up starter changes.
 ```
 cd .sous
 ./sous validate                 # every flow, every step, sous.yaml
-./sous run bench <issue id>     # hello-world (a module), tell-a-joke (an agent)
+./sous run <issue id> --flow bench   # hello-world (a module), tell-a-joke (an agent)
 ./sous status <issue id>
 ```
 
@@ -229,7 +229,7 @@ costs one short model call.
 Then a real task. Label an issue `type:task`, and:
 
 ```
-./sous run task <issue id>
+./sous run <issue id> --flow task
 ```
 
 What happens, in order: the issue is claimed (`sous:running` on GitHub), a
@@ -261,7 +261,7 @@ home repository it lists the runs of every repository it serves
 
 **When a run stops `blocked`**, the issue gets a comment with the step,
 the eval's last log and the worktree path. Open the worktree, fix what the
-log says, and run the same `./sous run task <id>` again: the run re-enters
+log says, and run `./sous run <id>` again: the run re-enters
 the step at its eval, so a manual fix moves it on without an agent call.
 `--restart` throws the run record, worktree and branch away and starts
 over.
@@ -298,8 +298,8 @@ capped per sub-issue.
    feature files sub-issues with acceptance criteria and blockers. Without
    an id it creates the issue first. Issues are filed as you approve them;
    the spec is committed only after an explicit GO.
-2. `./sous run <flow> <id>`: the factory runs the issue through `<flow>`.
-   A flow's `allowedLabels` refuses issues it is not meant for.
+2. `./sous run <id>`: the factory runs the issue through the flow its
+   labels pick ([6. Flows](#6-flows)).
 
 ## 5. Steps
 
@@ -410,10 +410,26 @@ steps:
         else: true
 ```
 
-`<flowsDir>/<flow>.yaml` is run as `sous run <flow> <issue>`. With
-`allowedLabels`, `sous run` refuses an issue that carries none of them
-(exit 2), so an issue cannot go through a flow meant for another kind of
-issue. Without it, any issue is accepted.
+`<flowsDir>/<flow>.yaml` is a flow named `<flow>`. `allowedLabels`
+decides which issues go through it:
+
+```
+./sous run 42 --flow task     # the flow named
+./sous run 42                 # the flow the labels pick
+```
+
+**Which flow an issue goes through.** Without `--flow`, `sous run <issue>`
+picks the one flow whose `allowedLabels` include one of the issue's
+labels (in the starter, its `type:*` label). Only flows that declare
+`allowedLabels` take part. No such flow, or several, is an error (exit 2)
+that names the issue's labels, or the flows and whether the issue carries
+several `type:*` labels or several flows declare the same one; nothing
+starts. `sous watch` picks with the same rule and skips the issue with
+the same message. A flow without `allowedLabels`, such as `bench`, is
+never picked: it runs only when named, `sous run <issue> --flow bench`,
+and then takes any issue. A flow named with `--flow` that declares
+`allowedLabels` refuses an issue carrying none of them (exit 2), so an
+issue cannot go through a flow meant for another kind of issue.
 
 ### 6.1 Entry fields
 
@@ -622,7 +638,7 @@ on every call (`-R owner/name`, and the path of each `gh api` endpoint),
 for a repository whose issues live in another one
 ([how-to 21](#21-multi-repo-setup)).
 
-**`beads`** (`bd`). `sous run <flow> <bead-id>`. Issues are read live with
+**`beads`** (`bd`). `sous run <bead-id>`. Issues are read live with
 `bd show --json` and listed with `bd list --label …` (the `type:*` and
 `bead:*` labels sous adds are matched after bd answers); an epic's beads are its children, by priority then age;
 `blocks` edges are the blockers; bd's own labels are kept and a
@@ -785,7 +801,7 @@ changes nothing). Everything else on the tracker, such as the
 
 ```
 sous init [--starter <dir>] [--force] # copy a starter into .sous/, npm install, add the /sous-plan skill, print the checklist
-sous run <flow> <issue> [--restart]   # validate, then start or continue; <issue> is the tracker's id (96, #96, a bead id)
+sous run <issue> [--flow <name>] [--restart]  # validate, then start or continue; <issue> is the tracker's id (96, #96, a bead id)
 sous status <issue>                   # session facts and the timeline
 sous graph <flow>                     # Mermaid diagram from the YAML
 sous validate                         # sous.yaml, every flow and step, the tracker module
@@ -793,11 +809,12 @@ sous watch [--once] [--interval s]    # start ready issues unattended, one run p
 sous ui [--port n]                    # the run viewer on 127.0.0.1:4680, or the uiPort of sous.yaml; every listed repository's runs over repos: (how-to 21)
 ```
 
-The starter's `.sous/sous` wrapper runs the installed `sous` from any
+`sous run` takes the flow the issue's labels pick ([6. Flows](#6-flows))
+unless `--flow` names one. The starter's `.sous/sous` wrapper runs the installed `sous` from any
 directory. The project root is `SOUS_ROOT`, else the cwd when it is named
 `.sous`, else `<cwd>/.sous`; the repository is its parent. Exit codes: 2
-bad arguments, validation errors or an issue the flow's `allowedLabels`
-refuse; 1 blocked, crashed, lock held or flow mismatch; 0 done; 130/143
+bad arguments, validation errors, an issue no flow or several flows
+accept, or an issue the named flow's `allowedLabels` refuse; 1 blocked, crashed, lock held or flow mismatch; 0 done; 130/143
 interrupted. `sous watch --once` exits 0 after its pass, 1 when the
 tracker could not be asked; `sous watch` exits 130/143 on a signal and 1
 when another one is live ([how-to 20](#20-run-as-an-automated-loop)).
@@ -854,7 +871,7 @@ reviewer, a new model name.
 and the step that reviews need not share a model. `maxIterations` and
 `loop` can be overridden per entry too.
 
-**Check:** `./sous validate`, then `./sous run bench <issue>` with the
+**Check:** `./sous validate`, then `./sous run <issue> --flow bench` with the
 model you changed.
 
 ## 15. Add a step
@@ -1027,7 +1044,7 @@ steps:
       - to: done
 ```
 
-`sous run hotfix <id>` runs it; `sous graph hotfix` draws it.
+`sous run <id>` runs a `type:hotfix` issue through it; `sous graph hotfix` draws it.
 
 ### A step between review and merge
 
@@ -1156,7 +1173,7 @@ not ship.
 **Files:** `sous.yaml`; for a module, a file under `.sous/`.
 
 ```yaml
-tracker: beads                      # bd; run as sous run <flow> <bead-id>
+tracker: beads                      # bd; run as sous run <bead-id>
 ```
 
 The plan phase follows the tracker too, through `trackers/<tracker>.md`:
@@ -1186,7 +1203,7 @@ derives them from its issue type, local files list them, a module returns
 whatever it decides.
 
 **Check:** `./sous validate` builds a module tracker and names any
-missing method; `./sous run bench <id>` reads an issue through it without
+missing method; `./sous run <id> --flow bench` reads an issue through it without
 writing.
 
 ## 19. Run with `lifecycle: steps`
@@ -1231,9 +1248,10 @@ machine that works through the queue overnight, or a cron entry.
 **What it picks up.** A human marks an issue ready for the factory with
 `<labelPrefix>:ready` (`sous:ready`), by hand or on the tracker's web page,
 or by answering yes at `/sous-plan`'s second gate. Each pass takes the open issues carrying it,
-lowest number first, and starts `.sous/sous run <flow> <issue>` in the
+lowest number first, and starts `.sous/sous run <issue> --flow <flow>` in the
 repository for the first one that has no open blockers (`blockers()`)
-and a `type:*` label exactly one flow's `allowedLabels` accept. One run
+and whose labels pick one flow, by the rule of `sous run <issue>`
+([6. Flows](#6-flows)). One run
 at a time: while a run holds a live lock in `.sous/locks/`, its own or one
 a human started by hand, nothing else starts. The run's claim swaps
 `sous:ready` for `sous:running`, so an issue never starts twice. An
@@ -1298,7 +1316,7 @@ flows, its tracker, its engine version. `sous validate` in the home
 repository reports a path without a `.sous/sous.yaml`, and one whose
 `.sous/` has no `sous` wrapper. A pass asks every listed repository's
 tracker for ready issues and starts a run as that repository's
-`.sous/sous run <flow> <issue>`, in that repository: one run per
+`.sous/sous run <issue> --flow <flow>`, in that repository: one run per
 repository at a time, repositories in parallel. A run never starts on the
 home repository's engine: an entry without `.sous/sous` is reported once
 and runs nothing, and the other entries are served. The home repository
@@ -1392,7 +1410,10 @@ what to skip or change in the skill.
 
 | Symptom | Cause and fix |
 | --- | --- |
-| `sous run: #12 has none of the labels flow "task" accepts` | The flow's `allowedLabels` refuse the issue. Label it, or run the flow it is meant for. |
+| `sous run: the flow is an option now: sous run 12 --flow task` | The form before `--flow`, `sous run task 12`, from an old script or habit. Type `./sous run 12`. |
+| `sous run: #12: no flow accepts its labels (…)` | The issue has no label a flow's `allowedLabels` declare. Label it, then `./sous run 12`. |
+| `sous run: #12: flows feature, task all accept it: …` | The issue carries several `type:*` labels (keep one), or several flows declare its label (keep it in one). Then `./sous run 12`. |
+| `sous run: #12 has none of the labels flow "task" accepts` | `--flow` named a flow whose `allowedLabels` refuse the issue. Label it, or `./sous run 12`. |
 | `validate: … input "x" has no placeholder in the prompt` | Every declared input must be used; add `{{x}}` to the prompt or mark the input `prompt: false` when prepare or eval reads it. |
 | `validate: route to "…" names no step id` / `the last route must be an else` | Routes need an existing target and a fallthrough; see [chapter 6](#6-flows). |
 | `tracker: … the tracker lacks children, parent` | The tracker module's default export is missing port methods; [chapter 10](#10-trackers) lists them. |
@@ -1401,6 +1422,6 @@ what to skip or change in the skill.
 | `WARN: no checks configured` in every eval log | `CHECKS` in `steps/verify/eval.ts` is empty; [how-to 13](#13-change-the-check-commands). |
 | `another sous run holds .sous/locks/<id>.lock` | That issue is already running. If the pid is dead, the message says `stale`: delete the file. |
 | `session.json: /schemaVersion must be equal to constant` | A run folder from an older engine. Delete `runs/<id>/` (and the worktree) or `--restart`. |
-| `sous run: #12 was started with flow "feature"; run that flow or pass --restart` | A run record exists for another flow; continue that flow or restart. |
+| ``sous run: #12 was started with flow "feature"; run `sous run 12 --flow feature` or pass --restart`` | A run record exists for another flow, and the labels now pick another; continue that flow or restart. |
 | The UI shows a step as "Crashed (no end recorded)" | The process died without writing `run.end`. Run the same command; it re-enters at the open step. |
 | The agent's answer "did not match the schema" twice | The `run.output` schema and the prompt disagree, or the model cannot produce it; compare the printed contract in the agent log with the schema. |

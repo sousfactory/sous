@@ -36,7 +36,7 @@ export type FlowFile = {
   /** Absolute path. */
   file: string;
   entry: string;
-  /** Issue labels this flow accepts; `sous run` refuses an issue with none of them. Absent: any issue. */
+  /** Issue labels this flow accepts; `sous run` refuses an issue with none of them and resolves an issue to the one flow accepting it. Absent: any issue, but only when named with `--flow`. */
   allowedLabels?: string[];
   /** Overrides the `lifecycle` setting, so a flow that only exercises things (`steps`) never claims or closes an issue. */
   lifecycle?: "core" | "steps";
@@ -108,7 +108,7 @@ export const parseFlow = (file: string): FlowFile => {
   };
 };
 
-/** Whether an issue with `labels` may run through `flow`; a flow without `allowedLabels` takes any issue. */
+/** Whether an issue with `labels` may run through `flow` named with `--flow`; a flow without `allowedLabels` takes any issue. */
 export const acceptsLabels = (flow: Pick<FlowFile, "allowedLabels">, labels: readonly string[]): boolean =>
   flow.allowedLabels === undefined || flow.allowedLabels.some((label) => labels.includes(label));
 

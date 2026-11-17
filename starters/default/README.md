@@ -99,9 +99,9 @@ Then:
 ```
 ./sous validate                   # every flow and step
 npx vitest run                    # the flows over fakes
-./sous run bench <issue>          # smoke test
+./sous run <issue> --flow bench   # smoke test
 /sous-plan <issue>                # in Claude Code: spec and sub-issues
-./sous run task <issue>           # or feature; status and ui to follow
+./sous run <issue>                # status and ui to follow
 ```
 
 The [manual](https://github.com/sousfactory/sous/blob/main/docs/manual.md)

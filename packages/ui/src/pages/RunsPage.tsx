@@ -146,7 +146,7 @@ export const RunsPage = ({ data, error, flow, step }: RunsPageProps) => {
             {rows.length} flow run{rows.length === 1 ? "" : "s"}
           </div>
           {rows.length === 0 ? (
-            <div className="px-4 py-10 text-center text-fg-muted">{data === undefined ? "Loading…" : "No runs yet. Start one with ./sous run <flow> <issue>."}</div>
+            <div className="px-4 py-10 text-center text-fg-muted">{data === undefined ? "Loading…" : "No runs yet. Start one with ./sous run <issue>."}</div>
           ) : (
             <ul className="m-0 list-none p-0">
               {rows.map((row) => (

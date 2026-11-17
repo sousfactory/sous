@@ -29,7 +29,7 @@ describe("blockedComment", () => {
         "```",
         "",
         `Worktree kept at \`${WT}\` on \`feature/1-test\`.`,
-        "Fix things by hand there, then run `sous run task 1` again; it re-enters at this step's eval.",
+        "Fix things by hand there, then run `sous run 1` again; it re-enters at this step's eval.",
       ].join("\n"),
     );
   });

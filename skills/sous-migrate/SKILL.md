@@ -94,7 +94,7 @@ outside an agent (its own scripts between phases).
   under decisions which parts of the skill's own workspace handling were
   replaced, and check what its scripts assume about where the worktree
   lives or which clone is "main".
-- **The run target is the issue.** `sous run <flow> <issue>` names the
+- **The run target is the issue.** `sous run <issue>` names the
   issue; a phase that picks the next issue (a queue, a picker, "what's
   next") is not ported, and the skill's argument handling maps onto
   `ctx.issue`.

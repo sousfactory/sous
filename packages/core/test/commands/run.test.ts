@@ -19,21 +19,26 @@ import { fakeTracker, issue, type FakeTracker } from "../fakes/tracker.js";
 import { fakeSandbox, untilAborted, type AgentScript, type FakeSandbox } from "../fakes/sandbox.js";
 
 describe("parseRunArgs", () => {
-  it("accepts flow, issue and --restart in any order", () => {
-    expect(parseRunArgs(["task", "12"])).toEqual({ flow: "task", issue: "12", restart: false });
-    expect(parseRunArgs(["--restart", "feature", "3"])).toEqual({ flow: "feature", issue: "3", restart: true });
+  it("takes the issue, --flow <name> and --restart in any order", () => {
+    expect(parseRunArgs(["12"])).toEqual({ issue: "12", restart: false });
+    expect(parseRunArgs(["--restart", "3", "--flow", "feature"])).toEqual({ flow: "feature", issue: "3", restart: true });
   });
 
   it("keeps anything that is not a run number as a tracker reference for the adapter to resolve", () => {
-    expect(parseRunArgs(["task", "proj-a.1"])).toEqual({ flow: "task", issue: "proj-a.1", restart: false });
-    expect(parseRunArgs(["task", "1.5"])).toEqual({ flow: "task", issue: "1.5", restart: false });
+    expect(parseRunArgs(["proj-a.1"])).toEqual({ issue: "proj-a.1", restart: false });
+    expect(parseRunArgs(["1.5", "--flow", "task"])).toEqual({ flow: "task", issue: "1.5", restart: false });
+  });
+
+  it("rejects the old positional form with the new one, the values as typed", () => {
+    expect(parseRunArgs(["task", "42"])).toEqual({ error: "sous run: the flow is an option now: sous run 42 --flow task\nusage: sous run <issue> [--flow <name>] [--restart]" });
+    expect(parseRunArgs(["task", "#42", "--restart"])).toMatchObject({ error: expect.stringContaining("sous run #42 --flow task --restart\n") });
   });
 
   it("rejects missing or invalid arguments and unknown options", () => {
-    for (const args of [[], ["task"], ["task", "#"], ["task", "007x", "extra"], ["task", "1", "extra"]]) {
-      expect(parseRunArgs(args)).toEqual({ error: "usage: sous run <flow> <issue> [--restart]" });
+    for (const args of [[], ["#"], ["task", "1", "extra"], ["1", "--flow"], ["1", "--flow", "--restart"]]) {
+      expect(parseRunArgs(args)).toMatchObject({ error: expect.stringContaining("usage: sous run <issue> [--flow <name>] [--restart]") });
     }
-    expect(parseRunArgs(["task", "1", "--force"])).toMatchObject({ error: expect.stringContaining("unknown option --force") });
+    expect(parseRunArgs(["1", "--force"])).toMatchObject({ error: expect.stringContaining("unknown option --force") });
   });
 });
 
@@ -118,16 +123,16 @@ describe("runCommand", () => {
 
   it("takes the issue id as the tracker spells it, and drops a leading #", async () => {
     tracker.issues.set("proj-a.1", issue({ id: "proj-a.1", ref: "proj-a.1", title: "A bead", labels: ["type:task"] }));
-    expect(await runCommand(["walk", "proj-a.1"], deps())).toBe(0);
+    expect(await runCommand(["proj-a.1", "--flow", "walk"], deps())).toBe(0);
     expect(out[0]).toBe(`starting proj-a.1 at start in ${worktree}`);
     expect(await loadSession(sessionFile(runs(), "proj-a.1"))).toMatchObject({ issue: "proj-a.1", work: "proj-a.1" });
     out.length = 0;
-    expect(await runCommand(["walk", "#7"], deps())).toBe(0);
+    expect(await runCommand(["#7", "--flow", "walk"], deps())).toBe(0);
     expect(out[0]).toBe(`starting #7 at start in ${worktree}`);
   });
 
   it("walks the flow end to end: validate, lock, sandbox, run record outside git, exit 0", async () => {
-    expect(await runCommand(["walk", "7"], deps())).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
 
     expect(err).toEqual([]);
     expect(opened).toEqual([{ repoRoot, branch: BRANCH, settings: expect.objectContaining({ baseBranch: "main", idleTimeoutSeconds: 60 }), signal: expect.any(AbortSignal) }]);
@@ -174,14 +179,14 @@ describe("runCommand", () => {
 
   it("writes nothing to the tracker under lifecycle: steps, from the settings or from the flow", async () => {
     await writeFile(join(root, "sous.yaml"), "lifecycle: steps\n");
-    expect(await runCommand(["walk", "7"], deps())).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
     expect(tracker.claims).toEqual([]);
     expect(tracker.issues.get("7")).toMatchObject({ state: "open", labels: ["type:task"] });
 
     await rm(join(root, "sous.yaml"));
     const flowFile = join(root, "flows", "walk.yaml");
     await writeFile(flowFile, `lifecycle: steps\n${await readFile(flowFile, "utf8")}`);
-    expect(await runCommand(["walk", "7", "--restart"], deps())).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk", "--restart"], deps())).toBe(0);
     expect(tracker.claims).toEqual([]);
     expect(tracker.issues.get("7")).toMatchObject({ state: "open", labels: ["type:task"] });
   });
@@ -189,12 +194,12 @@ describe("runCommand", () => {
   it("exits 1, mirrors blocked and closes the run as blocked when the agent exhausts its iterations", async () => {
     agent = [answer("w1", false, "red"), answer("w2", false, "red"), answer("w3", false, "red")];
 
-    expect(await runCommand(["walk", "7"], deps())).toBe(1);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(1);
 
     expect(out.at(-1)).toBe("#7 blocked in work; see the issue comment");
     expect(tracker.issues.get("7")?.labels).toEqual(["type:task", "sous:blocked"]);
     expect(tracker.comments[0]?.body).toContain("Blocked in `work` after 3 iterations.");
-    expect(tracker.comments[0]?.body).toContain(`sous run walk 7`);
+    expect(tracker.comments[0]?.body).toContain("`sous run 7`");
     expect((await savedEvents()).at(-1)).toMatchObject({ type: "run.end", outcome: "blocked" });
     expect(await savedSession()).toMatchObject({ current: "work", blocked: true });
     expect(await lockExists()).toBe(false);
@@ -206,7 +211,7 @@ describe("runCommand", () => {
     await saveSession(sessionFile(runs(), "7"), { ...resumed, previous: "work" });
     tracker.issues.set("14", issue({ id: "14", title: "Work 14" }));
 
-    expect(await runCommand(["walk", "7"], deps({ newId: () => "r2" }))).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ newId: () => "r2" }))).toBe(0);
     expect(out[0]).toBe(`resuming #7 at finish in ${worktree}`);
     expect(opened[0]?.branch).toBe(BRANCH);
     const session = await savedSession();
@@ -215,13 +220,13 @@ describe("runCommand", () => {
     expect(foldTimeline(await savedEvents()).runs[0]).toMatchObject({ id: "r2", outcome: "done", resumedFrom: { step: "finish", iteration: 0 } });
 
     await saveSession(sessionFile(runs(), "7"), createSession({ flow: "other", issue: "7", title: "t", branch: "x", specDir: "s", entry: "start" }));
-    expect(await runCommand(["walk", "7"], deps())).toBe(1);
-    expect(err).toEqual(['sous run: #7 was started with flow "other"; run that flow or pass --restart']);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(1);
+    expect(err).toEqual(['sous run: #7 was started with flow "other"; run `sous run 7 --flow other` or pass --restart']);
   });
 
   it("reports a finished session without opening a sandbox", async () => {
     await saveSession(sessionFile(runs(), "7"), { ...createSession({ flow: "walk", issue: "7", title: "t", branch: "b", specDir: "s", entry: "done" }), closed: true });
-    expect(await runCommand(["walk", "7"], deps())).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
     expect(out).toEqual(["#7 is already done (pass --restart to run it again)"]);
     expect(opened).toEqual([]);
     expect(tracker.issues.get("7")?.state).toBe("open");
@@ -236,14 +241,14 @@ describe("runCommand", () => {
       await close(id, text);
     };
 
-    await expect(runCommand(["walk", "7"], deps())).rejects.toThrow("gh: 502 Bad Gateway");
+    await expect(runCommand(["7", "--flow", "walk"], deps())).rejects.toThrow("gh: 502 Bad Gateway");
     expect(await savedSession()).toMatchObject({ current: "done", closed: false });
     expect((await savedEvents()).at(-1)).toMatchObject({ type: "run.end", outcome: "crashed", error: "gh: 502 Bad Gateway" });
     expect(tracker.issues.get("7")?.state).toBe("open");
     expect(await lockExists()).toBe(false);
 
     out.length = 0;
-    expect(await runCommand(["walk", "7"], deps({ newId: () => "r2" }))).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ newId: () => "r2" }))).toBe(0);
     expect(out).toEqual(["#7: closed the issue the finished run had left open", "#7 is already done (pass --restart to run it again)"]);
     // No sandbox beyond the first run's: the retry is the tracker call alone.
     expect(opened).toHaveLength(1);
@@ -251,7 +256,7 @@ describe("runCommand", () => {
     expect(await savedSession()).toMatchObject({ current: "done", closed: true });
 
     out.length = 0;
-    expect(await runCommand(["walk", "7"], deps())).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
     expect(out).toEqual(["#7 is already done (pass --restart to run it again)"]);
     expect(closes).toBe(2);
   });
@@ -259,7 +264,7 @@ describe("runCommand", () => {
   it("closes the segment as crashed when the run throws, keeping the session where it was", async () => {
     agent = [new Error("agent exploded")];
 
-    await expect(runCommand(["walk", "7"], deps())).rejects.toThrow("agent exploded");
+    await expect(runCommand(["7", "--flow", "walk"], deps())).rejects.toThrow("agent exploded");
 
     expect((await savedEvents()).at(-1)).toMatchObject({ type: "run.end", runId: "r1", outcome: "crashed", error: "agent exploded" });
     expect((await savedSession()).current).toBe("work");
@@ -290,7 +295,7 @@ describe("runCommand", () => {
       },
     ] as unknown as AgentScript[];
 
-    expect(await runCommand(["walk", "7"], deps({ onSignal }))).toBe(130);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ onSignal }))).toBe(130);
 
     const events = await savedEvents();
     expect(events.map((e) => e.type).slice(0, 2)).toEqual(["run.start", "span.open"]);
@@ -313,7 +318,7 @@ describe("runCommand", () => {
       answer("w1"),
     ] as unknown as AgentScript[];
 
-    expect(await runCommand(["walk", "7"], deps({ onSignal }))).toBe(143);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ onSignal }))).toBe(143);
     await handled;
 
     const ends = (await savedEvents()).filter((e) => e.type === "run.end");
@@ -331,7 +336,7 @@ describe("runCommand", () => {
       answer("w1"),
     ];
 
-    expect(await runCommand(["walk", "7"], deps({ onSignal }))).toBe(143);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ onSignal }))).toBe(143);
     await handled;
 
     expect(opened[0]?.signal?.aborted).toBe(true);
@@ -357,7 +362,7 @@ describe("runCommand", () => {
       return openSandbox(options);
     };
 
-    expect(await runCommand(["walk", "7"], deps({ onSignal, openSandbox: interrupted }))).toBe(130);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ onSignal, openSandbox: interrupted }))).toBe(130);
 
     expect(await savedEvents()).toEqual([]);
     expect(await lockExists()).toBe(false);
@@ -382,7 +387,7 @@ describe("runCommand", () => {
       throw new Error("exiting");
     };
 
-    await expect(runCommand(["walk", "7"], deps({ onExit, openSandbox: probing }))).rejects.toThrow("exiting");
+    await expect(runCommand(["7", "--flow", "walk"], deps({ onExit, openSandbox: probing }))).rejects.toThrow("exiting");
     expect(removed).toBe(true);
   });
 
@@ -392,7 +397,7 @@ describe("runCommand", () => {
       removed = true;
     };
 
-    expect(await runCommand(["walk", "7"], deps({ onExit }))).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ onExit }))).toBe(0);
     expect(removed).toBe(true);
     expect(opened[0]?.signal?.aborted).toBe(false);
   });
@@ -402,7 +407,7 @@ describe("runCommand", () => {
     await writeFile(join(repoRoot, "specs", "7-planned-slug", "spec.md"), "# Planned\n");
     await mkdir(join(worktree, "specs", "7-planned-slug"), { recursive: true });
     await writeFile(join(worktree, "specs", "7-planned-slug", "spec.md"), "# Planned\n");
-    await runCommand(["walk", "7"], deps());
+    await runCommand(["7", "--flow", "walk"], deps());
     expect((await savedSession()).specDir).toBe("specs/7-planned-slug");
     expect(opened[0]?.branch).toBe(BRANCH);
     expect(out).toContain("spec: specs/7-planned-slug/spec.md");
@@ -412,7 +417,7 @@ describe("runCommand", () => {
   it("finds a spec folder that exists only on the branch", async () => {
     await mkdir(join(worktree, "specs", "7-on-branch"), { recursive: true });
     await writeFile(join(worktree, "specs", "7-on-branch", "spec.md"), "# On the branch\n");
-    await runCommand(["walk", "7"], deps());
+    await runCommand(["7", "--flow", "walk"], deps());
     expect((await savedSession()).specDir).toBe("specs/7-on-branch");
     expect(out).toContain("spec: specs/7-on-branch/spec.md");
     expect((await savedEvents())[0]).toMatchObject({ type: "run.start", spec: "file" });
@@ -421,21 +426,21 @@ describe("runCommand", () => {
   it("does not read a spec the checkout has but the branch does not carry", async () => {
     await mkdir(join(repoRoot, "specs", "7-planned-slug"), { recursive: true });
     await writeFile(join(repoRoot, "specs", "7-planned-slug", "spec.md"), "# Planned\n");
-    await runCommand(["walk", "7"], deps());
+    await runCommand(["7", "--flow", "walk"], deps());
     expect((await savedSession()).specDir).toBe("specs/7-planned-slug");
     expect(out).toContain("spec: no specs/7-planned-slug/spec.md; the issue is the spec");
     expect((await savedEvents())[0]).toMatchObject({ type: "run.start", spec: "issue" });
   });
 
   it("is the issue's own spec when planning wrote none, and says so", async () => {
-    await runCommand(["walk", "7"], deps());
+    await runCommand(["7", "--flow", "walk"], deps());
     expect(out).toContain("spec: no specs/7-cap-asset-slug-length/spec.md; the issue is the spec");
     expect((await savedEvents())[0]).toMatchObject({ type: "run.start", spec: "issue" });
   });
 
   it("validates the project first and exits 2 on errors, before taking the lock", async () => {
     await writeFile(join(root, "flows", "broken.yaml"), "entry: nowhere\nsteps:\n  - id: a\n    uses: void\n    routes:\n      - to: done\n");
-    expect(await runCommand(["walk", "7"], deps())).toBe(2);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(2);
     expect(err[0]).toBe('flows/broken.yaml: entry: entry "nowhere" names no step id');
     expect(err.at(-1)).toBe("sous run: 1 validation error(s)");
     expect(opened).toEqual([]);
@@ -446,19 +451,76 @@ describe("runCommand", () => {
     const flowFile = join(root, "flows", "walk.yaml");
     await writeFile(flowFile, `allowedLabels: [type:feature]\n${await readFile(flowFile, "utf8")}`);
 
-    expect(await runCommand(["walk", "7"], deps())).toBe(2);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(2);
     expect(err).toEqual(['sous run: #7 has none of the labels flow "walk" accepts (type:feature); label the issue or run another flow']);
     expect(opened).toEqual([]);
     expect(await lockExists()).toBe(false);
 
     await writeFile(flowFile, (await readFile(flowFile, "utf8")).replace("[type:feature]", "[type:feature, type:task]"));
-    expect(await runCommand(["walk", "7"], deps())).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
+  });
+
+  describe("without --flow, the issue's labels pick the flow", () => {
+    const declare = async (name: string, labels: string) => {
+      const walk = await readFile(join(root, "flows", "walk.yaml"), "utf8");
+      await writeFile(join(root, "flows", `${name}.yaml`), `allowedLabels: [${labels}]\n${walk}`);
+    };
+
+    it("starts the one flow declaring the issue's kind; the run record names it", async () => {
+      await declare("task", "type:task, type:bug");
+      await declare("feature", "type:feature");
+      expect(await runCommand(["7"], deps())).toBe(0);
+      expect(err).toEqual([]);
+      expect((await savedSession()).flow).toBe("task");
+      expect((await savedEvents())[0]).toMatchObject({ type: "run.start", flow: "task" });
+    });
+
+    it("exits 2 naming the labels when no flow accepts them, never picking a flow without allowedLabels", async () => {
+      await declare("feature", "type:feature");
+      tracker.issues.set("8", issue({ id: "8", labels: ["sous:ready"] }));
+      expect(await runCommand(["8"], deps())).toBe(2);
+      expect(err).toEqual(["sous run: #8: no flow accepts its labels (sous:ready); give it the type:* label of one flow's allowedLabels"]);
+      expect(opened).toEqual([]);
+      expect(await lockExists("8")).toBe(false);
+    });
+
+    it("exits 2 naming both flows when the issue carries two kinds", async () => {
+      await declare("task", "type:task");
+      await declare("feature", "type:feature");
+      tracker.issues.set("8", issue({ id: "8", labels: ["type:task", "type:feature"] }));
+      expect(await runCommand(["8"], deps())).toBe(2);
+      expect(err).toEqual(["sous run: #8: flows feature, task all accept it: the issue carries several type:* labels (type:task, type:feature); keep one"]);
+      expect(opened).toEqual([]);
+    });
+
+    it("exits 2 naming both flows when they declare the issue's one kind", async () => {
+      await declare("task", "type:task");
+      await declare("chore", "type:task");
+      expect(await runCommand(["7"], deps())).toBe(2);
+      expect(err).toEqual(["sous run: #7: flows chore, task all accept it: several flows declare type:task in allowedLabels; keep it in one"]);
+      expect(opened).toEqual([]);
+    });
+  });
+
+  it("runs a flow without allowedLabels only when --flow names it", async () => {
+    expect(await runCommand(["7"], deps())).toBe(2);
+    expect(err[0]).toMatch(/^sous run: #7: no flow accepts its labels \(type:task\)/);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
+    expect((await savedSession()).flow).toBe("walk");
+  });
+
+  it("rejects the old positional form with the new one and starts nothing", async () => {
+    expect(await runCommand(["walk", "7"], deps())).toBe(2);
+    expect(err).toEqual(["sous run: the flow is an option now: sous run 7 --flow walk\nusage: sous run <issue> [--flow <name>] [--restart]"]);
+    expect(opened).toEqual([]);
+    expect(await loadSession(sessionFile(runs(), "7"))).toBeUndefined();
+    expect(await lockExists()).toBe(false);
   });
 
   it("refuses an unknown flow and bad arguments with exit 2", async () => {
-    expect(await runCommand(["nope", "7"], deps())).toBe(2);
+    expect(await runCommand(["7", "--flow", "nope"], deps())).toBe(2);
     expect(err[0]).toBe('sous run: unknown flow "nope" (known: walk)');
-    expect(await runCommand(["walk"], deps())).toBe(2);
+    expect(await runCommand([], deps())).toBe(2);
     expect(opened).toEqual([]);
   });
 
@@ -466,10 +528,10 @@ describe("runCommand", () => {
     await mkdir(locksDir(root), { recursive: true });
     await writeFile(lockPath(root, "7"), '{"pid":99,"issue":"7"}\n');
 
-    expect(await runCommand(["walk", "7"], deps({ isAlive: () => true }))).toBe(1);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ isAlive: () => true }))).toBe(1);
     expect(err).toEqual([`sous run: another sous run holds ${lockPath(root, "7")} (pid 99, issue 7)`]);
 
-    expect(await runCommand(["walk", "#7"], deps({ isAlive: () => false }))).toBe(1);
+    expect(await runCommand(["#7", "--flow", "walk"], deps({ isAlive: () => false }))).toBe(1);
     expect(err[1]).toBe(`sous run: stale lock ${lockPath(root, "7")}: pid 99 (issue 7) is not running; remove the file and retry`);
     expect(opened).toEqual([]);
     expect(await lockExists()).toBe(true);
@@ -479,14 +541,14 @@ describe("runCommand", () => {
     await mkdir(locksDir(root), { recursive: true });
     await writeFile(lockPath(root, "3"), '{"pid":99,"issue":"3"}\n');
 
-    expect(await runCommand(["walk", "7"], deps({ isAlive: () => true }))).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk"], deps({ isAlive: () => true }))).toBe(0);
     expect(err).toEqual([]);
     expect(await lockExists()).toBe(false);
     expect(await lockExists("3")).toBe(true);
   });
 
   it("releases the lock when the tracker fails before anything else happens", async () => {
-    await expect(runCommand(["walk", "999"], deps())).rejects.toThrow("fakeTracker: no issue 999");
+    await expect(runCommand(["999", "--flow", "walk"], deps())).rejects.toThrow("fakeTracker: no issue 999");
     expect(await lockExists("999")).toBe(false);
     expect(opened).toEqual([]);
   });
@@ -496,7 +558,7 @@ describe("runCommand", () => {
     await saveSession(sessionFile(runs(), "7"), createSession({ flow: "walk", issue: "7", title: "t", branch: BRANCH, specDir: "s", entry: "finish" }));
     await createFileEventLog(eventsFile(runs(), "7")).append({ type: "run.end", at: "t", runId: "r0", outcome: "crashed" });
     confirmed = false;
-    expect(await runCommand(["walk", "7", "--restart"], deps())).toBe(1);
+    expect(await runCommand(["7", "--flow", "walk", "--restart"], deps())).toBe(1);
     expect(err).toEqual(["sous run: restart cancelled"]);
     // Only the lookup of where the branch is checked out, to name the worktree in the question.
     expect(git.calls).toEqual([`worktreeOf(${repoRoot}, ${BRANCH})`]);
@@ -504,7 +566,7 @@ describe("runCommand", () => {
 
     confirmed = true;
     git.calls.length = 0;
-    expect(await runCommand(["walk", "7", "--restart"], deps())).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk", "--restart"], deps())).toBe(0);
     expect(git.calls.slice(0, 4)).toEqual([
       `worktreeOf(${repoRoot}, ${BRANCH})`,
       `removeWorktree(${repoRoot}, ${worktreePathFor(repoRoot, BRANCH)})`,
@@ -519,7 +581,7 @@ describe("runCommand", () => {
   });
 
   it("--restart with nothing recorded yet behaves like a first run", async () => {
-    expect(await runCommand(["walk", "7", "--restart"], deps())).toBe(0);
+    expect(await runCommand(["7", "--flow", "walk", "--restart"], deps())).toBe(0);
     expect((await savedSession()).current).toBe("done");
   });
 });

@@ -258,8 +258,9 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(text).not.toMatch(/git -C <worktree> push/);
     expect(text).toContain("no `Co-Authored-By`");
     expect(text).toContain("never run `./sous`");
-    expect(text).toContain("./sous run <flow> <ISSUE>");
-    expect(text).toContain("`allowedLabels` include the");
+    expect(text).toContain("./sous run <ISSUE>");
+    expect(text).not.toContain("sous run <flow>");
+    expect(text).not.toContain("`allowedLabels` include the");
     expect(text).not.toMatch(/sous run (task|feature)\b/);
   });
 
@@ -337,9 +338,9 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
 
   it("names the ready label in the report beside the run command: the manual step on a no, set on a yes", () => {
     const report = flat.slice(flat.indexOf("## 11. Sanity report"));
-    expect(report).toContain("./sous run <flow> <ISSUE>");
+    expect(report).toContain("the next command: `./sous run <ISSUE>` in the target repository");
     expect(report).toContain("`<labelPrefix>:ready`");
-    expect(report.indexOf("`<labelPrefix>:ready`")).toBeGreaterThan(report.indexOf("./sous run <flow> <ISSUE>"));
+    expect(report.indexOf("`<labelPrefix>:ready`")).toBeGreaterThan(report.indexOf("./sous run <ISSUE>"));
     expect(report).toContain("On a no, a human sets `<labelPrefix>:ready`");
     expect(report).toContain("On a yes, the issue now carries it");
   });

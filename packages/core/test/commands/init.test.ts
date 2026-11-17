@@ -64,7 +64,7 @@ describe("setupChecklist", () => {
     expect(lines[4]).toContain(".sous/prompts/plan.md: follow its ADAPT notes");
     expect(lines[4]).toContain("trackers/<tracker>.md");
     expect(lines[5]).toContain("cd .sous && ./sous validate && npx vitest run");
-    expect(lines[5]).toContain("./sous run bench <issue>");
+    expect(lines[5]).toContain("./sous run <issue> --flow bench");
   });
 });
 

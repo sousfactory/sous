@@ -91,8 +91,8 @@ commit, orange ones are the gates.
 
 | Run state | Spec | Target | What gets created | Commit | Next command |
 | --- | --- | --- | --- | --- | --- |
-| no run | none | base checkout | spec, ADRs, children or criteria | commit, rebase, push base | `./sous run <flow> <id>` |
-| no run | exists | base checkout | amendment, new children or criteria; nothing if no new scope | same, or none | `./sous run <flow> <id>` |
+| no run | none | base checkout | spec, ADRs, children or criteria | commit, rebase, push base | `./sous run <id>` |
+| no run | exists | base checkout | amendment, new children or criteria; nothing if no new scope | same, or none | `./sous run <id>` |
 | blocked, worktree here | exists on the branch | worktree | amendment, new children | commit on the branch, no push | the same run command; re-entry reads the branch |
 | blocked, no worktree here | — | — | nothing | none | amend on the machine the blocked comment names |
 | running | — | — | nothing | none | block the run or wait |

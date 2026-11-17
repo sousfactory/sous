@@ -1,6 +1,7 @@
 /**
- * `sous run <flow> <issue> [--restart]`: everything around the executor
- * (validation, lock, session, sandbox, run segment, signals). Re-entry after
+ * `sous run <issue> [--flow <name>] [--restart]`: everything around the
+ * executor (flow resolution, validation, lock, session, sandbox, run
+ * segment, signals). Re-entry after
  * `blocked` and resume after a crash need nothing here; the executor reads
  * both from the session.
  */
@@ -13,7 +14,8 @@ import { createInterface } from "node:readline";
 import { createFileEventLog } from "../adapters/eventlog.js";
 import { exec } from "../adapters/exec.js";
 import { worktreePathFor, type OpenSandbox } from "../adapters/sandbox.js";
-import { acceptsLabels, BLOCKED, DONE, loadFlow, type Flow } from "../config/flow.js";
+import { acceptsLabels, BLOCKED, DONE, flowName, loadFlow, parseFlow, type Flow } from "../config/flow.js";
+import { resolveFlow } from "../config/resolve.js";
 import { messageOf } from "../config/schema.js";
 import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
 import { listFlows, validateProject } from "../config/validate.js";
@@ -33,8 +35,11 @@ import { createSession, markClosed, setSpecDir } from "../session/update.js";
 import { acquireLock, createRepoLock, describeLock, isProcessAlive, lockPath, repoLockPath } from "./lock.js";
 import { formatError } from "./validate.js";
 
-/** `issue` is the tracker's id as typed, minus a leading `#`, so `sous run task #96` works. */
-export type RunArgs = { flow: string; issue: string; restart: boolean };
+/**
+ * `issue` is the tracker's id as typed, minus a leading `#`, so `sous run #96`
+ * works. `flow` is named with `--flow`; absent, the issue's labels resolve it.
+ */
+export type RunArgs = { issue: string; flow?: string; restart: boolean };
 
 export type RunDeps = {
   /** The project root (`.sous/`). */
@@ -61,18 +66,32 @@ export type RunDeps = {
   onExit?: (listener: () => void) => () => void;
 };
 
-export const USAGE = "usage: sous run <flow> <issue> [--restart]";
+export const USAGE = "usage: sous run <issue> [--flow <name>] [--restart]";
 
 export const parseRunArgs = (args: readonly string[]): RunArgs | { error: string } => {
-  const flags = args.filter((a) => a.startsWith("--"));
-  const positional = args.filter((a) => !a.startsWith("--"));
-  const unknown = flags.filter((f) => f !== "--restart");
-  if (unknown.length > 0) return { error: `unknown option ${unknown.join(", ")}\n${USAGE}` };
-  const [flow, issueArg, ...rest] = positional;
-  if (flow === undefined || issueArg === undefined || rest.length > 0) return { error: USAGE };
+  const positional: string[] = [];
+  let flow: string | undefined;
+  let restart = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--restart") restart = true;
+    else if (arg === "--flow") {
+      const value = args[++i];
+      if (value === undefined || value.startsWith("--") || value === "") return { error: `--flow takes a flow name\n${USAGE}` };
+      flow = value;
+    } else if (arg.startsWith("--")) return { error: `unknown option ${arg}\n${USAGE}` };
+    else positional.push(arg);
+  }
+  // The old form: a stale script would otherwise have its flow name read as the issue.
+  if (positional.length === 2 && flow === undefined) {
+    const [oldFlow, oldIssue] = positional;
+    return { error: `sous run: the flow is an option now: sous run ${oldIssue} --flow ${oldFlow}${restart ? " --restart" : ""}\n${USAGE}` };
+  }
+  const [issueArg] = positional;
+  if (issueArg === undefined || positional.length > 1) return { error: USAGE };
   const issue = issueArg.replace(/^#/, "");
   if (issue === "") return { error: USAGE };
-  return { flow, issue, restart: flags.includes("--restart") };
+  return { issue, ...(flow !== undefined ? { flow } : {}), restart };
 };
 
 export const gitShortSha = (repoRoot: string) => async (): Promise<string> => {
@@ -178,13 +197,12 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
   }
   const settings = loadSettings(join(root, SETTINGS_FILE));
   const dirs = projectDirs(root, settings);
-  const file = join(dirs.flows, `${parsed.flow}.yaml`);
-  if (!existsSync(file)) {
-    const known = listFlows(dirs.flows).map((f) => f.replace(/^.*\/|\.ya?ml$/g, ""));
+  const flowFile = (name: string): string => join(dirs.flows, `${name}.yaml`);
+  if (parsed.flow !== undefined && !existsSync(flowFile(parsed.flow))) {
+    const known = listFlows(dirs.flows).map(flowName);
     err(`sous run: unknown flow "${parsed.flow}" (known: ${known.length > 0 ? known.join(", ") : "none"})`);
     return 2;
   }
-  const flow = loadFlow(file, { stepsDir: dirs.steps });
 
   // Per issue: runs on other issues may go on beside this one.
   const lockFile = lockPath(root, parsed.issue);
@@ -235,6 +253,17 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
 
   try {
     const issue = await tracker.getIssue(parsed.issue);
+    // The flow the labels imply, by the rule `sous watch` follows too; a named one is taken as named.
+    let flowChoice = parsed.flow;
+    if (flowChoice === undefined) {
+      const resolved = resolveFlow(issue.labels, listFlows(dirs.flows).map(parseFlow));
+      if (resolved.kind !== "flow") {
+        err(`sous run: ${issue.ref}: ${resolved.message}`);
+        return 2;
+      }
+      flowChoice = resolved.flow;
+    }
+    const flow = loadFlow(flowFile(flowChoice), { stepsDir: dirs.steps });
     // Catches running an issue through the wrong flow, e.g. a feature through the single-issue flow.
     if (!acceptsLabels(flow, issue.labels)) {
       err(`sous run: ${issue.ref} has none of the labels flow "${flow.name}" accepts (${flow.allowedLabels?.join(", ")}); label the issue or run another flow`);
@@ -265,7 +294,7 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
 
     const existing = await loadSession(sessionFile(runs, issue.id));
     if (existing !== undefined && existing.flow !== flow.name) {
-      err(`sous run: ${issue.ref} was started with flow "${existing.flow}"; run that flow or pass --restart`);
+      err(`sous run: ${issue.ref} was started with flow "${existing.flow}"; run \`sous run ${parsed.issue} --flow ${existing.flow}\` or pass --restart`);
       return 1;
     }
     let session = existing ?? createSession({ flow: flow.name, issue: issue.id, title: issue.title, branch, specDir, entry: flow.entry });

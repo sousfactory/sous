@@ -3,7 +3,8 @@
  * unattended. Each pass asks the tracker for the open issues carrying
  * `<prefix>:ready` (and `<prefix>:running`, for crashed runs) and starts the
  * lowest-numbered one that qualifies as the repository's own `sous run
- * <flow> <issue>`, one run at a time.
+ * <issue> --flow <flow>`, the flow resolved as `sous run <issue>` resolves
+ * it, one run at a time.
  *
  * The daemon owns nothing a run owns: locks, sessions, labels and comments
  * stay the run's. Its own state is in memory (what it reported, what it
@@ -16,7 +17,8 @@ import { readFile, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { Exec } from "../adapters/exec.js";
 import { logDir } from "../adapters/logs.js";
-import { acceptsLabels, flowName } from "../config/flow.js";
+import { flowName } from "../config/flow.js";
+import { resolveFlow } from "../config/resolve.js";
 import { messageOf, readYaml } from "../config/schema.js";
 import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
 import { listFlows } from "../config/validate.js";
@@ -159,14 +161,10 @@ const createRepoWatcher = (repo: WatchRepo, deps: WatchDeps, report: Reporter, s
 
   const labelsKey = (issue: Issue): string => [...issue.labels].sort().join("\n");
 
-  /** The one flow accepting the issue's `type:*` labels, or why there is none. */
+  /** The flow the issue's labels resolve to, by the rule `sous run <issue>` follows, or why there is none. */
   const flowFor = (issue: Issue): { flow: string } | { reason: string } => {
-    const types = issue.labels.filter((l) => l.startsWith("type:"));
-    const accepting = flowsOf(dirs.flows).filter((f) => acceptsLabels(f, types));
-    if (accepting.length === 1) return { flow: accepting[0]!.name };
-    const kinds = types.length > 0 ? types.join(", ") : "no type:* label";
-    if (accepting.length === 0) return { reason: `no flow accepts ${kinds}` };
-    return { reason: `flows ${accepting.map((f) => f.name).join(", ")} all accept ${kinds}; keep one type:* label` };
+    const resolved = resolveFlow(issue.labels, flowsOf(dirs.flows));
+    return resolved.kind === "flow" ? { flow: resolved.flow } : { reason: resolved.message };
   };
 
   const lockStatus = async (issue: string) => classifyLock(await readFile(lockPath(root, issue), "utf8").catch(() => undefined), isAlive);
@@ -190,8 +188,9 @@ const createRepoWatcher = (repo: WatchRepo, deps: WatchDeps, report: Reporter, s
 
   const start = (issue: Issue, flow: string, rerun: boolean, note: string): void => {
     const [command = "sous", ...prefix] = repo.sous;
-    const args = [...prefix, "run", flow, issue.id];
-    const line = `sous run ${flow} ${issue.id}`;
+    // The resolved flow is passed on, so the run takes exactly the daemon's choice and the line names it.
+    const args = [...prefix, "run", issue.id, "--flow", flow];
+    const line = `sous run ${issue.id} --flow ${flow}`;
     const child = deps.spawn(command, args, { cwd: repoRoot, onOutput: (text) => (PUSHED.test(text) ? out(`${name(issue)}: ${text.trim()}`) : undefined) });
     out(rerun ? `${name(issue)}: ${note}rerunning ${line} after a crash (pid ${child.pid})` : `${name(issue)}: ${note}started ${line} (pid ${child.pid})`);
     let interrupted = false;

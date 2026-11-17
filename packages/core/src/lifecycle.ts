@@ -20,7 +20,7 @@ export const blockedComment = (session: Session, worktreePath: string): string =
     "",
     ...(tail.length > 0 ? ["Last eval:", "```", tail, "```", ""] : []),
     `Worktree kept at \`${worktreePath}\` on \`${session.branch}\`.`,
-    `Fix things by hand there, then run \`sous run ${session.flow} ${session.issue}\` again; it re-enters at this step's eval.`,
+    `Fix things by hand there, then run \`sous run ${session.issue}\` again; it re-enters at this step's eval.`,
   ].join("\n");
 };
 

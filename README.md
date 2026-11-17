@@ -88,7 +88,7 @@ One issue goes through it like this:
 > /sous-plan 57
 
 # the rest runs without you
-$ ./sous run task 57
+$ ./sous run 57 --flow task
 $ ./sous status 57
 
 # optional: watch it live
@@ -130,7 +130,7 @@ npx sous init                 # copies the starter into .sous/, installs it, add
 
 cd .sous
 ./sous validate
-./sous run bench <issue>      # smoke test, touches nothing
+./sous run <issue> --flow bench   # smoke test, touches nothing
 ```
 
 `init` prints a checklist: the check commands in
@@ -143,7 +143,7 @@ Daily use:
 
 ```sh
 /sous-plan <issue>            # in Claude Code: spec, sub-issues, commit on GO
-./sous run feature <issue>    # or task; claims the issue, builds, reviews, merges, closes
+./sous run <issue>            # claims the issue, builds, reviews, merges, closes
 ./sous status <issue>         # facts + timeline
 ./sous graph task             # the flow as a diagram
 ./sous ui                     # live, at http://127.0.0.1:4680 (uiPort in sous.yaml)

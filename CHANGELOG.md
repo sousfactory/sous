@@ -9,6 +9,20 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Breaking
 
+- **`sous run <issue>`: the flow comes from the issue's labels.** The
+  command is `sous run <issue> [--flow <name>] [--restart]`. Without
+  `--flow` the one flow whose `allowedLabels` accept the issue runs; none
+  or several is exit 2 with a message naming the labels, or the flows and
+  whether the issue carries several `type:*` labels or several flows
+  declare one. A flow without `allowedLabels` (the starter's `bench`) is
+  never picked and runs only as `sous run <issue> --flow bench`; `--flow`
+  on a flow whose `allowedLabels` exclude the issue is refused as before.
+  The old form `sous run task 42` is rejected with exit 2 and the new one
+  in its message: update scripts to `sous run 42` or `sous run 42 --flow
+  task`. `sous watch` picks with the same rule, so a kind-less ready issue
+  no longer starts a flow without `allowedLabels`, and starts its runs as
+  `sous run <issue> --flow <flow>`. The blocked comment, the `/sous-plan`
+  report and `sous init` name `sous run <issue>`.
 - **A project tracker module implements `list`.** `sous validate` and
   `sous run` report a module without it as lacking `list`; one that has
   no way to search returns the matching issues it knows of, or `[]`, in
@@ -59,8 +73,8 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 - **`sous watch` runs the repository unattended.** It polls the tracker
   (every 60 seconds, `--interval <seconds>`) for open issues labelled
   `<prefix>:ready` with no open blockers and starts the repository's own
-  `sous run <flow> <issue>` for the lowest-numbered one whose `type:*`
-  label exactly one flow accepts, one run at a time, counting a run
+  `sous run <issue> --flow <flow>` for the lowest-numbered one whose
+  labels pick one flow, as `sous run <issue>` picks it, one run at a time, counting a run
   started by hand. A blocked issue runs again once it also carries ready;
   a `<prefix>:running` issue with a stale lock is rerun once, and blocked
   with a comment naming its log folder when the rerun crashes too; setting
@@ -81,8 +95,8 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   absolute or `~`; a plain list of paths is named by folder), each with
   its own `.sous/`; `sous validate` reports a path without one, and one
   whose `.sous/` has no `sous` wrapper. `sous watch` there asks each
-  listed repository's tracker and starts its own `.sous/sous run <flow>
-  <issue>` in it, never on the home repository's engine: an entry without
+  listed repository's tracker and starts its own `.sous/sous run <issue>
+  --flow <flow>` in it, never on the home repository's engine: an entry without
   `.sous/sous` is reported once and runs nothing. One run per repository,
   repositories in parallel. An issue runs in the entry its `repo:<name>`
   label names; one without the label or naming no entry is reported once

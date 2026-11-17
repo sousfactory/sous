@@ -1,5 +1,5 @@
 /**
- * The `Tracker` port over bd, for `sous run <flow> <bead-id>`. Issues are
+ * The `Tracker` port over bd, for `sous run <bead-id>`. Issues are
  * read live with `bd show`. The lifecycle writes to bd only when asked:
  * `claim` is `bd update --claim` under an actor naming the run's branch, so
  * two runs never take the same bead; `close` is `bd close`; `block` adds the

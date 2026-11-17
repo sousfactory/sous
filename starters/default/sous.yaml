@@ -13,7 +13,7 @@ uiPort: 4680                                      # sous ui listens on 127.0.0.1
 tracker: github                                   # github, beads, local, or the path of a project module (see README)
 
 specsDir: ../specs                                # <specsDir>/<issue>-<slug>/spec.md, written by /sous-plan
-flowsDir: flows                                   # <flowsDir>/<name>.yaml, the flows `sous run <name>` starts
+flowsDir: flows                                   # <flowsDir>/<name>.yaml, the flows `sous run` starts
 stepsDir: steps                                   # <stepsDir>/<name>/step.yaml; `uses: <name>` in a flow
 skillsDir: skills                                 # vendored skills; {{ctx.skillsDir}} in prompts
 logsDir: logs                                     # gitignored; one agent log per step iteration under <logsDir>/<issue>/

@@ -145,8 +145,8 @@ describe("sous watch", () => {
     seed(ready("7"));
     const watcher = createWatcher(deps());
     await watcher.pass();
-    expect(spawned.children.map(({ command, args, cwd }) => ({ command, args, cwd }))).toEqual([{ command: join(root, "sous"), args: ["run", "task", "7"], cwd: repoRoot }]);
-    expect(out).toEqual(["#7: started sous run task 7 (pid 1000)"]);
+    expect(spawned.children.map(({ command, args, cwd }) => ({ command, args, cwd }))).toEqual([{ command: join(root, "sous"), args: ["run", "7", "--flow", "task"], cwd: repoRoot }]);
+    expect(out).toEqual(["#7: started sous run 7 --flow task (pid 1000)"]);
   });
 
   it("leaves the label swap to the run: its claim turns sous:ready into sous:running", async () => {
@@ -167,10 +167,18 @@ describe("sous watch", () => {
     expect(spawned.children).toEqual([]);
     expect(out).toEqual([
       "#8 skipped: blocked by #5",
-      "#9 skipped: no flow accepts type:epic",
-      "#10 skipped: flows feature, task all accept type:task, type:feature; keep one type:* label",
+      "#9 skipped: no flow accepts its labels (type:epic, sous:ready); give it the type:* label of one flow's allowedLabels",
+      "#10 skipped: flows feature, task all accept it: the issue carries several type:* labels (type:task, type:feature); keep one",
       "#11 skipped: a run holds its lock (pid 4242)",
     ]);
+  });
+
+  it("skips a kind-less ready issue as no flow accepting it, even beside a flow without allowedLabels", async () => {
+    await writeFile(join(root, "flows", "bench.yaml"), "entry: hello\nlifecycle: steps\nsteps:\n  - id: hello\n    uses: hello\n");
+    seed(ready("7", []));
+    await createWatcher(deps()).pass();
+    expect(spawned.children).toEqual([]);
+    expect(out).toEqual(["#7 skipped: no flow accepts its labels (sous:ready); give it the type:* label of one flow's allowedLabels"]);
   });
 
   it("reports a blocker the tracker cannot follow once and skips the issue", async () => {
@@ -190,14 +198,14 @@ describe("sous watch", () => {
     const watcher = createWatcher(deps());
     await watcher.pass();
     await watcher.pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "task", "3"]]);
+    expect(spawned.children.map((c) => c.args)).toEqual([["run", "3", "--flow", "task"]]);
     tracker.issues.set("3", { ...tracker.issues.get("3")!, state: "closed" });
     spawned.children[0]?.exit({ code: 0 });
     await watcher.idle();
     await watcher.pass();
     expect(spawned.children.map((c) => c.args)).toEqual([
-      ["run", "task", "3"],
-      ["run", "task", "12"],
+      ["run", "3", "--flow", "task"],
+      ["run", "12", "--flow", "task"],
     ]);
   });
 
@@ -211,7 +219,7 @@ describe("sous watch", () => {
     alive.delete(4242);
     await rm(lockPath(root, "5"));
     await watcher.pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "task", "7"]]);
+    expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
   });
 
   it("leaves a blocked issue alone until it also carries ready, then runs the same command", async () => {
@@ -221,7 +229,7 @@ describe("sous watch", () => {
     expect(spawned.children).toEqual([]);
     tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:blocked", "sous:ready"] }));
     await watcher.pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "task", "7"]]);
+    expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
   });
 
   it("does not start an issue again whose run it started left sous:ready on it, until its labels change", async () => {
@@ -234,8 +242,8 @@ describe("sous watch", () => {
     await watcher.pass();
     expect(spawned.children).toHaveLength(1);
     expect(out).toEqual([
-      "#7: started sous run task 7 (pid 1000)",
-      "#7: sous run task 7 exited with 2: sous run: 1 validation error(s)",
+      "#7: started sous run 7 --flow task (pid 1000)",
+      "#7: sous run 7 --flow task exited with 2: sous run: 1 validation error(s)",
       "#7 skipped: still sous:ready after its run exited; change its labels to start it again",
     ]);
   });
@@ -254,8 +262,8 @@ describe("sous watch", () => {
     const watcher = createWatcher(deps());
     await watcher.pass();
     expect(existsSync(lockPath(root, "7"))).toBe(false);
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "task", "7"]]);
-    expect(out).toEqual(["#7: removed the stale lock of pid 999999; rerunning sous run task 7 after a crash (pid 1000)"]);
+    expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
+    expect(out).toEqual(["#7: removed the stale lock of pid 999999; rerunning sous run 7 --flow task after a crash (pid 1000)"]);
 
     spawned.children[0]?.exit({ code: 1, stderr: "boom\n" });
     await watcher.idle();
@@ -279,8 +287,8 @@ describe("sous watch", () => {
     tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:blocked", "sous:ready"] }));
     await watcher.pass();
     expect(spawned.children.map((c) => c.args)).toEqual([
-      ["run", "task", "7"],
-      ["run", "task", "7"],
+      ["run", "7", "--flow", "task"],
+      ["run", "7", "--flow", "task"],
     ]);
 
     // The handed-back run crashes: the issue is rerun once, as a new daemon would.
@@ -290,7 +298,7 @@ describe("sous watch", () => {
     await watcher.idle();
     await watcher.pass();
     expect(spawned.children).toHaveLength(3);
-    expect(out.at(-1)).toBe("#7: removed the stale lock of pid 999997; rerunning sous run task 7 after a crash (pid 1002)");
+    expect(out.at(-1)).toBe("#7: removed the stale lock of pid 999997; rerunning sous run 7 --flow task after a crash (pid 1002)");
   });
 
   it("removes the stale lock a second crash left, so the hand-back with ready starts in a new daemon", async () => {
@@ -307,8 +315,8 @@ describe("sous watch", () => {
     tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:blocked", "sous:ready"] }));
     await createWatcher(deps()).pass();
     expect(spawned.children.map((c) => c.args)).toEqual([
-      ["run", "task", "7"],
-      ["run", "task", "7"],
+      ["run", "7", "--flow", "task"],
+      ["run", "7", "--flow", "task"],
     ]);
   });
 
@@ -317,8 +325,8 @@ describe("sous watch", () => {
     await holdLock("7", 999999);
     await createWatcher(deps()).pass();
     expect(existsSync(lockPath(root, "7"))).toBe(false);
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "task", "7"]]);
-    expect(out).toEqual(["#7: removed the stale lock of pid 999999; started sous run task 7 (pid 1000)"]);
+    expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
+    expect(out).toEqual(["#7: removed the stale lock of pid 999999; started sous run 7 --flow task (pid 1000)"]);
   });
 
   it("leaves a running issue without a lock alone: its run may be on another machine", async () => {
@@ -453,13 +461,13 @@ describe("sous watch", () => {
       const watcher = createWatcher(deps());
       await watcher.pass();
       await watcher.pass();
-      expect(spawned.children.map((c) => c.args)).toEqual([["run", "task", "7"]]);
-      expect(out).toEqual(["#8 skipped: repo:web names another repository than app", "#7: started sous run task 7 (pid 1000)"]);
+      expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
+      expect(out).toEqual(["#8 skipped: repo:web names another repository than app", "#7: started sous run 7 --flow task (pid 1000)"]);
       spawned.children[0]?.exit({ code: 0 });
       tracker.issues.set("7", { ...tracker.issues.get("7")!, state: "closed" });
       await watcher.idle();
       await watcher.pass();
-      expect(spawned.children.map((c) => c.args)).toEqual([["run", "task", "7"], ["run", "task", "9"]]);
+      expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"], ["run", "9", "--flow", "task"]]);
     });
 
     it("reports an issue carrying two repo:* labels once and skips it", async () => {
@@ -498,10 +506,10 @@ describe("sous watch", () => {
       const watcher = createWatcher(deps({ repos: [a, b], listed: true }));
       await watcher.pass();
       expect(starts()).toEqual([
-        { command: join(a.root, "sous"), args: ["run", "task", "3"], cwd: a.repoRoot },
-        { command: join(b.root, "sous"), args: ["run", "feature", "5"], cwd: b.repoRoot },
+        { command: join(a.root, "sous"), args: ["run", "3", "--flow", "task"], cwd: a.repoRoot },
+        { command: join(b.root, "sous"), args: ["run", "5", "--flow", "feature"], cwd: b.repoRoot },
       ]);
-      expect(out).toEqual(["a #3: started sous run task 3 (pid 1000)", "b #5: started sous run feature 5 (pid 1001)"]);
+      expect(out).toEqual(["a #3: started sous run 3 --flow task (pid 1000)", "b #5: started sous run 5 --flow feature (pid 1001)"]);
     });
 
     it("runs an issue of a shared tracker in the entry its repo label names, once", async () => {
@@ -512,7 +520,7 @@ describe("sous watch", () => {
       const watcher = createWatcher(deps({ repos: [a, b], listed: true }));
       await watcher.pass();
       await watcher.pass();
-      expect(starts()).toEqual([{ command: join(b.root, "sous"), args: ["run", "task", "7"], cwd: b.repoRoot }]);
+      expect(starts()).toEqual([{ command: join(b.root, "sous"), args: ["run", "7", "--flow", "task"], cwd: b.repoRoot }]);
     });
 
     it("reports an unknown repo label and a missing one once each and skips them, even when two trackers list them", async () => {
@@ -558,7 +566,7 @@ describe("sous watch", () => {
       spawned.children[1]?.exit({ code: 0 });
       await settle();
       await watcher.pass();
-      expect(starts().map((c) => c.args)).toEqual([["run", "task", "3"], ["run", "task", "5"], ["run", "task", "6"]]);
+      expect(starts().map((c) => c.args)).toEqual([["run", "3", "--flow", "task"], ["run", "5", "--flow", "task"], ["run", "6", "--flow", "task"]]);
     });
 
     it("builds each entry from its own .sous: its tracker, its sous, its checkout", async () => {
@@ -589,8 +597,8 @@ describe("sous watch", () => {
       const watcher = createWatcher(deps({ repos: [a], unrunnable: built.unrunnable, listed: true }));
       await watcher.pass();
       await watcher.pass();
-      expect(starts()).toEqual([{ command: join(a.root, "sous"), args: ["run", "task", "3"], cwd: a.repoRoot }]);
-      expect(out).toEqual([`bare skipped: ${bare.repoRoot} holds no .sous/sous to run it on its own engine; sous watch starts nothing there`, "a #3: started sous run task 3 (pid 1000)"]);
+      expect(starts()).toEqual([{ command: join(a.root, "sous"), args: ["run", "3", "--flow", "task"], cwd: a.repoRoot }]);
+      expect(out).toEqual([`bare skipped: ${bare.repoRoot} holds no .sous/sous to run it on its own engine; sous watch starts nothing there`, "a #3: started sous run 3 --flow task (pid 1000)"]);
     });
 
     it("refuses to build an entry whose path holds no project", async () => {

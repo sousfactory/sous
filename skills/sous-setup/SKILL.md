@@ -83,7 +83,7 @@ cd .sous && ./sous validate && npx vitest run
 
 Both must pass; fix what they report. Then offer a smoke test on an
 issue the human names (a number for GitHub, a bead id for bd):
-`./sous run bench <issue>` (the `bench` flow has `lifecycle: steps`, so
+`./sous run <issue> --flow bench` (the `bench` flow has `lifecycle: steps`, so
 it changes nothing on the issue).
 
 ## 5. An existing development loop
