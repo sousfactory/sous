@@ -67,7 +67,7 @@ flowchart TD
   I2 --> K0
   I0 -- yes --> K0
 
-  K0{"9. anything to commit in git?"} -- "no: at most issue edits" --> X6["10. report: already planned, child rewrites if any, next command"]:::stop
+  K0{"9. anything to commit in git?"} -- "no: at most issue edits" --> X6["11. report: already planned, child rewrites if any, next command"]:::stop
   K0 -- yes --> K1["9. summary: target, spec path and mode, ADRs, children or criteria, issue edits"]:::gate
   K1 --> K2{"explicit GO?"}:::gate
   K2 -- "changes requested" --> E1
@@ -76,12 +76,16 @@ flowchart TD
   L0 -- "worktree" --> L2["9. add the same paths in the worktree; commit on the branch; no push"]:::write
   L1 --> R0
   L2 --> R0
-  R0["9. set the repo label: one repo:name on the issue and every child, created when missing; the repository's own name, or the repos: entry chosen in step 1"]:::write --> M0
-  M0["10. report: target, path, sha, children in order or criteria, next command"] --> Z([end])
+  R0["9. set the repo label: one repo:name on the issue and every child, created when missing; the repository's own name, or the repos: entry chosen in step 1"]:::write --> P0
+  P0{"10. second gate: may the work start now? (recommend yes)"}:::gate
+  P0 -- yes --> P1["10. set ready on the issue only, never on children; created when missing"]:::write
+  P0 -- "no: set nothing" --> M0
+  P1 --> M0
+  M0["11. report: target, path, sha, children in order or criteria, next command; on a no, sous:ready as the manual step"] --> Z([end])
 ```
 
 Red boxes stop with a message, blue ones ask the human, green ones write or
-commit, orange ones are the gate.
+commit, orange ones are the gates.
 
 ## Cases at a glance
 
@@ -105,16 +109,17 @@ commit, orange ones are the gate.
   where the order needs them.
 - **Step 8**, tasks and bugs: the criteria are replaced, never appended, so a
   rerun yields the same body.
-- **Step 9** with nothing to commit in git reports and stops before the gate.
+- **Step 9** with nothing to commit in git reports and stops before the gate
+  and the second gate.
   Issue edits made in step 8 were each announced on their own and are listed
   in the report.
 
 ## Where the tracker comes in
 
 The prompt names a verb; the sheet says the command. Every sheet defines the
-same ten verbs (read the issue, parent of the issue, list the children,
+same eleven verbs (read the issue, parent of the issue, list the children,
 create the issue, set the kind, update the body, create a child, add a
-blocker, set the acceptance criteria, set the repo label) and four conventions: how the issue is
+blocker, set the acceptance criteria, set the repo label, set ready) and four conventions: how the issue is
 written in text (`REF`), where the kind lives, which state labels the run
 phase sets, and how a child's parent and blockers are expressed. The shapes
 themselves are `starters/default/templates/`: `spec.md` and

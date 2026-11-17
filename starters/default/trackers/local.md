@@ -30,7 +30,8 @@ The folder is `trackerOptions: { dir }` in `sous.yaml`, relative to
 - **State labels:** `<labelPrefix>:running` and `<labelPrefix>:blocked`
   (`sous:running`, `sous:blocked` by default) in `labels`, set and removed
   by the run phase only. A child carrying one is mid-run.
-  `<labelPrefix>:ready` is set by a human, never by `/sous-plan`.
+  `<labelPrefix>:ready` is set by a human; `/sous-plan` sets it only
+  through **set ready**, on a yes at its second gate.
 - **Repo label:** `repo:<name>` in `labels`, one per issue, naming the
   repository the work runs in. Labels are plain strings; nothing is
   created first.
@@ -58,6 +59,8 @@ they are and the file pretty-printed.
   section of `body`.
 - **Set the repo label:** put `repo:<name>` in `labels`, replacing any
   other `repo:*` entry.
+- **Set ready:** append `<labelPrefix>:ready` to `labels`, keeping the
+  other entries.
 
 ## Child shape
 

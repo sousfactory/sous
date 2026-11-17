@@ -26,9 +26,16 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   entry the session asks for first, whose checkout then supplies the
   settings, tracker and templates and receives the spec and its commit. A
   feature's children carry the parent's label; a feature split across
-  repositories is refused as an epic. The session never sets `sous:ready`;
-  its report offers that label beside `./sous run`. The tracker sheets
+  repositories is refused as an epic. The tracker sheets
   gain **set the repo label**, and `templates/child.md` names the label.
+- **`/sous-plan` asks whether the work may start now.** After GO and
+  publishing, a second gate asks one question, recommending yes. On a yes
+  the session sets `sous:ready` on the planned issue, never on a feature's
+  children, creating the label where the tracker needs it, so `sous watch`
+  picks it up; on a no the report names `sous:ready` as the manual step
+  beside `./sous run`. The ground rules make `sous:ready` the one state
+  label the session may set; it still never runs `./sous`. The tracker
+  sheets gain **set ready**.
 
 ### Added
 

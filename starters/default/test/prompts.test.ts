@@ -149,7 +149,7 @@ const sheet = (tracker: string): string => readFileSync(join(root, "trackers", `
 const PLANS: [string, string, string][] = [["plan.md", plan, "REF"]];
 
 /** The verbs the plan prompt uses in bold; every tracker sheet defines each of them. */
-const TRACKER_VERBS = ["Read the issue", "Parent of the issue", "List the children", "Create the issue", "Set the kind", "Update the body", "Create a child", "Add a blocker", "Set the acceptance criteria", "Set the repo label"];
+const TRACKER_VERBS = ["Read the issue", "Parent of the issue", "List the children", "Create the issue", "Set the kind", "Update the body", "Create a child", "Add a blocker", "Set the acceptance criteria", "Set the repo label", "Set ready"];
 
 /** Vendored skill files the prompt must send the session to. */
 const REQUIRED_SKILLS = [
@@ -315,15 +315,33 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(tasks).toContain("`repo:<name>`");
   });
 
-  it("never sets the ready label: a human does, and the report offers it beside the run command", () => {
+  it("sets the ready label only at the second gate: after GO and the repo label, one question recommending yes, on the issue and never on children", () => {
     const rules = flat.slice(flat.indexOf("## 5. Ground rules"), flat.indexOf("## 6. Clarify"));
-    expect(rules).toContain("Never set `<labelPrefix>:ready`");
-    expect(rules).toMatch(/a human sets it/);
-    expect(rules).toContain("the run phase owns the state labels apart from `sous:ready`, which a human sets");
-    const report = flat.slice(flat.indexOf("## 10. Sanity report"));
+    expect(rules).toContain("the run phase owns the state labels apart from `<labelPrefix>:ready` (`sous:ready`), which you set only on a yes at the second gate in step 10");
+    expect(rules).toContain("never run `./sous`");
+    expect(rules).not.toContain("Never set `<labelPrefix>:ready`");
+    const go = flat.indexOf("ask for an explicit GO");
+    const repoLabel = flat.indexOf("**set the repo label**", go);
+    const gate = flat.indexOf("## 10. Second gate");
+    const report = flat.indexOf("## 11. Sanity report");
+    expect(gate).toBeGreaterThan(repoLabel);
+    expect(report).toBeGreaterThan(gate);
+    const second = flat.slice(gate, report);
+    expect(second).toContain("may the work start now?");
+    expect(second).toContain("recommending yes");
+    expect(second).toContain("**set ready** on `ISSUE`");
+    expect(second).toContain("never on a feature's children");
+    expect(second).toContain("Ask nothing further on either answer");
+    expect(flat.slice(flat.indexOf("## 9. GO gate"), gate)).toContain("Nothing to commit:** skip the gate and the second gate");
+  });
+
+  it("names the ready label in the report beside the run command: the manual step on a no, set on a yes", () => {
+    const report = flat.slice(flat.indexOf("## 11. Sanity report"));
     expect(report).toContain("./sous run <flow> <ISSUE>");
     expect(report).toContain("`<labelPrefix>:ready`");
     expect(report.indexOf("`<labelPrefix>:ready`")).toBeGreaterThan(report.indexOf("./sous run <flow> <ISSUE>"));
+    expect(report).toContain("On a no, a human sets `<labelPrefix>:ready`");
+    expect(report).toContain("On a yes, the issue now carries it");
   });
 
   it("contains no shell-expansion sequences", () => {
@@ -352,6 +370,13 @@ describe.each(["github", "beads", "local"])("trackers/%s.md", (tracker) => {
     expect(text).toContain("**Repo label:**");
   });
 
+  it("says how the ready label is set, and that /sous-plan sets it only through set ready", () => {
+    const verb = text.slice(text.indexOf("- **Set ready:**")).replace(/\s+/g, " ");
+    expect(verb.slice(0, verb.indexOf(" - **", 1) > 0 ? verb.indexOf(" - **", 1) : undefined)).toContain("<labelPrefix>:ready");
+    expect(text).not.toContain("never by `/sous-plan`");
+    expect(text.replace(/\s+/g, " ")).toContain("`/sous-plan` sets it only through **set ready**");
+  });
+
   it("contains no shell-expansion sequences", () => {
     expect(text).not.toMatch(/!`/);
   });
@@ -373,6 +398,8 @@ describe("trackers/github.md speaks gh", () => {
     expect(text).not.toMatch(/\bbd (create|show|update|dep)\b/);
     expect(text).toContain("gh label create repo:<name>");
     expect(text).toContain("--add-label repo:<name>");
+    expect(text).toContain("gh label create <labelPrefix>:ready");
+    expect(text).toContain("--add-label <labelPrefix>:ready");
   });
 });
 

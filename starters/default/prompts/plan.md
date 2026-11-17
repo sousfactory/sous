@@ -133,11 +133,13 @@ Look for an existing spec in the target: `ls -d specs/<ISSUE>-*/ 2>/dev/null`.
   vendored copy under `.sous/skills/`. The issue, its children and the spec
   file are the outputs; the kinds are the only classification you ever set.
   Never set a state label: the run phase owns the state labels apart from
-  `sous:ready`, which a human sets.
-  Besides the kinds, the one label you set is `repo:<name>`, at GO.
-- Never set `<labelPrefix>:ready` (`sous:ready`), the label `sous watch`
-  starts work from: a human sets it, by hand or on the tracker's web
-  page, when the work may start.
+  `<labelPrefix>:ready` (`sous:ready`), which you set only on a yes at the
+  second gate in step 10, and otherwise a human sets.
+  Besides the kinds and that one, the label you set is `repo:<name>`, at GO.
+- `<labelPrefix>:ready` is the label `sous watch` starts work from. Set it
+  only on the issue itself, only through **set ready**, and only when the
+  human says yes at the second gate; without that yes a human sets it, by
+  hand or on the tracker's web page, when the work may start.
 - Facts live in the repo: look them up instead of asking. Decisions are the
   human's: ask, recommend an answer, wait.
 <!-- ADAPT: The folders the session may write: spec folder, decision records, glossary. -->
@@ -279,7 +281,8 @@ bug carries one `repo:<name>` label, set at GO (step 9).
 First check what changed in the target: `git status --porcelain` limited
 to the spec folder, `docs/adr/` and the glossary.
 
-- **Nothing to commit:** skip the gate. Report as in step 10, listing the
+- **Nothing to commit:** skip the gate and the second gate. Report as in
+  step 11, listing the
   children you rewrote, if any, and stop. Issue edits were each announced
   on their own; nothing is committed.
 - **Something to commit:** before any `git commit` or `git push`, show the
@@ -329,7 +332,22 @@ announced like any other issue edit.
 Plain commit message, no `Co-Authored-By` and no other trailers. Never create
 a branch, never force-push. If the rebase conflicts, stop and show the human.
 
-## 10. Sanity report
+## 10. Second gate
+
+Only after GO, once the spec is committed and the children or the
+criteria are published and the repo label is set, ask the human one
+question: may the work start now? Ask it with your recommended answer,
+recommending yes.
+
+- **Yes:** **set ready** on `ISSUE`, the feature or the task or bug
+  itself, and never on a feature's children: the feature flow picks the
+  children itself. Nothing else on the issue changes. The sheet says
+  where the label must be created first.
+- **No:** set nothing.
+
+Ask nothing further on either answer; go to the sanity report.
+
+## 11. Sanity report
 
 Finish with a short report (nothing is enforced, this is for the human):
 
@@ -346,6 +364,6 @@ Finish with a short report (nothing is enforced, this is for the human):
   `type:*` label the tracker reports for the issue's kind (`sous run`
   refuses any other). For a blocked run that is the same
   command the blocked comment names; the run re-enters at the blocked
-  step. The alternative: a human sets `<labelPrefix>:ready` on the issue
-  when the work may start, and `sous watch` runs it; this session never
-  sets it.
+  step. On a no, a human sets `<labelPrefix>:ready` on the issue when the
+  work may start, and `sous watch` runs it; name that manual step here.
+  On a yes, the issue now carries it, and `sous watch` picks it up.

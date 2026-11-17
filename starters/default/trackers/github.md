@@ -16,7 +16,8 @@ from the checkout.
 - **State labels:** `<labelPrefix>:running` and `<labelPrefix>:blocked`
   (`sous:running`, `sous:blocked` by default), set and removed by the run
   phase only. A child carrying one is mid-run. `<labelPrefix>:ready` is set
-  by a human, never by `/sous-plan`.
+  by a human; `/sous-plan` sets it only through **set ready**, on a yes at
+  its second gate.
 - **Repo label:** `repo:<name>`, one per issue, naming the repository the
   work runs in. A label must exist in the repository before it is applied:
   `gh label list --search repo:` shows what exists.
@@ -54,6 +55,9 @@ from the checkout.
   `gh label list --search repo:`, `gh label create repo:<name>` first; then
   `gh issue edit <n> --add-label repo:<name>`, removing any other `repo:*`
   label with `--remove-label`.
+- **Set ready:** when `<labelPrefix>:ready` is missing from
+  `gh label list --search <labelPrefix>:`, `gh label create <labelPrefix>:ready`
+  first; then `gh issue edit <n> --add-label <labelPrefix>:ready`.
 
 ## Child shape
 

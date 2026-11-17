@@ -1107,9 +1107,13 @@ work runs ([how-to 21](#21-multi-repo-setup)): the repository's own name,
 or in a home repository the `repos:` entry the session asked for in its
 first step, whose checkout then holds the spec, the commit and the
 settings. A feature's children carry the parent's label; work spanning
-repositories is an epic, which the procedure does not plan. The session
-never sets `sous:ready`: a human sets it when the work may start, the
-alternative the report offers to `./sous run`.
+repositories is an epic, which the procedure does not plan. A second gate
+follows: the session asks once whether the work may start now,
+recommending yes. On a yes it sets `sous:ready` on the issue itself (never
+on a feature's children, which the feature flow picks itself), creating
+the label where the tracker needs it, so `sous watch` picks the issue up;
+on a no the report names `sous:ready` as the manual step beside
+`./sous run`. The session never runs `./sous`.
 
 The spec format is `templates/spec.md`: the headings, and under each a
 placeholder saying what the section holds and who writes it. The plan
@@ -1225,8 +1229,8 @@ machine that works through the queue overnight, or a cron entry.
 ```
 
 **What it picks up.** A human marks an issue ready for the factory with
-`<labelPrefix>:ready` (`sous:ready`), by hand or on the tracker's web page;
-`/sous-plan` never sets it. Each pass takes the open issues carrying it,
+`<labelPrefix>:ready` (`sous:ready`), by hand or on the tracker's web page,
+or by answering yes at `/sous-plan`'s second gate. Each pass takes the open issues carrying it,
 lowest number first, and starts `.sous/sous run <flow> <issue>` in the
 repository for the first one that has no open blockers (`blockers()`)
 and a `type:*` label exactly one flow's `allowedLabels` accept. One run

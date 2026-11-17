@@ -18,7 +18,8 @@ Everything goes through the `bd` CLI in the repository.
   `<labelPrefix>:blocked` (`sous:blocked` by default) when it stops. A bead
   whose status is `in_progress` and whose owner names `sous:` is running; a
   bead with the blocked label is blocked. `<labelPrefix>:ready` is set by
-  a human, never by `/sous-plan`.
+  a human; `/sous-plan` sets it only through **set ready**, on a yes at its
+  second gate.
 - **Repo label:** the bd label `repo:<name>`, one per bead, naming the
   repository the work runs in. bd labels need no creating; the run phase
   reads them as they are.
@@ -54,6 +55,8 @@ Everything goes through the `bd` CLI in the repository.
   the description stays as it is.
 - **Set the repo label:** `bd update <id> --add-label repo:<name>`, adding
   `--remove-label <other>` for any other `repo:*` label the bead carries.
+- **Set ready:** `bd update <id> --add-label <labelPrefix>:ready`; bd labels
+  need no creating.
 
 ## Child shape
 
