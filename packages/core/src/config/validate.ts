@@ -11,7 +11,7 @@ import { DONE, parseFlow, resolveUses, STEP_NAME, TERMINALS, type LoadOptions, t
 import { DEFAULT_SETTINGS, loadSettings, projectDirs, SETTINGS_FILE, type Settings } from "./settings.js";
 import { messageOf, schemaProblem } from "./schema.js";
 import { inputEnvName } from "../exec/shell.js";
-import { repoProblems, unrunnableRepos } from "./repos.js";
+import { repoProblems } from "./repos.js";
 
 /** Loader messages start with the file; the error carries it separately, so drop the duplicate. */
 const withoutFile = (file: string, message: string): string => (message.startsWith(`${file}: `) ? message.slice(file.length + 2) : message);
@@ -219,7 +219,6 @@ export const validateProject = (root: string): ProjectReport => {
     errors.push({ file: settingsFile, rule: "settings", message: withoutFile(settingsFile, messageOf(error)) });
   }
   for (const message of repoProblems(root, settings)) errors.push({ file: settingsFile, rule: "settings", message });
-  for (const { name, reason } of unrunnableRepos(root, settings)) errors.push({ file: settingsFile, rule: "settings", message: `repos.${name}: ${reason}` });
   const dirs = projectDirs(root, settings);
   const flows = listFlows(dirs.flows);
   for (const file of flows) errors.push(...validateFlowFile(file, { stepsDir: dirs.steps }));

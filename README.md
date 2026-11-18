@@ -148,6 +148,7 @@ Daily use:
 ./sous graph task             # the flow as a diagram
 ./sous ui                     # live, at http://127.0.0.1:4680 (uiPort in sous.yaml)
 ./sous watch                  # unattended: runs issues labelled sous:ready, one at a time
+sous run <issue>              # the same from a global engine (npm install -g sous-factory), in a home repository or any .sous/
 ```
 
 A run that cannot go on stops `blocked`: the issue gets a comment saying

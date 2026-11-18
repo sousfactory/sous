@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Exec } from "../../src/adapters/exec.js";
-import { repoEntries, repoNameOf } from "../../src/config/repos.js";
+import { repoEntries, repoNameOf, routeIssue } from "../../src/config/repos.js";
 import { DEFAULT_SETTINGS, parseSettings } from "../../src/config/settings.js";
 import { validateProject } from "../../src/config/validate.js";
 
@@ -65,9 +65,8 @@ describe("sous validate with repos", () => {
     ]);
   });
 
-  it("reports a listed project without its .sous/sous, which would leave sous watch no engine of its own to run it on", () => {
-    const { dir, root } = workspace("repos: { a: ../a, bare: ../bare }\n");
-    expect(validateProject(root).errors.map((e) => [e.rule, e.message])).toEqual([["settings", `repos.bare: ${join(dir, "bare")} holds no .sous/sous to run it on its own engine; sous watch starts nothing there`]]);
+  it("passes a listed project without a .sous/sous wrapper or node_modules: the running engine runs it", () => {
+    expect(validateProject(workspace("repos: { a: ../a, bare: ../bare }\n").root).errors).toEqual([]);
   });
 
   it("reports a repos entry that is not a string", () => {
@@ -78,6 +77,32 @@ describe("sous validate with repos", () => {
   it("reports two list entries named by the same folder", () => {
     const { root } = workspace("repos: [../a, ../x/a]\n");
     expect(validateProject(root).errors.map((e) => e.message)).toContain("repos: two entries are named a; use a map to name them apart");
+  });
+});
+
+describe("routeIssue", () => {
+  const listed = { entries: ["a", "b"] };
+
+  it("routes an issue of a home repository to the entry its repo: label names", () => {
+    expect(routeIssue(["type:task", "repo:b"], listed)).toEqual({ to: "b" });
+  });
+
+  it("refuses an issue without a repo: label, with several, or naming no entry", () => {
+    expect(routeIssue(["type:task"], listed)).toEqual({ reason: "no repo:* label names its repository" });
+    expect(routeIssue(["repo:a", "repo:b"], listed)).toEqual({ reason: "carries several repo:* labels (repo:a, repo:b); keep one" });
+    expect(routeIssue(["repo:zzz"], listed)).toEqual({ reason: "repo:zzz names no entry of repos: (a, b)" });
+  });
+
+  it("takes an override over the label, and refuses one naming no entry", () => {
+    expect(routeIssue(["repo:a"], listed, "b")).toEqual({ to: "b" });
+    expect(routeIssue([], listed, "b")).toEqual({ to: "b" });
+    expect(routeIssue(["repo:a"], listed, "zzz")).toEqual({ reason: "--repo zzz names no entry of repos: (a, b)" });
+  });
+
+  it("without repos: routes to the one repository an issue without a label or naming it", () => {
+    expect(routeIssue(["type:task"], { self: "app" })).toEqual({ to: "app" });
+    expect(routeIssue(["repo:app"], { self: "app" })).toEqual({ to: "app" });
+    expect(routeIssue(["repo:web"], { self: "app" })).toEqual({ reason: "repo:web names another repository than app" });
   });
 });
 

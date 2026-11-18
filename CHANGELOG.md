@@ -30,6 +30,28 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Changed
 
+- **`/sous-setup` asks for one repository or several; `/sous-migrate`
+  moves a repository to definitions-only.** Setup asks first, before
+  writing, recommending one repository for a single checkout; for
+  several it installs or extends the home repository's `repos:`, writes
+  each listed repository's `.sous/` with `sous init --no-install`,
+  offers the dev install there for authoring, and names `sous watch` and
+  the `repo:<name>` labels to create. With a home repository found beside
+  the checkout or named, `/sous-migrate` offers to remove a repository's
+  `sous` wrapper and `node_modules`, keep `package.json`, add `engine:`,
+  register it in `repos:`, and tells its users what to type instead of
+  `./sous`. Neither skill runs `sous run` any more: both print the smoke
+  test for you to run.
+- **`sous watch` runs listed repositories with its own engine.** The
+  daemon starts each run as its own CLI with `SOUS_ROOT` at the
+  repository's `.sous/`, never the repository's `.sous/sous` wrapper or
+  install, and its start line shows that command and the checkout. A
+  listed repository needs `.sous/sous.yaml` and an `engine:` range the
+  daemon satisfies; a missing wrapper or `node_modules` no longer sets it
+  aside, and `sous validate` no longer reports one. `sous run <issue>` in
+  a home repository runs the issue in the `repos:` entry its `repo:<name>`
+  label names, or the one `--repo <name>` names, as the daemon would;
+  lock, run record, logs and worktree stay in that repository's `.sous/`.
 - **`sous run` prints what a code step did.** After a module step's
   `start` line the run prints the step's summary, so the output shows
   `merge: squashed … into main as abc1234, pushed main to origin`, the
@@ -53,6 +75,34 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Added
 
+- **`sous init --no-install [<path>]`: a definitions-only `.sous/`.** It
+  copies the starter and writes `engine:` but no `sous` wrapper and runs
+  no `npm install`, for a repository a home repository's engine runs;
+  `package.json` stays for the editor and the tests, as the checklist
+  says. A path argument initialises that repository, and the checklist
+  names the `repos:` entry to add in the current one. The manual's install
+  chapter opens with the choice between one repository and several.
+- **`engine:` in `sous.yaml`: the engine range a repository's definitions
+  were written for.** `sous init` writes a caret on the version that ran it
+  (`engine: ^0.9.0`). `sous run` refuses a repository whose range the
+  running engine does not satisfy with exit 2, before any lock, naming
+  engine, range and repository; without the key it runs as before. `sous
+  watch` refuses to start in a repository without the key or outside its
+  range, and over `repos:` skips such an entry, saying why once. `sous
+  validate` rejects a value that is not a semver range, warns on a missing
+  key and, in a home repository, reports each listed repository outside
+  its range; `sous ui` shows it as an error row. `session.json` records the
+  engine version that started the run, and `sous status` shows it. Add the
+  line to an existing project before running `sous watch` on it.
+- **`sous-factory` in a project's modules is the engine running the
+  command.** `sous run` and `sous watch` map `sous-factory`,
+  `sous-factory/read` and `sous-factory/testing` in steps, evals,
+  prepares and tracker modules to the running engine's own files, so a
+  `.sous/` without `node_modules` runs from an engine installed elsewhere,
+  and a repository's own install on another version no longer mixes into
+  a run. Every other import resolves through the repository's
+  `node_modules` as before; `npx vitest` and `tsc` in `.sous/` still use
+  the repository's install.
 - **`tracker.list({ labels })`: the open issues carrying every named
   label, in ascending numeric id order.** The GitHub tracker pages through
   every matching issue with `gh api --paginate` (no cap; pull requests

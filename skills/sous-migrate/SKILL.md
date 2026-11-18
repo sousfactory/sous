@@ -1,14 +1,15 @@
 ---
 name: sous-migrate
-description: Port an existing agentic development-loop skill (one big SKILL.md, or a skill that chains sub-skills and scripts) into a sous flow of steps in .sous/. Interactive: reads the skill, maps every part of it to a step, eval, prepare, route or "not ported", shows that mapping for approval, then writes the flow and any new steps and validates. Use as /sous-migrate <skill> ("migrate my skill to sous", "port this workflow to a flow").
+description: Port an existing agentic development-loop skill (one big SKILL.md, or a skill that chains sub-skills and scripts) into a sous flow of steps in .sous/, and, when a home repository is found beside the checkout or named, move this repository's .sous/ from its own engine to definitions-only run by the home repository. Interactive: reads the skill, maps every part of it to a step, eval, prepare, route or "not ported", shows that mapping for approval, then writes the flow and any new steps and validates. Use as /sous-migrate <skill> ("migrate my skill to sous", "port this workflow to a flow") or /sous-migrate definitions-only ("move this repository to the home engine").
 disable-model-invocation: true
 ---
 
 Port the skill the human names into a sous flow. The original stays
 untouched: the flow lives beside it, and the human compares and decides.
 Ask for what you cannot read, show every file as a diff before writing it,
-and write only after a yes. Never push. Never `sous run` a real issue unless
-the human names one and agrees.
+and write only after a yes. Never push. Never run `sous run` or `./sous
+run` and never set `sous:ready`: print the run command for the human
+instead.
 
 Read the sous manual first
 (<https://github.com/sousfactory/sous/blob/main/docs/manual.md>): steps (§5),
@@ -21,8 +22,15 @@ fields or expression variables.
 ## 0. Preconditions
 
 - `.sous/sous.yaml` exists. If not, stop and point to `/sous-setup`.
+- A home repository: one beside the checkout (a sibling folder whose
+  `.sous/sous.yaml` has `repos:`) or one the human names. When there is
+  one and this repository's `.sous/` carries its own engine (a `.sous/sous`
+  wrapper or `.sous/node_modules`), offer the move to definitions-only in
+  §D below before or instead of a port. Without a
+  home repository, found or named, do not offer it.
 - The skill to port: `$ARGUMENTS`, else ask. Accept a name
   (`.claude/skills/<name>/SKILL.md`), a path, or a command file.
+  `$ARGUMENTS` of `definitions-only` asks for §D alone.
 
 ## 1. Read everything the skill reaches
 
@@ -153,8 +161,61 @@ One file at a time, diff first:
 cd .sous && ./sous validate && ./sous graph <flow> && npx vitest run
 ```
 
-Fix what fails. Show the graph. Offer one run on an issue the human names,
-and only then. Finish with three lines: what was ported, what was not, and
-the decisions still open.
+Fix what fails. Show the graph. Print the run command for the human to
+try on an issue of their choice (`./sous run <issue> --flow <flow>`, or
+from the home repository after §D). Finish with three lines: what was
+ported, what was not, and the decisions still open.
+
+## D. Move to definitions-only
+
+The repository's `.sous/` keeps its definitions (flows, steps, prompts,
+trackers, `sous.yaml`) and loses its engine: the home repository's engine
+runs it, from `sous watch` and `sous run` there (manual how-to 21,
+"Definitions here, engine there"). Show what each step changes, diff or
+file list first, and change it only after a yes.
+
+1. **Read both sides.** The home repository's path and its engine
+   version, the `version` in
+   `<home>/.sous/node_modules/sous-factory/package.json`; this
+   repository's own version in `.sous/node_modules/sous-factory/package.json`
+   when installed, and its `engine:` in `.sous/sous.yaml`. Name a
+   different minor version as a risk: the definitions may use what the
+   other engine changed, which §D.6 checks.
+2. **Remove the engine.** `git rm .sous/sous` (the wrapper) and remove
+   `.sous/node_modules` (gitignored, so nothing to commit). Keep
+   `.sous/package.json` and its lock file: they serve the editor and the
+   project's tests. Keep `node_modules/` in `.sous/.gitignore` for a later
+   dev install.
+3. **Add `engine:`.** Without the key, add `engine: ^<home version>` to
+   `.sous/sous.yaml`, among the settings at the top. With a range the home
+   engine does not satisfy, propose widening it to `^<home version>` once
+   §D.6 passes; leave a satisfied range as it is.
+4. **Register the repository.** Add `<name>: <path from the home
+   repository>` to `repos:` in the home repository's `.sous/sous.yaml`.
+   The name is the one this repository's `repo:<name>` labels carry: its
+   `name:` in `sous.yaml`, else its `origin` repository, else its folder.
+   An entry already there with this path is kept; another path under the
+   name is the human's call.
+5. **Find the wrapper's users.** Search the repository for `.sous/sous`
+   and `./sous` outside `.sous/` (CI workflows, scripts, `Makefile`,
+   `README.md`, `AGENTS.md`, `CLAUDE.md`) and list each with the line.
+   Propose an edit per hit, diff first; leave one the human declines.
+6. **Verify.** From the home repository's root, `SOUS_ROOT=<path>/.sous
+   .sous/node_modules/.bin/sous validate`, then `cd .sous && ./sous
+   validate` there, which checks every listed repository's `engine:`.
+   Fix what they report. Name the commit for the human to make in each
+   repository; do not push.
+
+Finish with the message for the repository's users, filled in, for the
+human to pass on:
+
+> `.sous/sous` is gone: this repository's runs start in `<home>`.
+> Label an issue `repo:<name>` and `sous:ready` for its `sous watch`, or
+> type `./sous run <issue>` there (`--repo <name>` when the issue has no
+> label). Runs, logs and worktrees stay in this repository's `.sous/`;
+> read them with `SOUS_ROOT=<path>/.sous .sous/node_modules/.bin/sous
+> status` from `<home>`'s root. To edit or test steps here, `cd .sous && npm install`, then
+> `npx vitest run`; `npx sous <command>` in `.sous/` then replaces
+> `./sous <command>` with this repository's own install.
 
 Argument received: $ARGUMENTS

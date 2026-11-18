@@ -13,6 +13,7 @@ type FakeChild = {
   command: string;
   args: string[];
   cwd: string;
+  env: Record<string, string>;
   pid: number;
   signals: string[];
   output: (line: string) => void;
@@ -29,6 +30,7 @@ const fakeSpawn = () => {
       command,
       args: [...args],
       cwd: options.cwd,
+      env: { ...options.env },
       pid: 1000 + children.length,
       signals: [],
       output: options.onOutput,
@@ -44,6 +46,9 @@ const FLOWS = {
   "task.yaml": "entry: implement\nallowedLabels: [type:task, type:bug]\nsteps:\n  - id: implement\n    uses: implement\n",
   "feature.yaml": "entry: plan\nallowedLabels: [type:feature]\nsteps:\n  - id: plan\n    uses: plan\n",
 };
+
+/** The running engine's CLI, as `sous watch` is handed it. */
+const ENGINE = ["/usr/bin/node", "/engine/cli.js"];
 
 const ready = (id: string, labels: string[] = ["type:task"], body?: string): Issue => issue({ id, labels: [...labels, "sous:ready"], ...(body !== undefined ? { body } : {}) });
 
@@ -64,13 +69,13 @@ describe("parseWatchArgs", () => {
 describe("spawnChild", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("starts a run without the daemon's SOUS_ROOT, so the run finds its own .sous; passes its stdout lines on", async () => {
+  it("starts a run with SOUS_ROOT at the repository's .sous instead of the daemon's; passes its stdout lines on", async () => {
     vi.stubEnv("SOUS_ROOT", "/the/daemon/.sous");
     vi.stubEnv("SOUS_WATCH_TEST", "kept");
     const lines: string[] = [];
-    const child = spawnChild(process.execPath, ["-e", "console.log(`root=${process.env.SOUS_ROOT ?? 'unset'}`); console.log(`other=${process.env.SOUS_WATCH_TEST}`)"], { cwd: tmpdir(), onOutput: (line) => lines.push(line) });
+    const child = spawnChild(process.execPath, ["-e", "console.log(`root=${process.env.SOUS_ROOT ?? 'unset'}`); console.log(`other=${process.env.SOUS_WATCH_TEST}`)"], { cwd: tmpdir(), env: { SOUS_ROOT: "/the/repo/.sous" }, onOutput: (line) => lines.push(line) });
     expect(await child.exited).toMatchObject({ code: 0 });
-    expect(lines).toEqual(["root=unset", "other=kept"]);
+    expect(lines).toEqual(["root=/the/repo/.sous", "other=kept"]);
   });
 
   it("delivers the forwarded signal to the process the wrapper started, not only to the wrapper", async () => {
@@ -113,6 +118,7 @@ describe("sous watch", () => {
     root = join(repoRoot, ".sous");
     await mkdir(join(root, "flows"), { recursive: true });
     for (const [name, text] of Object.entries(FLOWS)) await writeFile(join(root, "flows", name), text);
+    await writeFile(join(root, "sous.yaml"), "engine: ^0.9.0\n");
     tracker = fakeTracker();
     spawned = fakeSpawn();
     out = [];
@@ -123,12 +129,14 @@ describe("sous watch", () => {
 
   const deps = (overrides: Partial<WatchDeps> = {}): WatchDeps => ({
     root,
-    repos: [{ name: "app", root, repoRoot, tracker, sous: [join(root, "sous")] }],
+    repos: [{ name: "app", root, repoRoot, tracker }],
     listed: false,
+    engine: ENGINE,
     spawn: spawned.spawn,
     isAlive: (pid) => alive.has(pid),
     out: (line) => out.push(line),
     err: (line) => err.push(line),
+    engineVersion: "0.9.0",
     ...overrides,
   });
 
@@ -145,8 +153,8 @@ describe("sous watch", () => {
     seed(ready("7"));
     const watcher = createWatcher(deps());
     await watcher.pass();
-    expect(spawned.children.map(({ command, args, cwd }) => ({ command, args, cwd }))).toEqual([{ command: join(root, "sous"), args: ["run", "7", "--flow", "task"], cwd: repoRoot }]);
-    expect(out).toEqual(["#7: started sous run 7 --flow task (pid 1000)"]);
+    expect(spawned.children.map(({ command, args, cwd, env }) => ({ command, args, cwd, env }))).toEqual([{ command: "/usr/bin/node", args: ["/engine/cli.js", "run", "7", "--flow", "task"], cwd: repoRoot, env: { SOUS_ROOT: root } }]);
+    expect(out).toEqual([`#7: started sous run 7 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${repoRoot})`]);
   });
 
   it("leaves the label swap to the run: its claim turns sous:ready into sous:running", async () => {
@@ -198,12 +206,12 @@ describe("sous watch", () => {
     const watcher = createWatcher(deps());
     await watcher.pass();
     await watcher.pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "3", "--flow", "task"]]);
+    expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "3", "--flow", "task"]]);
     tracker.issues.set("3", { ...tracker.issues.get("3")!, state: "closed" });
     spawned.children[0]?.exit({ code: 0 });
     await watcher.idle();
     await watcher.pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([
+    expect(spawned.children.map((c) => c.args.slice(1))).toEqual([
       ["run", "3", "--flow", "task"],
       ["run", "12", "--flow", "task"],
     ]);
@@ -219,7 +227,7 @@ describe("sous watch", () => {
     alive.delete(4242);
     await rm(lockPath(root, "5"));
     await watcher.pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
+    expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "7", "--flow", "task"]]);
   });
 
   it("leaves a blocked issue alone until it also carries ready, then runs the same command", async () => {
@@ -229,7 +237,7 @@ describe("sous watch", () => {
     expect(spawned.children).toEqual([]);
     tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:blocked", "sous:ready"] }));
     await watcher.pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
+    expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "7", "--flow", "task"]]);
   });
 
   it("does not start an issue again whose run it started left sous:ready on it, until its labels change", async () => {
@@ -242,7 +250,7 @@ describe("sous watch", () => {
     await watcher.pass();
     expect(spawned.children).toHaveLength(1);
     expect(out).toEqual([
-      "#7: started sous run 7 --flow task (pid 1000)",
+      `#7: started sous run 7 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${repoRoot})`,
       "#7: sous run 7 --flow task exited with 2: sous run: 1 validation error(s)",
       "#7 skipped: still sous:ready after its run exited; change its labels to start it again",
     ]);
@@ -262,8 +270,8 @@ describe("sous watch", () => {
     const watcher = createWatcher(deps());
     await watcher.pass();
     expect(existsSync(lockPath(root, "7"))).toBe(false);
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
-    expect(out).toEqual(["#7: removed the stale lock of pid 999999; rerunning sous run 7 --flow task after a crash (pid 1000)"]);
+    expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "7", "--flow", "task"]]);
+    expect(out).toEqual([`#7: removed the stale lock of pid 999999; rerunning sous run 7 --flow task after a crash (pid 1000, /usr/bin/node /engine/cli.js in ${repoRoot})`]);
 
     spawned.children[0]?.exit({ code: 1, stderr: "boom\n" });
     await watcher.idle();
@@ -286,7 +294,7 @@ describe("sous watch", () => {
 
     tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:blocked", "sous:ready"] }));
     await watcher.pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([
+    expect(spawned.children.map((c) => c.args.slice(1))).toEqual([
       ["run", "7", "--flow", "task"],
       ["run", "7", "--flow", "task"],
     ]);
@@ -298,7 +306,7 @@ describe("sous watch", () => {
     await watcher.idle();
     await watcher.pass();
     expect(spawned.children).toHaveLength(3);
-    expect(out.at(-1)).toBe("#7: removed the stale lock of pid 999997; rerunning sous run 7 --flow task after a crash (pid 1002)");
+    expect(out.at(-1)).toBe(`#7: removed the stale lock of pid 999997; rerunning sous run 7 --flow task after a crash (pid 1002, /usr/bin/node /engine/cli.js in ${repoRoot})`);
   });
 
   it("removes the stale lock a second crash left, so the hand-back with ready starts in a new daemon", async () => {
@@ -314,7 +322,7 @@ describe("sous watch", () => {
 
     tracker.issues.set("7", issue({ id: "7", labels: ["type:task", "sous:blocked", "sous:ready"] }));
     await createWatcher(deps()).pass();
-    expect(spawned.children.map((c) => c.args)).toEqual([
+    expect(spawned.children.map((c) => c.args.slice(1))).toEqual([
       ["run", "7", "--flow", "task"],
       ["run", "7", "--flow", "task"],
     ]);
@@ -325,8 +333,8 @@ describe("sous watch", () => {
     await holdLock("7", 999999);
     await createWatcher(deps()).pass();
     expect(existsSync(lockPath(root, "7"))).toBe(false);
-    expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
-    expect(out).toEqual(["#7: removed the stale lock of pid 999999; started sous run 7 --flow task (pid 1000)"]);
+    expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "7", "--flow", "task"]]);
+    expect(out).toEqual([`#7: removed the stale lock of pid 999999; started sous run 7 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${repoRoot})`]);
   });
 
   it("leaves a running issue without a lock alone: its run may be on another machine", async () => {
@@ -449,6 +457,22 @@ describe("sous watch", () => {
     expect(await liveLocks(root, () => true)).toEqual([]);
   });
 
+  it("refuses to start in a repository without engine:, naming the key, before taking its lock", async () => {
+    await writeFile(join(root, "sous.yaml"), "tracker: local\n");
+    seed(ready("7"));
+    expect(await watchCommand(["--once"], deps())).toBe(2);
+    expect(err).toEqual([`sous watch: ${repoRoot} states no engine: range in sous.yaml; an unattended run needs one, add engine: ^0.9.0`]);
+    expect(existsSync(watchLockPath(root))).toBe(false);
+    expect(spawned.children).toEqual([]);
+  });
+
+  it("refuses to start in a repository whose engine: range this engine does not satisfy", async () => {
+    await writeFile(join(root, "sous.yaml"), "engine: ^0.8.0\n");
+    expect(await watchCommand(["--once"], deps())).toBe(2);
+    expect(err).toEqual([`sous watch: engine 0.9.0 does not satisfy engine: ^0.8.0 of ${repoRoot}`]);
+    expect(existsSync(watchLockPath(root))).toBe(false);
+  });
+
   it("takes over a watch lock whose daemon is gone", async () => {
     await mkdir(locksDir(root), { recursive: true });
     await writeFile(watchLockPath(root), JSON.stringify({ pid: 999999, issue: "watch" }));
@@ -461,13 +485,13 @@ describe("sous watch", () => {
       const watcher = createWatcher(deps());
       await watcher.pass();
       await watcher.pass();
-      expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"]]);
-      expect(out).toEqual(["#8 skipped: repo:web names another repository than app", "#7: started sous run 7 --flow task (pid 1000)"]);
+      expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "7", "--flow", "task"]]);
+      expect(out).toEqual(["#8 skipped: repo:web names another repository than app", `#7: started sous run 7 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${repoRoot})`]);
       spawned.children[0]?.exit({ code: 0 });
       tracker.issues.set("7", { ...tracker.issues.get("7")!, state: "closed" });
       await watcher.idle();
       await watcher.pass();
-      expect(spawned.children.map((c) => c.args)).toEqual([["run", "7", "--flow", "task"], ["run", "9", "--flow", "task"]]);
+      expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "7", "--flow", "task"], ["run", "9", "--flow", "task"]]);
     });
 
     it("reports an issue carrying two repo:* labels once and skips it", async () => {
@@ -488,14 +512,19 @@ describe("sous watch", () => {
       await mkdir(join(projectRoot, "flows"), { recursive: true });
       for (const [file, text] of Object.entries(FLOWS)) await writeFile(join(projectRoot, "flows", file), text);
       cleanup.push(checkout);
-      return { name, root: projectRoot, repoRoot: checkout, tracker: own, sous: [join(projectRoot, "sous")] };
+      return { name, root: projectRoot, repoRoot: checkout, tracker: own };
     };
     const cleanup: string[] = [];
     afterEach(async () => {
       for (const dir of cleanup.splice(0)) await rm(dir, { recursive: true, force: true });
     });
 
-    const starts = () => spawned.children.map(({ command, args, cwd }) => ({ command, args, cwd }));
+    /** Each start as the engine's CLI saw it: its arguments after the CLI file, its cwd and project root. */
+    const starts = () =>
+      spawned.children.map(({ command, args, cwd, env }) => {
+        expect([command, args[0]]).toEqual(ENGINE);
+        return { args: args.slice(1), cwd, root: env["SOUS_ROOT"] };
+      });
 
     it("starts one run in each repository at once, as its own .sous/sous in its checkout", async () => {
       const a = await listedRepo("a");
@@ -506,10 +535,10 @@ describe("sous watch", () => {
       const watcher = createWatcher(deps({ repos: [a, b], listed: true }));
       await watcher.pass();
       expect(starts()).toEqual([
-        { command: join(a.root, "sous"), args: ["run", "3", "--flow", "task"], cwd: a.repoRoot },
-        { command: join(b.root, "sous"), args: ["run", "5", "--flow", "feature"], cwd: b.repoRoot },
+        { args: ["run", "3", "--flow", "task"], cwd: a.repoRoot, root: a.root },
+        { args: ["run", "5", "--flow", "feature"], cwd: b.repoRoot, root: b.root },
       ]);
-      expect(out).toEqual(["a #3: started sous run 3 --flow task (pid 1000)", "b #5: started sous run 5 --flow feature (pid 1001)"]);
+      expect(out).toEqual([`a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`, `b #5: started sous run 5 --flow feature (pid 1001, /usr/bin/node /engine/cli.js in ${b.repoRoot})`]);
     });
 
     it("runs an issue of a shared tracker in the entry its repo label names, once", async () => {
@@ -520,7 +549,7 @@ describe("sous watch", () => {
       const watcher = createWatcher(deps({ repos: [a, b], listed: true }));
       await watcher.pass();
       await watcher.pass();
-      expect(starts()).toEqual([{ command: join(b.root, "sous"), args: ["run", "7", "--flow", "task"], cwd: b.repoRoot }]);
+      expect(starts()).toEqual([{ args: ["run", "7", "--flow", "task"], cwd: b.repoRoot, root: b.root }]);
     });
 
     it("reports an unknown repo label and a missing one once each and skips them, even when two trackers list them", async () => {
@@ -569,42 +598,75 @@ describe("sous watch", () => {
       expect(starts().map((c) => c.args)).toEqual([["run", "3", "--flow", "task"], ["run", "5", "--flow", "task"], ["run", "6", "--flow", "task"]]);
     });
 
-    it("builds each entry from its own .sous: its tracker, its sous, its checkout", async () => {
+    it("builds each entry from its own .sous and starts its runs on the running engine's CLI, never the entry's .sous/sous", async () => {
       const home = join(repoRoot, ".sous");
       const a = await listedRepo("a");
-      await writeFile(join(a.root, "sous.yaml"), "tracker: local\ntrackerOptions: { dir: issues }\n");
-      await writeFile(join(a.root, "sous"), "#!/bin/sh\n");
+      await writeFile(join(a.root, "sous.yaml"), "engine: ^0.9.0\ntracker: local\ntrackerOptions: { dir: issues }\n");
+      await writeFile(join(a.root, "sous"), "#!/bin/sh\nexit 99\n");
       await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot} }\n`);
-      const built = await watchReposOf(home, "/engine/cli.js");
+      const built = await watchReposOf(home, undefined, "0.9.0");
       expect(built.listed).toBe(true);
-      expect(built.repos.map(({ name, root, repoRoot, sous }) => ({ name, root, repoRoot, sous }))).toEqual([{ name: "a", root: a.root, repoRoot: a.repoRoot, sous: [join(a.root, "sous")] }]);
+      expect(built.repos.map(({ name, root, repoRoot }) => ({ name, root, repoRoot }))).toEqual([{ name: "a", root: a.root, repoRoot: a.repoRoot }]);
       expect(await built.repos[0]?.tracker.list({ labels: ["sous:ready"] })).toEqual([]);
+
+      const watcher = createWatcher(deps({ ...built, repos: built.repos.map((r) => ({ ...r, tracker: a.tracker })) }));
+      a.tracker.issues.set("3", ready("3", ["type:task", "repo:a"]));
+      await watcher.pass();
+      expect(spawned.children.map(({ command, args, cwd, env }) => ({ command, args, cwd, env }))).toEqual([{ command: "/usr/bin/node", args: ["/engine/cli.js", "run", "3", "--flow", "task"], cwd: a.repoRoot, env: { SOUS_ROOT: a.root } }]);
+      expect(out).toEqual([`a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`]);
     });
 
-    it("sets an entry without .sous/sous aside, reports it once and serves the others, never on the engine's own CLI", async () => {
+    it("serves an entry with sous.yaml but no wrapper and no node_modules; sets one without sous.yaml aside, reported once", async () => {
       const home = join(repoRoot, ".sous");
       const a = await listedRepo("a");
-      const bare = await listedRepo("bare");
-      for (const listed of [a, bare]) await writeFile(join(listed.root, "sous.yaml"), "tracker: local\ntrackerOptions: { dir: issues }\n");
-      await writeFile(join(a.root, "sous"), "#!/bin/sh\n");
-      await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot}, bare: ${bare.repoRoot} }\n`);
-      const built = await watchReposOf(home, "/engine/cli.js");
+      const gone = join(repoRoot, "..", `nowhere-${Date.now()}`);
+      await writeFile(join(a.root, "sous.yaml"), "engine: ^0.9.0\ntracker: local\ntrackerOptions: { dir: issues }\n");
+      await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot}, gone: ${gone} }\n`);
+      const built = await watchReposOf(home, undefined, "0.9.0");
       expect(built.repos.map((r) => r.name)).toEqual(["a"]);
-      expect(built.unrunnable).toEqual([{ name: "bare", reason: `${bare.repoRoot} holds no .sous/sous to run it on its own engine; sous watch starts nothing there` }]);
+      expect(built.unrunnable).toEqual([{ name: "gone", reason: `${gone} holds no .sous/sous.yaml; sous watch starts nothing there` }]);
 
       a.tracker.issues.set("3", ready("3", ["type:task", "repo:a"]));
-      a.tracker.issues.set("4", ready("4", ["type:task", "repo:bare"]));
+      a.tracker.issues.set("4", ready("4", ["type:task", "repo:gone"]));
       const watcher = createWatcher(deps({ repos: [a], unrunnable: built.unrunnable, listed: true }));
       await watcher.pass();
       await watcher.pass();
-      expect(starts()).toEqual([{ command: join(a.root, "sous"), args: ["run", "3", "--flow", "task"], cwd: a.repoRoot }]);
-      expect(out).toEqual([`bare skipped: ${bare.repoRoot} holds no .sous/sous to run it on its own engine; sous watch starts nothing there`, "a #3: started sous run 3 --flow task (pid 1000)"]);
+      expect(starts()).toEqual([{ args: ["run", "3", "--flow", "task"], cwd: a.repoRoot, root: a.root }]);
+      expect(out).toEqual([`gone skipped: ${gone} holds no .sous/sous.yaml; sous watch starts nothing there`, `a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`]);
     });
 
-    it("refuses to build an entry whose path holds no project", async () => {
+    it("sets an entry without engine: or outside its range aside, reports each once and serves the others", async () => {
       const home = join(repoRoot, ".sous");
-      await writeFile(join(home, "sous.yaml"), `repos: { gone: ../nowhere-${Date.now()} }\n`);
-      await expect(watchReposOf(home, "/engine/cli.js")).rejects.toThrow(/repos\.gone: .* holds no \.sous\/sous\.yaml/);
+      const a = await listedRepo("a");
+      const old = await listedRepo("old");
+      const unstated = await listedRepo("unstated");
+      await writeFile(join(a.root, "sous.yaml"), "engine: ^0.9.0\ntracker: local\ntrackerOptions: { dir: issues }\n");
+      // A newer engine's key beside the range: read for engine: alone, never loaded as settings.
+      await writeFile(join(old.root, "sous.yaml"), "engine: ^0.8.0\nsomethingNewer: true\n");
+      await writeFile(join(unstated.root, "sous.yaml"), "tracker: local\ntrackerOptions: { dir: issues }\n");
+      await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot}, old: ${old.repoRoot}, unstated: ${unstated.repoRoot} }\n`);
+      const built = await watchReposOf(home, undefined, "0.9.0");
+      expect(built.repos.map((r) => r.name)).toEqual(["a"]);
+      expect(built.unrunnable).toEqual([
+        { name: "old", reason: `engine 0.9.0 does not satisfy engine: ^0.8.0 of ${old.repoRoot}; sous watch starts nothing there` },
+        { name: "unstated", reason: `${unstated.repoRoot} states no engine: range in sous.yaml; sous watch starts nothing there` },
+      ]);
+
+      a.tracker.issues.set("3", ready("3", ["type:task", "repo:a"]));
+      a.tracker.issues.set("4", ready("4", ["type:task", "repo:old"]));
+      const watcher = createWatcher(deps({ repos: [a], unrunnable: built.unrunnable, listed: true }));
+      await watcher.pass();
+      await watcher.pass();
+      expect(starts()).toEqual([{ args: ["run", "3", "--flow", "task"], cwd: a.repoRoot, root: a.root }]);
+      expect(out).toEqual([`old skipped: ${built.unrunnable[0]?.reason}`, `unstated skipped: ${built.unrunnable[1]?.reason}`, `a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`]);
+    });
+
+    it("refuses to build two entries under one name", async () => {
+      const home = join(repoRoot, ".sous");
+      const a = await listedRepo("a");
+      await writeFile(join(a.root, "sous.yaml"), "engine: ^0.9.0\n");
+      await writeFile(join(home, "sous.yaml"), `repos: [${a.repoRoot}, ${a.repoRoot}]\n`);
+      await expect(watchReposOf(home)).rejects.toThrow(/two entries are named/);
     });
   });
 });

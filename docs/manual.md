@@ -39,6 +39,23 @@ The reference for people who run, extend and adapt a sous project. The
 
 ## 1. Install and init
 
+### One repository or several
+
+**One repository.** Run `sous init` in the repository. The engine and the
+definitions live there: `.sous/` holds the flows, steps and settings, the
+`sous` wrapper and the installed `sous-factory`, and `./sous run` in it
+runs the repository's own engine. Most projects start here.
+
+**Several repositories.** One home repository holds the engine and lists
+the others under `repos:` in its `sous.yaml`
+([how-to 21](#21-multi-repo-setup)); `sous watch` and `sous run` there run
+every listed repository with that engine. Each listed repository gets a
+definitions-only `.sous/`, written by `sous init --no-install <path>` from
+the home repository: flows, steps, prompts, trackers and `sous.yaml` with
+its `engine:` range, no wrapper and no install. Its `package.json` stays
+for the editor and the project's tests, an `npm install` away when you
+author steps there.
+
 ### Prerequisites
 
 Once per machine:
@@ -74,6 +91,29 @@ ported", shows that mapping for a yes before writing anything, keeps
 sub-skills whole as one step each, and lists the moves that would take
 more out of the agent as suggestions only.
 
+**One repository or several, guided.** `/sous-setup` asks this first,
+before it writes anything, and recommends one repository for a single
+checkout. For one it goes on as above. For several it asks for the home
+repository and the `name: path` entries, installs the engine there (or
+extends an existing home repository's `repos:`), writes a
+definitions-only `.sous/` into each listed repository with `sous init
+--no-install <path>`, offering per repository the `npm install` in its
+`.sous/` for authoring steps and running their tests, adapts and
+validates each, and ends by naming `./sous watch` in the home repository
+and the `repo:<name>` labels to create.
+
+**Moving a repository to definitions-only.** When a home repository sits
+beside the checkout or the human names one, `/sous-migrate` (or
+`/sous-migrate definitions-only`) offers to move a `.sous/` that carries
+its own engine to definitions only: it removes the `sous` wrapper and
+`node_modules`, keeps `package.json` for the editor and tests, adds
+`engine:` for the home repository's engine, registers the repository in
+`repos:` there, lists the scripts that called `./sous`, validates with the
+home engine, and ends with the message for the repository's users: runs
+start in the home repository (`repo:<name>` and `sous:ready`, or `./sous
+run <issue>` there), and `npm install` in `.sous/` restores a local engine
+for authoring.
+
 ### By hand
 
 From the repository root:
@@ -87,13 +127,19 @@ npx sous init
 
 1. copies the starter bundled with the package into `.sous/` (refuses a
    non-empty `.sous/` unless `--force`);
-2. writes `.sous/.gitignore` with `logs/`, `runs/`, `locks/`, `worktrees/` and `node_modules/`;
+2. writes `.sous/.gitignore` with `logs/`, `runs/`, `locks/`, `worktrees/` and `node_modules/`,
+   and `engine: ^<version>` of the engine that ran it into `.sous/sous.yaml`;
 3. copies `.sous/skills/sous-plan` to `.claude/skills/sous-plan`, so
    `/sous-plan` is available in Claude Code;
 4. runs `npm install` in `.sous/`;
 5. prints the checklist.
 
 `--starter <dir>` copies another folder instead of the bundled starter.
+`--no-install` stops after step 3: no `sous` wrapper, no `npm install`, a
+definitions-only `.sous/` for a home repository's engine to run. A path
+argument (`sous init --no-install ../api`) initialises that repository
+instead of the current one, and the checklist ends with the `repos:` entry
+to add to the current one, the home repository.
 
 What the repository looks like afterwards:
 
@@ -146,7 +192,7 @@ tree shows.
 ```
 init: still to do by hand:
   1. .sous/steps/verify/eval.ts: fill CHECKS
-  2. .sous/sous.yaml: tracker, baseBranch, branch template, lifecycle
+  2. .sous/sous.yaml: tracker, baseBranch, branch template, lifecycle; engine: names the engines these definitions run on
   3. .sous/flows/*.yaml: agent models and allowedLabels; create the labels on the tracker
   4. .sous/prompts/plan.md: follow its ADAPT notes; it speaks to the tracker through .sous/trackers/<tracker>.md and writes the shapes in .sous/templates/
   5. cd .sous && ./sous validate && npx vitest run; then ./sous run <issue> --flow bench
@@ -159,7 +205,9 @@ init: still to do by hand:
    in `sous status` and the UI. See [how-to 13](#13-change-the-check-commands).
 2. **`sous.yaml`.** `tracker` (`github` by default, `beads` for bd),
    `baseBranch`, the `branch` template for run branches, `lifecycle`
-   (whether the run itself claims and closes the issue). See
+   (whether the run itself claims and closes the issue). `engine:` is
+   written by init as a caret on its own version; widen it when the
+   definitions are known to run on more. See
    [chapter 9](#9-settings-sousyaml).
 3. **Flows.** Every agentic entry names an `agent: { kind, model }`; pick
    the models you have access to. `allowedLabels` decides which issues a
@@ -176,6 +224,10 @@ init: still to do by hand:
 5. **Verify.** `./sous validate` checks every flow and step; the tests
    walk the flows over fakes; `bench` is a flow that runs one module step
    and one agent step without touching the issue or the code.
+
+After `--no-install` item 5 reads `SOUS_ROOT=<path>/.sous sous validate`,
+then `sous run <issue> --repo <name> --flow bench` in the home repository,
+and a line says that `package.json` serves the editor and the tests.
 
 ## 2. Engine, project, UI
 
@@ -361,6 +413,12 @@ loop: true                         # false: a failed eval routes instead of retr
   fails, with the eval log appended to its prompt. `never`: the eval runs
   once without a result and the visit routes on it; for a step whose eval
   cannot fail after this prepare and that has no prompt for a repair.
+- **Paths and imports.** Paths come from `ctx` (`ctx.worktree`,
+  `ctx.repoRoot`, `ctx.specDir`), never from the process directory, which
+  is wherever the command was started. `sous-factory` in a step, eval,
+  prepare or tracker module is always the engine running the command,
+  whatever version the repository's own `node_modules` holds; other
+  packages resolve through the repository's install.
 
 ### 5.1 Signatures
 
@@ -566,6 +624,7 @@ Every key has a default; an empty or missing file is valid, unknown keys
 are an error.
 
 ```yaml
+engine: ^0.9.0                                    # the engines these definitions are written for; sous init writes it
 baseBranch: main
 branch: feature/${{ issue.id }}-${{ slug }}       # JS over issue { id, title } and slug
 labelPrefix: sous                                 # sous:running / sous:blocked by the run, sous:merged by the merge step
@@ -586,9 +645,22 @@ runsDir: runs                                     # gitignored
 ```
 
 Folders are relative to `.sous/`; `repos` paths to the repository
-([how-to 21](#21-multi-repo-setup)). `name` and `repos` have no default.
+([how-to 21](#21-multi-repo-setup)). `engine`, `name` and `repos` have no default.
 Models, caps and commands live in flows
 and steps, not here.
+
+`engine` is a semver range, read with npm's semantics, naming the engine
+versions the project's flows, steps and prompts were written for. `sous
+init` writes a caret on the exact version that ran it (`^0.9.0`), which on
+0.x keeps the minor, as the changelog breaks per minor. `sous run` refuses
+a repository whose range the running engine does not satisfy with exit 2,
+before taking a lock; without the key it runs. `sous watch` also refuses a
+repository without the key: alone it does not start, over `repos:` it
+skips that entry and says why once. `sous validate` rejects a value that
+is not a range, warns when the key is missing, and in a home repository
+reports every listed repository whose range it does not satisfy; `sous ui`
+shows such a repository as an error row. `session.json` records the
+engine version that last started the run, and `sous status` shows it.
 
 `baseBranch` is what every run's worktree forks from. Flows, modules and
 evals read it as `ctx.baseBranch` ([chapter 7](#7-variables-and-expressions)):
@@ -709,7 +781,8 @@ owns the `## Blocked by` rule.
 `session.json` (schema 9) holds what a run needs to continue: `current`,
 `previous`, `work`, `scopes` (the `steps.<id>` records per work item),
 `workProgress`, `history`, `iterations`, `blocked`, `closed` (the
-lifecycle has closed the issue of a finished run). Each step record
+lifecycle has closed the issue of a finished run) and `engine` (the
+version of the engine that last started it). Each step record
 carries `costUsd` (absent until an agent call reported a cost) and
 `costUnknown`, cumulative over the step's visits like `visits`. A file of another
 schema is an error, not a migration. Every checkpoint is written beside
@@ -800,7 +873,7 @@ changes nothing). Everything else on the tracker, such as the
 ## 12. CLI
 
 ```
-sous init [--starter <dir>] [--force] # copy a starter into .sous/, npm install, add the /sous-plan skill, print the checklist
+sous init [--starter <dir>] [--force] [--no-install] [<path>]  # copy a starter into .sous/ (of <path>), npm install, add the /sous-plan skill, print the checklist; --no-install: definitions only
 sous run <issue> [--flow <name>] [--restart]  # validate, then start or continue; <issue> is the tracker's id (96, #96, a bead id)
 sous status <issue>                   # session facts and the timeline
 sous graph <flow>                     # Mermaid diagram from the YAML
@@ -1248,8 +1321,8 @@ machine that works through the queue overnight, or a cron entry.
 **What it picks up.** A human marks an issue ready for the factory with
 `<labelPrefix>:ready` (`sous:ready`), by hand or on the tracker's web page,
 or by answering yes at `/sous-plan`'s second gate. Each pass takes the open issues carrying it,
-lowest number first, and starts `.sous/sous run <issue> --flow <flow>` in the
-repository for the first one that has no open blockers (`blockers()`)
+lowest number first, and starts `sous run <issue> --flow <flow>` of its own
+engine, with `SOUS_ROOT` at the repository's `.sous/`, for the first one that has no open blockers (`blockers()`)
 and whose labels pick one flow, by the rule of `sous run <issue>`
 ([6. Flows](#6-flows)). One run
 at a time: while a run holds a live lock in `.sous/locks/`, its own or one
@@ -1284,7 +1357,7 @@ its one rerun after a crash back) or runs it by hand. A ready issue whose lock n
 before it starts.
 
 **Stopping it.** Ctrl-C or SIGTERM is forwarded to the process group of
-the run in progress (the `.sous/sous` wrapper, the run under it and its
+the run in progress (the run and its
 agents, as a Ctrl-C reaches a foreground `sous run`), and no run starts
 after it, wherever the pass was. The run records the interrupt and
 stays resumable (by hand, or by the next daemon once the issue carries
@@ -1312,15 +1385,37 @@ repos:                 # name: checkout path, relative to this repository; absol
 ```
 
 Each listed repository keeps its own `.sous/` (`sous init` there): its
-flows, its tracker, its engine version. `sous validate` in the home
-repository reports a path without a `.sous/sous.yaml`, and one whose
-`.sous/` has no `sous` wrapper. A pass asks every listed repository's
-tracker for ready issues and starts a run as that repository's
-`.sous/sous run <issue> --flow <flow>`, in that repository: one run per
-repository at a time, repositories in parallel. A run never starts on the
-home repository's engine: an entry without `.sous/sous` is reported once
-and runs nothing, and the other entries are served. The home repository
-runs nothing unless the list names it.
+flows, its tracker, its `engine:` range. `sous validate` in the home
+repository reports a path without a `.sous/sous.yaml`. A pass asks every
+listed repository's tracker for ready issues and starts a run as the
+daemon's own `sous run <issue> --flow <flow>` with `SOUS_ROOT` at that
+repository's `.sous/`, in its checkout; the start line shows that command
+and the checkout. One run per repository at a time, repositories in
+parallel. An entry without `.sous/sous.yaml`, or whose `engine:` the
+daemon's engine does not satisfy, is reported once and runs nothing, and
+the other entries are served. The home repository runs nothing unless the
+list names it.
+
+**Definitions here, engine there.** A listed repository's `.sous/` is
+definitions: flows, steps, prompts, trackers and `sous.yaml`. The engine
+is whatever the command was started with: the home repository's engine
+for `sous watch` and `sous run` typed there, the repository's own install
+for `./sous` typed in it. A `sous` wrapper or `node_modules` in a listed
+repository is never used by the daemon and not needed; the repository's
+install, when it has one, serves the editor and the project's tests. Its
+`engine:` says which engines the definitions were written for. Locks, run
+records, logs and worktrees stay in the repository's own `.sous/`,
+whichever engine started the run, so its `./sous status` finds them.
+
+**`sous run` in the home repository.** `sous run <issue>` typed there
+asks the home repository's tracker for the issue and runs it in the entry
+its `repo:<name>` label names, exactly as the daemon would start it;
+`--repo <name>` picks the entry instead of the label. No `repo:*` label,
+a name not in `repos:`, or an unknown `--repo` exits 2 with the daemon's
+message, the last naming the known entries. An issue routed to the home
+repository itself (`planning: .`) runs right there, as a `sous run` without
+`repos:` would. Ctrl-C reaches the run as it does one typed in the
+repository.
 
 **The repo label.** With `repos:`, an issue runs where its `repo:<name>`
 label says, even when several repositories share one tracker; an issue
@@ -1414,6 +1509,7 @@ what to skip or change in the skill.
 | `sous run: #12: no flow accepts its labels (…)` | The issue has no label a flow's `allowedLabels` declare. Label it, then `./sous run 12`. |
 | `sous run: #12: flows feature, task all accept it: …` | The issue carries several `type:*` labels (keep one), or several flows declare its label (keep it in one). Then `./sous run 12`. |
 | `sous run: #12 has none of the labels flow "task" accepts` | `--flow` named a flow whose `allowedLabels` refuse the issue. Label it, or `./sous run 12`. |
+| `sous run: engine 0.9.1 does not satisfy engine: ^0.8.0 of …` (or `sous watch: … states no engine: range in sous.yaml`) | The repository's definitions were written for other engine versions. Run it with an engine in the range (its own `./sous`, or install that version), or, once the flows and steps work on this engine, widen `engine:` in `sous.yaml`; [chapter 9](#9-settings-sousyaml). `sous watch` needs the key: add the `engine:` line `sous validate` suggests. |
 | `validate: … input "x" has no placeholder in the prompt` | Every declared input must be used; add `{{x}}` to the prompt or mark the input `prompt: false` when prepare or eval reads it. |
 | `validate: route to "…" names no step id` / `the last route must be an else` | Routes need an existing target and a fallthrough; see [chapter 6](#6-flows). |
 | `tracker: … the tracker lacks children, parent` | The tracker module's default export is missing port methods; [chapter 10](#10-trackers) lists them. |

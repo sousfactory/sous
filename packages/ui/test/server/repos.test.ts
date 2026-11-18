@@ -100,6 +100,17 @@ describe("api over repos:", () => {
     expect((await fetch(`${base}/api/runs/84?repo=api`)).status).toBe(404);
   });
 
+  it("lists a listed repository whose engine: range this engine does not satisfy as an error row with the mismatch, and serves the others", async () => {
+    const roots = twoRepos();
+    writeFileSync(join(roots.api, "sous.yaml"), "runsDir: runs\nengine: ^0.8.0\n");
+    const project = openProject(roots.home, dead);
+    const repos = openRepos(project, "0.9.0") ?? [];
+    expect(repos.find((r) => r.name === "api")).toEqual({ name: "api", folder: "api", error: `engine 0.9.0 does not satisfy engine: ^0.8.0 of api` });
+    const rows = await listRepoRows(repos);
+    expect(rows.map((r) => [r.repo?.name, r.kind]).sort()).toEqual([["api", "error"], ["web", "error"], ["web", "run"]]);
+    expect(rows.find((r) => r.repo?.name === "api")).toMatchObject({ kind: "error", settings: true, error: "engine 0.9.0 does not satisfy engine: ^0.8.0 of api" });
+  });
+
   it("finds a run without a repository named when one repository holds it", async () => {
     const base = await serve(twoRepos().home);
     const res = await fetch(`${base}/api/runs/12`);

@@ -33,29 +33,51 @@ export const repoEntries = (root: string, settings: Pick<Settings, "repos">): Re
 
 /** What `sous validate` says about `repos:`: a path without a project, two entries under one name. */
 export const repoProblems = (root: string, settings: Pick<Settings, "repos">): string[] => {
-  const entries = repoEntries(root, settings) ?? [];
-  const problems: string[] = [];
+  const missing = (repoEntries(root, settings) ?? []).filter(({ path }) => !existsSync(join(path, PROJECT_DIR, SETTINGS_FILE)));
+  return [...repoNameProblems(root, settings), ...missing.map(({ name, path }) => `repos.${name}: ${path} holds no ${PROJECT_DIR}/${SETTINGS_FILE}`)];
+};
+
+/**
+ * The listed entries `sous watch` cannot serve: no `.sous/sous.yaml`, so
+ * nothing to run. Kept apart from `repoProblems`, where `sous validate`
+ * reports them: the daemon skips these and serves the rest.
+ */
+export const unrunnableRepos = (root: string, settings: Pick<Settings, "repos">): { name: string; reason: string }[] =>
+  (repoEntries(root, settings) ?? [])
+    .filter(({ path }) => !existsSync(join(path, PROJECT_DIR, SETTINGS_FILE)))
+    .map(({ name, path }) => ({ name, reason: `${path} holds no ${PROJECT_DIR}/${SETTINGS_FILE}; sous watch starts nothing there` }));
+
+/** The `repos:` problems a daemon cannot serve around: two entries under one name. */
+export const repoNameProblems = (root: string, settings: Pick<Settings, "repos">): string[] => {
   const seen = new Set<string>();
-  for (const { name, path } of entries) {
+  const problems: string[] = [];
+  for (const { name } of repoEntries(root, settings) ?? []) {
     if (seen.has(name)) problems.push(`repos: two entries are named ${name}; use a map to name them apart`);
     seen.add(name);
-    if (!existsSync(join(path, PROJECT_DIR, SETTINGS_FILE))) problems.push(`repos.${name}: ${path} holds no ${PROJECT_DIR}/${SETTINGS_FILE}`);
   }
   return problems;
 };
 
-/** The wrapper in a project folder that runs the project's own engine version. */
-export const WRAPPER = "sous";
+/** Where an issue runs, or why it does not. */
+export type Route = { to: string } | { reason: string };
 
 /**
- * The listed projects `sous watch` cannot start a run in: no `.sous/sous`,
- * so nothing names their engine, and the home engine never stands in. Kept
- * apart from `repoProblems`: the daemon skips these and serves the rest.
+ * Where an issue runs, by its labels: with `repos:` (`entries`) its one
+ * `repo:*` label names the entry, and an issue without one, or naming no
+ * entry, runs nowhere; without (`self`), the one repository takes an issue
+ * without a label or naming it. `override` (`sous run --repo`) wins over the
+ * label. The one rule `sous watch` and `sous run` in a home repository follow.
  */
-export const unrunnableRepos = (root: string, settings: Pick<Settings, "repos">): { name: string; reason: string }[] =>
-  (repoEntries(root, settings) ?? [])
-    .filter(({ path }) => existsSync(join(path, PROJECT_DIR, SETTINGS_FILE)) && !existsSync(join(path, PROJECT_DIR, WRAPPER)))
-    .map(({ name, path }) => ({ name, reason: `${path} holds no ${PROJECT_DIR}/${WRAPPER} to run it on its own engine; sous watch starts nothing there` }));
+export const routeIssue = (labels: readonly string[], scope: { entries: readonly string[] } | { self: string }, override?: string): Route => {
+  if ("entries" in scope && override !== undefined) return scope.entries.includes(override) ? { to: override } : { reason: `--repo ${override} names no entry of repos: (${scope.entries.join(", ")})` };
+  const names = labels.filter((l) => l.startsWith(REPO_LABEL));
+  if (names.length > 1) return { reason: `carries several ${REPO_LABEL}* labels (${names.join(", ")}); keep one` };
+  const named = names[0]?.slice(REPO_LABEL.length);
+  if ("self" in scope) return named === undefined || named === scope.self ? { to: scope.self } : { reason: `${names[0]} names another repository than ${scope.self}` };
+  if (named === undefined) return { reason: `no ${REPO_LABEL}* label names its repository` };
+  if (!scope.entries.includes(named)) return { reason: `${names[0]} names no entry of repos: (${scope.entries.join(", ")})` };
+  return { to: named };
+};
 
 /** `acme/web` of `git@github.com:acme/web.git` or `https://github.com/acme/web`: the last path part, without `.git`. */
 const repoPartOf = (url: string): string | undefined => {

@@ -13,6 +13,7 @@ import { createInterface } from "node:readline";
 import { createFileEventLog } from "../adapters/eventlog.js";
 import { exec } from "../adapters/exec.js";
 import { worktreePathFor, type OpenSandbox } from "../adapters/sandbox.js";
+import { ENGINE_VERSION, engineCheckOf } from "../config/engine.js";
 import { acceptsLabels, BLOCKED, DONE, loadFlow, type Flow } from "../config/flow.js";
 import { flowLabelsOf, resolveFlow } from "../config/resolve.js";
 import { messageOf } from "../config/schema.js";
@@ -37,8 +38,9 @@ import { formatError } from "./validate.js";
 /**
  * `issue` is the tracker's id as typed, minus a leading `#`, so `sous run #96`
  * works. `flow` is named with `--flow`; absent, the issue's labels resolve it.
+ * `repo` names the `repos:` entry to run in, in a home repository only.
  */
-export type RunArgs = { issue: string; flow?: string; restart: boolean };
+export type RunArgs = { issue: string; flow?: string; repo?: string; restart: boolean };
 
 export type RunDeps = {
   /** The project root (`.sous/`). */
@@ -63,13 +65,16 @@ export type RunDeps = {
   onSignal?: (handler: SignalHandler) => () => void;
   /** Returns the uninstaller. Drops the lock on any way out the run's own code does not see. */
   onExit?: (listener: () => void) => () => void;
+  /** The running engine's version, checked against `engine:` and recorded in the session; injectable for tests. */
+  engineVersion?: string;
 };
 
-export const USAGE = "usage: sous run <issue> [--flow <name>] [--restart]";
+export const USAGE = "usage: sous run <issue> [--flow <name>] [--restart] [--repo <name>]";
 
 export const parseRunArgs = (args: readonly string[]): RunArgs | { error: string } => {
   const positional: string[] = [];
   let flow: string | undefined;
+  let repo: string | undefined;
   let restart = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -78,6 +83,10 @@ export const parseRunArgs = (args: readonly string[]): RunArgs | { error: string
       const value = args[++i];
       if (value === undefined || value.startsWith("--") || value === "") return { error: `--flow takes a flow name\n${USAGE}` };
       flow = value;
+    } else if (arg === "--repo") {
+      const value = args[++i];
+      if (value === undefined || value.startsWith("--") || value === "") return { error: `--repo takes the name of a repos: entry\n${USAGE}` };
+      repo = value;
     } else if (arg.startsWith("--")) return { error: `unknown option ${arg}\n${USAGE}` };
     else positional.push(arg);
   }
@@ -90,7 +99,7 @@ export const parseRunArgs = (args: readonly string[]): RunArgs | { error: string
   if (issueArg === undefined || positional.length > 1) return { error: USAGE };
   const issue = issueArg.replace(/^#/, "");
   if (issue === "") return { error: USAGE };
-  return { issue, ...(flow !== undefined ? { flow } : {}), restart };
+  return { issue, ...(flow !== undefined ? { flow } : {}), ...(repo !== undefined ? { repo } : {}), restart };
 };
 
 export const gitShortSha = (repoRoot: string) => async (): Promise<string> => {
@@ -171,6 +180,16 @@ const specEntries = (specsDir: string): Promise<string[]> => readdir(specsDir).c
 const resumePoint = (session: Session, flow: Flow): { step: string; iteration: number } | undefined =>
   session.current === flow.entry && session.history.length === 0 ? undefined : { step: session.current, iteration: session.iterations[session.current] ?? 0 };
 
+/**
+ * Why `sous run` refuses the project at `root` of `repoRoot` under the engine `version`,
+ * or undefined when it may go on: only a range the engine does not satisfy.
+ * Read tolerantly, so it is asked before anything loads the settings strictly.
+ */
+export const runEngineRefusal = (root: string, repoRoot: string, version: string): string | undefined => {
+  const engine = engineCheckOf(root, version, repoRoot);
+  return engine.kind === "unsatisfied" ? `sous run: ${engine.message}; run it with an engine in that range or widen the range` : undefined;
+};
+
 /** `ctx.work`: the run's issue itself, or the sub-issue on the bench fetched from the tracker. */
 const workOf = async (tracker: Tracker, issue: Issue, work: string): Promise<Work> => {
   const { id, ref, title, body } = work === issue.id ? issue : await tracker.getIssue(work);
@@ -184,8 +203,23 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     return 2;
   }
   const { root, repoRoot, git, tracker, out, err } = deps;
+  // A home repository's `sous run` routes before it gets here; this one is the repository the run is in.
+  if (parsed.repo !== undefined) {
+    err("sous run: --repo names an entry of repos:, and this repository's sous.yaml lists none");
+    return 2;
+  }
   const clock = deps.clock ?? (() => new Date());
   const log: Logger = { info: out, warn: err };
+
+  // Definitions written for other engines are refused by name, before validation: a newer engine's
+  // settings keys would fail it with a message about the key. Without `engine:` the run goes on as before
+  // the key existed; an invalid range is validation's to report.
+  const engineVersion = deps.engineVersion ?? ENGINE_VERSION;
+  const refusal = runEngineRefusal(root, repoRoot, engineVersion);
+  if (refusal !== undefined) {
+    err(refusal);
+    return 2;
+  }
 
   // Nothing starts on a broken project.
   const report = validateProject(root);
@@ -298,7 +332,8 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
       err(`sous run: ${issue.ref} was started with flow "${existing.flow}"; run \`sous run ${parsed.issue} --flow ${existing.flow}\` or pass --restart`);
       return 1;
     }
-    let session = existing ?? createSession({ flow: flow.name, issue: issue.id, title: issue.title, branch, specDir, entry: flow.entry });
+    // The engine of the latest start: a resumed run records the one that carries it on.
+    let session: Session = { ...(existing ?? createSession({ flow: flow.name, issue: issue.id, title: issue.title, branch, specDir, entry: flow.entry })), engine: engineVersion };
     const persist = filePersist(sessionFile(runs, issue.id));
     const lifecycle = createLifecycle({ tracker, issue: issue.id, mode: flow.lifecycle ?? settings.lifecycle });
     // The executor records `done` before the issue is closed, so the close

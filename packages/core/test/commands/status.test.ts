@@ -54,6 +54,7 @@ describe("renderStatus", () => {
         "spec         specs/12-some-slug",
         "run          /repo/.sous/runs/12",
         "logs         /repo/.sous/logs/12",
+        "engine       -",
         "",
         "work progress",
         "  work  state  commits",
@@ -79,6 +80,11 @@ describe("renderStatus", () => {
     expect(text).toContain("work progress\n  work  state  commits\n  12    open   -");
     expect(text).not.toContain("last eval");
     expect(text).not.toContain("timeline");
+  });
+
+  it("names the engine that last started the run, and - for a session from before it was recorded", () => {
+    expect(renderStatus({ ...fresh("fix", "task"), engine: "0.9.1" }, none, paths)).toContain("engine       0.9.1");
+    expect(renderStatus(fresh("fix", "task"), none, paths)).toContain("engine       -");
   });
 
   it("shows the last eval only when the step just left has a record in the current scope", () => {

@@ -71,6 +71,7 @@ export const SESSION_SCHEMA = {
     iterations: { type: "object", additionalProperties: { type: "integer", minimum: 0 } },
     blocked: { type: "boolean" },
     closed: { type: "boolean" },
+    engine: { type: "string" },
   },
 };
 

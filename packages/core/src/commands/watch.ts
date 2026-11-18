@@ -2,9 +2,9 @@
  * `sous watch [--once] [--interval <seconds>]`: runs the repository
  * unattended. Each pass asks the tracker for the open issues carrying
  * `<prefix>:ready` (and `<prefix>:running`, for crashed runs) and starts the
- * lowest-numbered one that qualifies as the repository's own `sous run
- * <issue> --flow <flow>`, the flow resolved as `sous run <issue>` resolves
- * it, one run at a time.
+ * lowest-numbered one that qualifies as `sous run <issue> --flow <flow>`
+ * of the daemon's own engine with `SOUS_ROOT` at the repository's `.sous/`,
+ * the flow resolved as `sous run <issue>` resolves it, one run at a time.
  *
  * The daemon owns nothing a run owns: locks, sessions, labels and comments
  * stay the run's. Its own state is in memory (what it reported, what it
@@ -12,17 +12,17 @@
  * keeps a second daemon out.
  */
 import { spawn as spawnProcess } from "node:child_process";
-import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { Exec } from "../adapters/exec.js";
 import { logDir } from "../adapters/logs.js";
+import { ENGINE_VERSION, engineCheckOf, initialRange } from "../config/engine.js";
 import { flowLabelsOf, resolveFlow } from "../config/resolve.js";
 import { messageOf, readYaml } from "../config/schema.js";
 import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
 import { listFlows } from "../config/validate.js";
 import { byId, stateLabels, type Issue, type Tracker } from "../ports/tracker.js";
-import { REPO_LABEL, repoEntries, repoNameOf, repoProblems, unrunnableRepos, WRAPPER } from "../config/repos.js";
+import { REPO_LABEL, repoEntries, repoNameOf, repoNameProblems, routeIssue, unrunnableRepos, type Route } from "../config/repos.js";
 import { SousError } from "../exec/errors.js";
 import { PROJECT_DIR, repoRootOf } from "../root.js";
 import { loadTracker } from "../tracker.js";
@@ -54,18 +54,19 @@ export type ChildExit = { code: number | null; signal: string | null; stderr: st
 
 export type Child = { pid: number | undefined; exited: Promise<ChildExit>; kill: (signal: StopSignal) => void };
 
-/** Starts `command args` in `cwd`; `onOutput` gets each line the child prints on stdout. Injected so tests start no processes. */
-export type Spawn = (command: string, args: readonly string[], options: { cwd: string; onOutput: (line: string) => void }) => Child;
+/** Starts `command args` in `cwd` with `env` over the daemon's own; `onOutput` gets each line the child prints on stdout. Injected so tests start no processes. */
+export type Spawn = (command: string, args: readonly string[], options: { cwd: string; env?: Record<string, string>; onOutput: (line: string) => void }) => Child;
 
-/** A repository the daemon serves: its project root (`.sous/`), checkout, tracker and the command that starts its runs. */
+/** The running engine's CLI as a command line: this node, its flags (tsx's loader in a checkout) and the CLI file. */
+export const engineCommandOf = (cliFile: string): string[] => [process.execPath, ...process.execArgv, cliFile];
+
+/** A repository the daemon serves: its project root (`.sous/`), checkout and tracker. */
 export type WatchRepo = {
   /** Its name in `repo:<name>` labels. */
   name: string;
   root: string;
   repoRoot: string;
   tracker: Tracker;
-  /** What starts a run: the repository's own `.sous/sous`, so its engine version runs it. */
-  sous: readonly string[];
 };
 
 export type WatchDeps = {
@@ -75,8 +76,12 @@ export type WatchDeps = {
   repos: readonly WatchRepo[];
   /** The repositories come from `repos:`, so every issue must name its own with a `repo:*` label. */
   listed: boolean;
-  /** `repos:` entries the daemon cannot run (no `.sous/sous`): reported once, issues routed to them not run. */
+  /** What starts a run: the running engine's CLI (`engineCommandOf`), whatever the repository installed. */
+  engine: readonly string[];
+  /** `repos:` entries the daemon cannot run (no `.sous/sous.yaml`, no `engine:` this engine satisfies): reported once, issues routed to them not run. */
   unrunnable?: readonly { name: string; reason: string }[];
+  /** The running engine's version, checked against the repository's `engine:` without `repos:`; injectable for tests. */
+  engineVersion?: string;
   spawn: Spawn;
   out: (line: string) => void;
   err: (line: string) => void;
@@ -178,12 +183,14 @@ const createRepoWatcher = (repo: WatchRepo, deps: WatchDeps, report: Reporter, s
   };
 
   const start = (issue: Issue, flow: string, rerun: boolean, note: string): void => {
-    const [command = "sous", ...prefix] = repo.sous;
+    const [command = "sous", ...prefix] = deps.engine;
     // The resolved flow is passed on, so the run takes exactly the daemon's choice and the line names it.
     const args = [...prefix, "run", issue.id, "--flow", flow];
     const line = `sous run ${issue.id} --flow ${flow}`;
-    const child = deps.spawn(command, args, { cwd: repoRoot, onOutput: (text) => (PUSHED.test(text) ? out(`${name(issue)}: ${text.trim()}`) : undefined) });
-    out(rerun ? `${name(issue)}: ${note}rerunning ${line} after a crash (pid ${child.pid})` : `${name(issue)}: ${note}started ${line} (pid ${child.pid})`);
+    // The repository's definitions, this engine: SOUS_ROOT names the project, never its wrapper or install.
+    const child = deps.spawn(command, args, { cwd: repoRoot, env: { SOUS_ROOT: root }, onOutput: (text) => (PUSHED.test(text) ? out(`${name(issue)}: ${text.trim()}`) : undefined) });
+    const how = `(pid ${child.pid}, ${deps.engine.join(" ")} in ${repoRoot})`;
+    out(rerun ? `${name(issue)}: ${note}rerunning ${line} after a crash ${how}` : `${name(issue)}: ${note}started ${line} ${how}`);
     let interrupted = false;
     const kill = child.kill;
     child.kill = (signal) => {
@@ -283,21 +290,12 @@ const createRepoWatcher = (repo: WatchRepo, deps: WatchDeps, report: Reporter, s
 };
 
 /**
- * Where an issue listed by `seenIn`'s tracker runs: its `repo:*` label names
- * the entry. With `repos:` an issue without one, or naming no entry, is not
- * run; without, the one repository takes an issue without a label or naming
- * it. Nothing is inferred from the tracker the issue lives in.
+ * Where an issue listed by `seenIn`'s tracker runs, by `routeIssue`: with
+ * `repos:` among every entry, runnable or not; without, in this repository.
+ * Nothing is inferred from the tracker the issue lives in.
  */
-const routeOf = (issue: Issue, seenIn: WatchRepo, deps: WatchDeps): { to: string } | { reason: string } => {
-  const names = issue.labels.filter((l) => l.startsWith(REPO_LABEL));
-  if (names.length > 1) return { reason: `carries several ${REPO_LABEL}* labels (${names.join(", ")}); keep one` };
-  const named = names[0]?.slice(REPO_LABEL.length);
-  if (!deps.listed) return named === undefined || named === seenIn.name ? { to: seenIn.name } : { reason: `${names[0]} names another repository than ${seenIn.name}` };
-  if (named === undefined) return { reason: `no ${REPO_LABEL}* label names its repository` };
-  const entries = [...deps.repos.map((r) => r.name), ...(deps.unrunnable ?? []).map((u) => u.name)];
-  if (!entries.includes(named)) return { reason: `${names[0]} names no entry of repos: (${entries.join(", ")})` };
-  return { to: named };
-};
+const routeOf = (issue: Issue, seenIn: WatchRepo, deps: WatchDeps): Route =>
+  routeIssue(issue.labels, deps.listed ? { entries: [...deps.repos.map((r) => r.name), ...(deps.unrunnable ?? []).map((u) => u.name)] } : { self: seenIn.name });
 
 /** Whether two trackers' listings name the same issue: they cannot tell, so id and title together stand in. */
 const sameIssue = (a: Issue, b: Issue): boolean => a.id === b.id && a.title === b.title;
@@ -370,14 +368,14 @@ export const createWatcher = (deps: WatchDeps): Watcher => {
 
 /**
  * The real child: its own process group, so a Ctrl-C in the terminal reaches
- * the daemon alone and is forwarded once, to the whole group: the `.sous/sous`
- * wrapper, the node run it starts under it and the run's agents, as a Ctrl-C
- * reaches a foreground `sous run`.
+ * the daemon alone and is forwarded once, to the whole group: the run, any
+ * process under it and the run's agents, as a Ctrl-C reaches a foreground
+ * `sous run`.
  */
-export const spawnChild: Spawn = (command, args, { cwd, onOutput }) => {
-  // SOUS_ROOT names the daemon's project; the run finds its own from its `.sous/sous` or its cwd.
-  const { SOUS_ROOT: _daemonRoot, ...env } = process.env;
-  const child = spawnProcess(command, [...args], { cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+export const spawnChild: Spawn = (command, args, { cwd, env: extra = {}, onOutput }) => {
+  // The daemon's SOUS_ROOT names its own project; the run gets the one `extra` names, or finds its own from its cwd.
+  const { SOUS_ROOT: _daemonRoot, ...inherited } = process.env;
+  const child = spawnProcess(command, [...args], { cwd, env: { ...inherited, ...extra }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
   let stderr = "";
   let pending = "";
   child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
@@ -409,36 +407,40 @@ export const spawnChild: Spawn = (command, args, { cwd, onOutput }) => {
   };
 };
 
-/** What starts a run in the repository at `root`: its `.sous/sous`, else this engine's own CLI. */
-export const sousCommandOf = (root: string, cliFile: string): string[] => (existsSync(join(root, WRAPPER)) ? [join(root, WRAPPER)] : [process.execPath, cliFile]);
-
-const watchRepoOf = async (name: string, root: string, sous: readonly string[]): Promise<WatchRepo> => {
+const watchRepoOf = async (name: string, root: string): Promise<WatchRepo> => {
   const repoRoot = repoRootOf(root);
   const settings = loadSettings(join(root, SETTINGS_FILE));
   const tracker = await loadTracker(settings, { root, repoRoot, runsDir: resolve(root, settings.runsDir), labelPrefix: settings.labelPrefix });
-  return { name, root, repoRoot, tracker, sous };
+  return { name, root, repoRoot, tracker };
 };
 
 /**
  * The repositories `sous watch` in the project at `root` serves: each entry
- * of `repos:` built from its own `.sous/` (its settings, its tracker, its
- * `sous`), or without `repos:` this repository under its own name. An entry
- * without its `.sous/sous` is set aside: this engine never runs another
- * repository, whose engine version may differ.
+ * of `repos:` built from its own `.sous/` (its settings, its tracker), or
+ * without `repos:` this repository under its own name. An entry without
+ * `.sous/sous.yaml`, or whose `engine:` this engine does not satisfy, is set
+ * aside; a wrapper or `node_modules` there is neither needed nor used.
  */
-export const watchReposOf = async (root: string, cliFile: string, exec?: Exec): Promise<{ repos: WatchRepo[]; listed: boolean; unrunnable: { name: string; reason: string }[] }> => {
+export const watchReposOf = async (root: string, exec?: Exec, engineVersion: string = ENGINE_VERSION): Promise<{ repos: WatchRepo[]; listed: boolean; unrunnable: { name: string; reason: string }[] }> => {
   const settings = loadSettings(join(root, SETTINGS_FILE));
   const entries = repoEntries(root, settings);
-  if (entries === undefined) return { listed: false, unrunnable: [], repos: [await watchRepoOf(await repoNameOf(repoRootOf(root), settings, exec), root, sousCommandOf(root, cliFile))] };
-  const problems = repoProblems(root, settings);
+  if (entries === undefined) return { listed: false, unrunnable: [], repos: [await watchRepoOf(await repoNameOf(repoRootOf(root), settings, exec), root)] };
+  const problems = repoNameProblems(root, settings);
   if (problems.length > 0) throw new SousError(`${join(root, SETTINGS_FILE)}: ${problems.join("; ")}`);
   const unrunnable = unrunnableRepos(root, settings);
   const repos: WatchRepo[] = [];
   for (const { name, path } of entries) {
     if (unrunnable.some((u) => u.name === name)) continue;
     const projectRoot = join(path, PROJECT_DIR);
+    // Before its settings load: a repository written for a newer engine may hold keys this one rejects.
+    // A missing range counts too: a run nobody watches must say what it was written for.
+    const engine = engineCheckOf(projectRoot, engineVersion, path);
+    if (engine.kind !== "satisfied") {
+      unrunnable.push({ name, reason: `${engine.message}; sous watch starts nothing there` });
+      continue;
+    }
     try {
-      repos.push(await watchRepoOf(name, projectRoot, [join(projectRoot, WRAPPER)]));
+      repos.push(await watchRepoOf(name, projectRoot));
     } catch (error) {
       throw new SousError(`repos.${name}: ${messageOf(error)}`);
     }
@@ -452,11 +454,32 @@ const pause = (ms: number, signal: AbortSignal): Promise<void> =>
     signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
   });
 
+/**
+ * Why `sous watch` refuses to start on the project at `root` under the engine
+ * `version`, or undefined. Read tolerantly, so the CLI asks it with
+ * `onlyUnsatisfied` before anything loads the settings strictly: a range this
+ * engine does not satisfy is refused there; a missing or invalid one only by
+ * `watchCommand` in single-repository mode, a home repository needing none.
+ */
+export const watchEngineRefusal = (root: string, version: string, onlyUnsatisfied: boolean): string | undefined => {
+  const engine = engineCheckOf(root, version, repoRootOf(root));
+  if (engine.kind === "satisfied" || (onlyUnsatisfied && engine.kind !== "unsatisfied")) return undefined;
+  return `sous watch: ${engine.message}${engine.kind === "missing" ? `; an unattended run needs one, add engine: ${initialRange(version)}` : ""}`;
+};
+
 export const watchCommand = async (args: readonly string[], deps: WatchDeps): Promise<number> => {
   const parsed = parseWatchArgs(args);
   if ("error" in parsed) {
     deps.err(parsed.error);
     return 2;
+  }
+  // Listed repositories were checked one by one and set aside; the one repository is the daemon's whole job.
+  if (!deps.listed) {
+    const refusal = watchEngineRefusal(deps.root, deps.engineVersion ?? ENGINE_VERSION, false);
+    if (refusal !== undefined) {
+      deps.err(refusal);
+      return 2;
+    }
   }
   const isAlive = deps.isAlive ?? isProcessAlive;
   const path = watchLockPath(deps.root);

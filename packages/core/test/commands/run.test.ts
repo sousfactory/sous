@@ -22,6 +22,7 @@ describe("parseRunArgs", () => {
   it("takes the issue, --flow <name> and --restart in any order", () => {
     expect(parseRunArgs(["12"])).toEqual({ issue: "12", restart: false });
     expect(parseRunArgs(["--restart", "3", "--flow", "feature"])).toEqual({ flow: "feature", issue: "3", restart: true });
+    expect(parseRunArgs(["3", "--repo", "web"])).toEqual({ issue: "3", repo: "web", restart: false });
   });
 
   it("keeps anything that is not a run number as a tracker reference for the adapter to resolve", () => {
@@ -30,12 +31,12 @@ describe("parseRunArgs", () => {
   });
 
   it("rejects the old positional form with the new one, the values as typed", () => {
-    expect(parseRunArgs(["task", "42"])).toEqual({ error: "sous run: the flow is an option now: sous run 42 --flow task\nusage: sous run <issue> [--flow <name>] [--restart]" });
+    expect(parseRunArgs(["task", "42"])).toEqual({ error: "sous run: the flow is an option now: sous run 42 --flow task\nusage: sous run <issue> [--flow <name>] [--restart] [--repo <name>]" });
     expect(parseRunArgs(["task", "#42", "--restart"])).toMatchObject({ error: expect.stringContaining("sous run #42 --flow task --restart\n") });
   });
 
   it("rejects missing or invalid arguments and unknown options", () => {
-    for (const args of [[], ["#"], ["task", "1", "extra"], ["1", "--flow"], ["1", "--flow", "--restart"]]) {
+    for (const args of [[], ["#"], ["task", "1", "extra"], ["1", "--flow"], ["1", "--flow", "--restart"], ["1", "--repo"]]) {
       expect(parseRunArgs(args)).toMatchObject({ error: expect.stringContaining("usage: sous run <issue> [--flow <name>] [--restart]") });
     }
     expect(parseRunArgs(["1", "--force"])).toMatchObject({ error: expect.stringContaining("unknown option --force") });
@@ -105,6 +106,7 @@ describe("runCommand", () => {
     host: "box",
     sha: async () => "abc1234",
     newId: () => "r1",
+    engineVersion: "0.9.1",
     ...overrides,
   });
 
@@ -447,6 +449,29 @@ describe("runCommand", () => {
     expect(await lockExists()).toBe(false);
   });
 
+  it("refuses a repository whose engine: range this engine does not satisfy with exit 2, before taking the lock", async () => {
+    await writeFile(join(root, "sous.yaml"), `${await readFile(join(root, "sous.yaml"), "utf8")}engine: ^0.8.0\n`);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(2);
+    expect(err).toEqual([`sous run: engine 0.9.1 does not satisfy engine: ^0.8.0 of ${repoRoot}; run it with an engine in that range or widen the range`]);
+    expect(opened).toEqual([]);
+    expect(await lockExists()).toBe(false);
+  });
+
+  it("refuses by its range a repository written for a newer engine, before settings keys this engine does not know fail validation", async () => {
+    await writeFile(join(root, "sous.yaml"), `${await readFile(join(root, "sous.yaml"), "utf8")}engine: ^0.10.0\nfromTheFuture: true\n`);
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(2);
+    expect(err).toEqual([`sous run: engine 0.9.1 does not satisfy engine: ^0.10.0 of ${repoRoot}; run it with an engine in that range or widen the range`]);
+    expect(await lockExists()).toBe(false);
+  });
+
+  it("runs a repository whose engine: range this engine satisfies, and one without engine:, recording the engine in the session", async () => {
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
+    expect((await savedSession()).engine).toBe("0.9.1");
+    await writeFile(join(root, "sous.yaml"), `${await readFile(join(root, "sous.yaml"), "utf8")}engine: ^0.9.0\n`);
+    expect(await runCommand(["7", "--flow", "walk", "--restart"], deps({ engineVersion: "0.9.4" }))).toBe(0);
+    expect((await savedSession()).engine).toBe("0.9.4");
+  });
+
   it("refuses an issue without one of the flow's allowedLabels with exit 2, before opening a sandbox", async () => {
     const flowFile = join(root, "flows", "walk.yaml");
     await writeFile(flowFile, `allowedLabels: [type:feature]\n${await readFile(flowFile, "utf8")}`);
@@ -520,7 +545,7 @@ describe("runCommand", () => {
 
   it("rejects the old positional form with the new one and starts nothing", async () => {
     expect(await runCommand(["walk", "7"], deps())).toBe(2);
-    expect(err).toEqual(["sous run: the flow is an option now: sous run 7 --flow walk\nusage: sous run <issue> [--flow <name>] [--restart]"]);
+    expect(err).toEqual(["sous run: the flow is an option now: sous run 7 --flow walk\nusage: sous run <issue> [--flow <name>] [--restart] [--repo <name>]"]);
     expect(opened).toEqual([]);
     expect(await loadSession(sessionFile(runs(), "7"))).toBeUndefined();
     expect(await lockExists()).toBe(false);

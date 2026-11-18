@@ -4,6 +4,7 @@
  */
 import { resolve } from "node:path";
 import { SousError } from "../exec/errors.js";
+import { checkEngine } from "./engine.js";
 import { checker, readYaml } from "./schema.js";
 
 export type Settings = {
@@ -41,6 +42,11 @@ export type Settings = {
    * or a list of paths named by their folders. Each holds its own `.sous/`.
    */
   repos?: Record<string, string> | string[];
+  /**
+   * The semver range of engines these definitions were written for; `sous
+   * run` refuses an engine outside it, `sous watch` also a missing one.
+   */
+  engine?: string;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -84,6 +90,7 @@ const check = checker<Partial<Settings>>({
     trackerOptions: { type: "object" },
     name: { type: "string", minLength: 1 },
     repos: {},
+    engine: { type: "string", minLength: 1 },
   },
 });
 
@@ -100,6 +107,11 @@ const checkRepos = (repos: unknown, file: string): void => {
 export const parseSettings = (doc: unknown, file: string = SETTINGS_FILE): Settings => {
   const settings = check(doc ?? {}, file);
   checkRepos(settings.repos, file);
+  // Only the range's form is checked here; whether this engine satisfies it is the command's call.
+  if (settings.engine !== undefined) {
+    const check = checkEngine("0.0.0", settings.engine, file);
+    if (check.kind === "invalid") throw new SousError(`${file}: ${check.message}`);
+  }
   return { ...DEFAULT_SETTINGS, ...settings };
 };
 

@@ -41,6 +41,8 @@ export type Session = {
    * after that is retried on the next `sous run` instead of being skipped.
    */
   closed: boolean;
+  /** The version of the engine that last started the run; absent in sessions from before it was recorded. */
+  engine?: string;
 };
 
 export const scopeKey = (work: string): string => work;

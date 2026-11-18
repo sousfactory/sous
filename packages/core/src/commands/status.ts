@@ -136,6 +136,7 @@ export const renderStatus = (session: Session, timeline: Timeline, paths: Status
     ["spec", session.specDir === "" ? "-" : session.specDir],
     ["run", paths.runDir],
     ["logs", paths.logDir],
+    ["engine", session.engine ?? "-"],
   ];
   const lines = table(facts);
 

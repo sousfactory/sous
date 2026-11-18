@@ -8,6 +8,8 @@ import { existsSync, readdirSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import {
+  ENGINE_VERSION,
+  engineCheckOf,
   eventsFile,
   foldTimeline,
   isProcessAlive,
@@ -55,18 +57,28 @@ export const openProject = (root: string, isAlive: (pid: number) => boolean = is
 /** A repository of the home project's `repos:` list, read as a project of its own; `github` asks `gh` in its checkout. */
 export type RepoSource = RepoTag & { project: Project; github?: GitHubLookup };
 
-/** A listed repository whose settings this engine cannot load, a newer one say: listed as one error row, read for nothing else. */
+/**
+ * A listed repository whose settings this engine cannot load, a newer one
+ * say, or whose `engine:` range it does not satisfy: listed as one error row,
+ * read for nothing else.
+ */
 export type BrokenRepo = RepoTag & { error: string };
 
 export type ListedRepo = RepoSource | BrokenRepo;
 
 export const isOpen = (repo: ListedRepo): repo is RepoSource => "project" in repo;
 
-/** The repositories `repos:` lists, each opened from its own `.sous/`; `undefined` without `repos:`. */
-export const openRepos = (home: Project): ListedRepo[] | undefined =>
+/**
+ * The repositories `repos:` lists, each opened from its own `.sous/`;
+ * `undefined` without `repos:`. One without `engine:` is shown: viewing its
+ * runs needs no promise about the engine, running them does.
+ */
+export const openRepos = (home: Project, engineVersion: string = ENGINE_VERSION): ListedRepo[] | undefined =>
   repoEntries(home.root, loadSettings(join(home.root, SETTINGS_FILE)))?.map(({ name, path }): ListedRepo => {
     const folder = basename(path);
     const root = join(path, PROJECT_DIR);
+    const engine = engineCheckOf(root, engineVersion, name);
+    if (engine.kind === "unsatisfied" || engine.kind === "invalid") return { name, folder, error: withoutPath(engine.message, join(root, SETTINGS_FILE)) };
     try {
       return { name, folder, project: openProject(root, home.isAlive) };
     } catch (error) {

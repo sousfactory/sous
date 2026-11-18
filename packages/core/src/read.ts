@@ -20,3 +20,4 @@ export { RUN_OUTCOMES, AGENT_OUTCOMES, type Event, type OutputEvent, type RunOut
 export { SCHEMA_VERSION, type Session, type HistoryEntry } from "./exec/scope.js";
 export type { PrepareVerdict, StepRecord, WorkRecord } from "./index.js";
 export { repoEntries, repoProblems, type RepoEntry } from "./config/repos.js";
+export { checkEngine, engineCheckOf, ENGINE_VERSION, type EngineCheck } from "./config/engine.js";

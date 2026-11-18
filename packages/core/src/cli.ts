@@ -1,25 +1,22 @@
 /** The `sous` command: parses arguments and dispatches to a command. */
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createGit } from "./adapters/git.js";
-import { createOpenSandbox } from "./adapters/sandbox.js";
 import { graphCommand } from "./commands/graph.js";
 import { initCommand } from "./commands/init.js";
-import { confirmOnStdin, runCommand } from "./commands/run.js";
+import { startRun, startWatch } from "./commands/start.js";
 import { statusCommand } from "./commands/status.js";
 import { validateCommand } from "./commands/validate.js";
-import { spawnChild, watchCommand, watchReposOf } from "./commands/watch.js";
-import { loadSettings, SETTINGS_FILE } from "./config/settings.js";
-import type { Tracker } from "./ports/tracker.js";
-import { PROJECT_DIR, projectRoot, repoRootOf } from "./root.js";
-import { loadTracker } from "./tracker.js";
+import { PROJECT_DIR, projectRoot } from "./root.js";
 
 export { PROJECT_DIR, projectRoot, repoRootOf } from "./root.js";
 
 const USAGE = `usage:
-  sous init [--starter <dir>] [--force] copy a starter into .sous/, install it, add the /sous-plan skill
-  sous run <issue> [--flow <name>] [--restart]
-                                        validate, then start or resume a run; the flow from the issue's labels unless named
+  sous init [--starter <dir>] [--force] [--no-install] [<path>]
+                                        copy a starter into .sous/ of this repository or <path>, install it, add the /sous-plan skill;
+                                        --no-install: definitions only, no wrapper, no npm install, for a home repository's engine
+  sous run <issue> [--flow <name>] [--restart] [--repo <name>]
+                                        validate, then start or resume a run; the flow from the issue's labels unless named;
+                                        in a home repository, in the repos: entry its repo: label or --repo names
   sous watch [--once] [--interval <s>]  start ready issues unattended, one run per repository at a time
   sous status <issue>                   session facts and the timeline
   sous graph <flow>                     the flow as Mermaid
@@ -39,7 +36,9 @@ export const uiMainPath = (cliFile: string): string => {
   return compiled ? join(here, "..", "ui", "dist-server", "main.js") : join(here, "..", "..", "ui", "server", "main.ts");
 };
 
-export const UI_MAIN = uiMainPath(fileURLToPath(import.meta.url));
+const CLI_FILE = fileURLToPath(import.meta.url);
+
+export const UI_MAIN = uiMainPath(CLI_FILE);
 
 /** The UI package depends on core, so it is loaded by path at call time to keep core from depending on it back. */
 const uiCommand = async (args: string[], root: string): Promise<number> => {
@@ -49,24 +48,14 @@ const uiCommand = async (args: string[], root: string): Promise<number> => {
   return uiMain(args, root);
 };
 
-/** Read at call time so a broken sous.yaml still reaches `validate`. */
-const trackerOf = (root: string, repoRoot: string): Promise<Tracker> => {
-  const settings = loadSettings(join(root, SETTINGS_FILE));
-  return loadTracker(settings, { root, repoRoot, runsDir: resolve(root, settings.runsDir), labelPrefix: settings.labelPrefix });
-};
-
 const commands = (root: string): Record<string, Command> => {
-  const repoRoot = repoRootOf(root);
   const io = { out: console.log, err: console.error };
   return {
     validate: (args) => validateCommand(args, { root, ...io }),
     graph: (args) => graphCommand(args, { root, ...io }),
-    run: async (args) => {
-      const git = createGit();
-      return runCommand(args, { root, repoRoot, git, tracker: await trackerOf(root, repoRoot), openSandbox: createOpenSandbox(git), confirm: confirmOnStdin, ...io });
-    },
-    watch: async (args) =>
-      watchCommand(args, { root, ...(await watchReposOf(root, fileURLToPath(import.meta.url))), spawn: spawnChild, ...io }),
+    // The engine range first, then the settings and the tracker: see `start.ts`.
+    run: (args) => startRun(args, { root, cliFile: CLI_FILE, ...io }),
+    watch: (args) => startWatch(args, { root, cliFile: CLI_FILE, ...io }),
     status: (args) => statusCommand(args, { root, ...io }),
     ui: (args) => uiCommand(args, root),
   };
@@ -81,7 +70,7 @@ const main = async (argv: string[]): Promise<number> => {
   // The only command that runs before a project exists: the repository is the cwd, or the parent of a `.sous` cwd.
   if (name === "init") {
     const cwd = process.cwd();
-    return initCommand(args, { repoRoot: basename(cwd) === PROJECT_DIR ? dirname(cwd) : cwd, out: console.log, err: console.error });
+    return initCommand(args, { repoRoot: basename(cwd) === PROJECT_DIR ? dirname(cwd) : cwd, cwd, out: console.log, err: console.error });
   }
   const command = commands(projectRoot(process.cwd()))[name];
   if (command === undefined) {

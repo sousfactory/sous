@@ -64,6 +64,11 @@ describe("parseSettings", () => {
     expect(parseSettings({ uiPort: 5001 })).toEqual({ ...DEFAULT_SETTINGS, uiPort: 5001 });
   });
 
+  it("takes engine: as a semver range and rejects one that is not, naming the value", () => {
+    expect(parseSettings({ engine: "^0.9.0" })).toEqual({ ...DEFAULT_SETTINGS, engine: "^0.9.0" });
+    expect(() => parseSettings({ engine: "nonsense" }, "sous.yaml")).toThrow('sous.yaml: engine: "nonsense" is not a semver range');
+  });
+
   it.each([
     [{ uiPort: "4680a" }, "/uiPort must be integer"],
     [{ uiPort: 46.8 }, "/uiPort must be integer"],
@@ -92,7 +97,7 @@ describe("loadSettings", () => {
   });
 
   it("merges a project file over the defaults", () => {
-    expect(loadSettings(fixture("project", "sous.yaml"))).toEqual({ ...DEFAULT_SETTINGS, baseBranch: "develop", lifecycle: "steps", idleTimeoutSeconds: 60 });
+    expect(loadSettings(fixture("project", "sous.yaml"))).toEqual({ ...DEFAULT_SETTINGS, baseBranch: "develop", lifecycle: "steps", idleTimeoutSeconds: 60, engine: ">=0.1.0" });
   });
 
   it("names the file in a violation", () => {

@@ -1,11 +1,20 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatError, validateCommand } from "../../src/commands/validate.js";
 import { fixture, io, projectSteps } from "../helpers.js";
 
-const deps = (root: string) => ({ root, coreStepsDir: projectSteps });
+const deps = (root: string) => ({ root, coreStepsDir: projectSteps, engineVersion: "0.9.0" });
+
+/** A repository checkout with a `.sous/` holding `sous.yaml` (and the wrapper `repos:` entries need); returns the checkout. */
+const repository = (yaml: string): string => {
+  const repoRoot = mkdtempSync(join(tmpdir(), "sous-repo-"));
+  mkdirSync(join(repoRoot, ".sous"));
+  writeFileSync(join(repoRoot, ".sous", "sous.yaml"), yaml);
+  writeFileSync(join(repoRoot, ".sous", "sous"), "#!/bin/sh\n");
+  return repoRoot;
+};
 
 describe("validateCommand", () => {
   it("exits 0 for the fixture project", async () => {
@@ -19,13 +28,13 @@ describe("validateCommand", () => {
     const root = mkdtempSync(join(tmpdir(), "sous-"));
     const { deps: lines, out } = io();
     expect(await validateCommand([], { ...deps(root), ...lines })).toBe(0);
-    expect(out).toEqual([`note: no flows under ${join(root, "flows")}; nothing to validate`, "ok: sous.yaml and 0 flow(s) valid"]);
+    expect(out.filter((l) => !l.startsWith("warning:"))).toEqual([`note: no flows under ${join(root, "flows")}; nothing to validate`, "ok: sous.yaml and 0 flow(s) valid"]);
   });
 
   it("exits 2 and lists every error with file, id and rule", async () => {
     const { deps: lines, out, err } = io();
     expect(await validateCommand([], { ...deps(fixture("invalid")), ...lines })).toBe(2);
-    expect(out).toEqual([]);
+    expect(out.filter((l) => !l.startsWith("warning:"))).toEqual([]);
     expect(err).toContain('flows/gate.yaml [merge]: gate: gate is not supported yet');
     expect(err).toContain('flows/entry-unknown.yaml: entry: entry "nope" names no step id');
     expect(err.at(-1)).toMatch(/^\d+ error\(s\)$/);
@@ -43,6 +52,42 @@ describe("validateCommand", () => {
     const bad = io();
     expect(await validateCommand([], { ...deps(fixture("tracker-broken")), ...bad.deps })).toBe(2);
     expect(bad.err[0]).toMatch(/^sous\.yaml: settings: tracker: .*half\.ts: the tracker lacks children, parent, blockers/);
+  });
+
+  it("warns once on a missing engine: and still exits 0", async () => {
+    const root = join(repository("tracker: local\n"), ".sous");
+    const { deps: lines, out, err } = io();
+    expect(await validateCommand([], { ...deps(root), ...lines })).toBe(0);
+    expect(out.filter((l) => l.startsWith("warning:"))).toEqual([`warning: ${join(root, "..")} states no engine: range in sous.yaml; add engine: ^0.9.0`]);
+    expect(err).toEqual([]);
+  });
+
+  it("exits 2 naming a range that is not a semver range", async () => {
+    const root = join(repository("engine: nonsense\n"), ".sous");
+    const { deps: lines, err } = io();
+    expect(await validateCommand([], { ...deps(root), ...lines })).toBe(2);
+    expect(err[0]).toBe('sous.yaml: settings: engine: "nonsense" is not a semver range');
+  });
+
+  it("exits 2 when this engine does not satisfy the repository's own range", async () => {
+    const root = join(repository("engine: ^0.8.0\n"), ".sous");
+    const { deps: lines, err } = io();
+    expect(await validateCommand([], { ...deps(root), ...lines })).toBe(2);
+    expect(err[0]).toBe(`sous.yaml: settings: engine 0.9.0 does not satisfy engine: ^0.8.0 of ${join(root, "..")}`);
+  });
+
+  it("in a home repository reports every listed repository whose range this engine does not satisfy, by name", async () => {
+    const old = repository("engine: ^0.8.0\n");
+    const current = repository("engine: ^0.9.0\n");
+    const bare = repository("tracker: local\n");
+    const home = join(repository(`engine: ^0.9.0\nrepos: { old: ${old}, current: ${current}, bare: ${bare} }\n`), ".sous");
+    const { deps: lines, err } = io();
+    expect(await validateCommand([], { ...deps(home), ...lines })).toBe(2);
+    expect(err).toEqual([
+      "sous.yaml: settings: repos.old: engine 0.9.0 does not satisfy engine: ^0.8.0 of old",
+      "sous.yaml: settings: repos.bare: bare states no engine: range in sous.yaml",
+      "2 error(s)",
+    ]);
   });
 
   it("exits 2 with usage on arguments", async () => {
