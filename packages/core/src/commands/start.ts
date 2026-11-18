@@ -45,23 +45,23 @@ export const startRun = async (args: readonly string[], deps: StartDeps): Promis
     return 2;
   }
   // Before the tracker module or any step loads: the project's `sous-factory` is this engine.
-  useRunningEngine();
+  await useRunningEngine();
   const tracker = await trackerOf(root, repoRoot);
   const git = createGit();
   const runHere = (runArgs: readonly string[]) => runCommand(runArgs, { root, repoRoot, git, tracker, openSandbox: createOpenSandbox(git), confirm: confirmOnStdin, engineVersion, out, err });
   // A home repository runs nothing itself: the issue runs in its entry, as `sous watch` would start it.
-  if (isHomeRepository(root)) return homeRunCommand(args, { root, tracker, engine: engineCommandOf(deps.cliFile), runChild: runChildInTerminal, runHere, out, err });
+  if (isHomeRepository(root)) return homeRunCommand(args, { root, tracker, engine: engineCommandOf(deps.cliFile), engineVersion, runChild: runChildInTerminal, runHere, out, err });
   return runHere(args);
 };
 
 export const startWatch = async (args: readonly string[], deps: StartDeps): Promise<number> => {
   const { root, out, err } = deps;
   const engineVersion = deps.engineVersion ?? ENGINE_VERSION;
-  const refusal = watchEngineRefusal(root, engineVersion, true);
+  const refusal = watchEngineRefusal(root, engineVersion);
   if (refusal !== undefined) {
     err(refusal);
     return 2;
   }
-  useRunningEngine();
+  await useRunningEngine();
   return watchCommand(args, { root, ...(await watchReposOf(root, undefined, engineVersion)), engine: engineCommandOf(deps.cliFile), spawn: spawnChild, engineVersion, out, err });
 };

@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../../src/config/settings.js";
 import { recordVisit, type Session } from "../../src/exec/scope.js";
 import { branchName, eventsFile, runDir, runsRoot, sessionFile, slugify, specDir, specDirName } from "../../src/session/paths.js";
-import { backupFile, filePersist, loadSession, parseSession, saveSession } from "../../src/session/store.js";
+import { checker } from "../../src/config/schema.js";
+import { backupFile, filePersist, loadSession, parseSession, saveSession, SESSION_SCHEMA } from "../../src/session/store.js";
 import {
   appendHistory,
   bumpIteration,
@@ -134,6 +135,12 @@ describe("store", () => {
     await expect(loadSession(path)).rejects.toThrow(/session\.json: \/schemaVersion must be equal to constant/);
   });
 
+  it("is read by the previous engine (schema 9, no engine property) as another schema version, not as an extra property", () => {
+    const { engine: _engine, ...properties } = SESSION_SCHEMA.properties;
+    const schema9 = checker<Session>({ ...SESSION_SCHEMA, properties: { ...properties, schemaVersion: { const: 9 } } });
+    expect(() => schema9({ ...fresh(), engine: "0.9.1" }, "session.json")).toThrow(/\/schemaVersion must be equal to constant/);
+  });
+
   it("parseSession checks the shape, not only the version", () => {
     expect(parseSession(fresh(), "f")).toEqual(fresh());
     expect(() => parseSession({ ...fresh(), extra: 1 }, "f")).toThrow(/additional properties \(extra\)/);
@@ -151,9 +158,9 @@ describe("store", () => {
 });
 
 describe("update", () => {
-  it("createSession has the session shape: schema 9, the issue on the bench, entry counter at 0, neither blocked nor closed", () => {
+  it("createSession has the session shape: schema 10, the issue on the bench, entry counter at 0, neither blocked nor closed", () => {
     expect(fresh()).toEqual({
-      schemaVersion: 9,
+      schemaVersion: 10,
       flow: "feature",
       issue: "12",
       title: "Some slug",

@@ -10,6 +10,7 @@ import { homeRunCommand, type HomeRunDeps, type RunChild } from "../../src/comma
 import { lockPath } from "../../src/commands/lock.js";
 import { runCommand } from "../../src/commands/run.js";
 import { statusCommand } from "../../src/commands/status.js";
+import { watchReposOf } from "../../src/commands/watch.js";
 import { answer, execRoot, fakeClock } from "../fakes/executor.js";
 import { fakeGit } from "../fakes/git.js";
 import { fakeSandbox } from "../fakes/sandbox.js";
@@ -72,6 +73,7 @@ describe("sous run in a home repository", () => {
     root: home,
     tracker,
     engine: ENGINE,
+    engineVersion: "0.9.1",
     runChild: engineChild,
     runHere: async () => {
       throw new Error("not routed to the home repository");
@@ -113,7 +115,7 @@ describe("sous run in a home repository", () => {
   });
 
   it("runs an issue routed to the home repository itself in this process, never spawning itself again", async () => {
-    await writeFile(join(home, "sous.yaml"), "repos: { planning: ., b: ../b }\n");
+    await writeFile(join(home, "sous.yaml"), "engine: ^0.9.0\nrepos: { planning: ., b: ../b }\n");
     tracker.issues.set("9", issue({ id: "9", labels: ["type:task", "repo:planning"] }));
     const here: string[][] = [];
     const runHere = async (args: readonly string[]) => (here.push([...args]), 0);
@@ -157,6 +159,27 @@ describe("sous run in a home repository", () => {
     expect(await homeRunCommand(["42"], deps())).toBe(2);
     expect(children).toEqual([]);
     expect(err).toEqual([`sous run: b: ${join(dir, "b")} holds no .sous/sous.yaml`]);
+  });
+
+  it("refuses an entry without engine: with the daemon's reason for it, starting nothing", async () => {
+    const b = await listed("b");
+    await writeFile(join(b.root, "sous.yaml"), "idleTimeoutSeconds: 60\n");
+    expect(await homeRunCommand(["42"], deps())).toBe(2);
+    expect(children).toEqual([]);
+    expect(err).toEqual([`sous run: b: ${b.repoRoot} states no engine: range in sous.yaml; add engine: ^0.9.1`]);
+    expect((await watchReposOf(home, undefined, "0.9.1")).unrunnable).toContainEqual({ name: "b", reason: `${b.repoRoot} states no engine: range in sous.yaml; add engine: ^0.9.1; sous watch starts nothing there` });
+  });
+
+  it("refuses an entry whose engine: range this engine does not satisfy with the daemon's reason for it, starting nothing", async () => {
+    const b = await listed("b");
+    await writeFile(join(b.root, "sous.yaml"), "engine: ^0.8.0\nidleTimeoutSeconds: 60\n");
+    expect(await homeRunCommand(["42"], deps())).toBe(2);
+    expect(children).toEqual([]);
+    expect(err).toEqual([`sous run: b: engine 0.9.1 does not satisfy engine: ^0.8.0 of ${b.repoRoot}; run it with an engine in that range or widen the range`]);
+    expect((await watchReposOf(home, undefined, "0.9.1")).unrunnable).toContainEqual({
+      name: "b",
+      reason: `engine 0.9.1 does not satisfy engine: ^0.8.0 of ${b.repoRoot}; run it with an engine in that range or widen the range; sous watch starts nothing there`,
+    });
   });
 });
 

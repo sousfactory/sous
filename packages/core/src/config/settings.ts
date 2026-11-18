@@ -43,8 +43,10 @@ export type Settings = {
    */
   repos?: Record<string, string> | string[];
   /**
-   * The semver range of engines these definitions were written for; `sous
-   * run` refuses an engine outside it, `sous watch` also a missing one.
+   * The semver range of engines these definitions were written for.
+   * Required, but checked by the commands rather than here: `run`, `watch`
+   * and `validate` refuse a missing key with the line to add, and the
+   * settings of a repository written for a newer engine are never loaded.
    */
   engine?: string;
 };

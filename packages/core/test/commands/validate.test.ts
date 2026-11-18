@@ -1,18 +1,25 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatError, validateCommand } from "../../src/commands/validate.js";
 import { fixture, io, projectSteps } from "../helpers.js";
 
 const deps = (root: string) => ({ root, coreStepsDir: projectSteps, engineVersion: "0.9.0" });
 
-/** A repository checkout with a `.sous/` holding `sous.yaml` (and the wrapper `repos:` entries need); returns the checkout. */
-const repository = (yaml: string): string => {
+/**
+ * A repository checkout with a `.sous/` holding `sous.yaml`, the ES module
+ * `package.json` and the wrapper `repos:` entries need, then `files` over
+ * them (`undefined` removes one); returns the checkout.
+ */
+const repository = (yaml: string, files: Record<string, string | undefined> = {}): string => {
   const repoRoot = mkdtempSync(join(tmpdir(), "sous-repo-"));
-  mkdirSync(join(repoRoot, ".sous"));
-  writeFileSync(join(repoRoot, ".sous", "sous.yaml"), yaml);
-  writeFileSync(join(repoRoot, ".sous", "sous"), "#!/bin/sh\n");
+  const all: Record<string, string | undefined> = { "sous.yaml": yaml, "package.json": '{ "type": "module" }\n', sous: "#!/bin/sh\n", ...files };
+  for (const [path, content] of Object.entries(all)) {
+    if (content === undefined) continue;
+    mkdirSync(dirname(join(repoRoot, ".sous", path)), { recursive: true });
+    writeFileSync(join(repoRoot, ".sous", path), content);
+  }
   return repoRoot;
 };
 
@@ -25,10 +32,10 @@ describe("validateCommand", () => {
   });
 
   it("exits 0 with a note when there are no flows", async () => {
-    const root = mkdtempSync(join(tmpdir(), "sous-"));
+    const root = join(repository("engine: ^0.9.0\n"), ".sous");
     const { deps: lines, out } = io();
     expect(await validateCommand([], { ...deps(root), ...lines })).toBe(0);
-    expect(out.filter((l) => !l.startsWith("warning:"))).toEqual([`note: no flows under ${join(root, "flows")}; nothing to validate`, "ok: sous.yaml and 0 flow(s) valid"]);
+    expect(out).toEqual([`note: no flows under ${join(root, "flows")}; nothing to validate`, "ok: sous.yaml and 0 flow(s) valid"]);
   });
 
   it("exits 2 and lists every error with file, id and rule", async () => {
@@ -54,12 +61,31 @@ describe("validateCommand", () => {
     expect(bad.err[0]).toMatch(/^sous\.yaml: settings: tracker: .*half\.ts: the tracker lacks children, parent, blockers/);
   });
 
-  it("warns once on a missing engine: and still exits 0", async () => {
-    const root = join(repository("tracker: local\n"), ".sous");
+  it("exits 2 on a missing engine:, naming the key and the line to add", async () => {
+    const root = join(repository("tracker: local\ntrackerOptions: { dir: issues }\n"), ".sous");
+    const { deps: lines, err } = io();
+    expect(await validateCommand([], { ...deps(root), ...lines })).toBe(2);
+    expect(err).toEqual([`sous.yaml: settings: ${join(root, "..")} states no engine: range in sous.yaml; add engine: ^0.9.0`, "1 error(s)"]);
+  });
+
+  it("builds a tracker module importing sous-factory as a value in a repository without node_modules", async () => {
+    const tracker = 'import { SousError } from "sous-factory";\nimport { fakeTracker } from "sous-factory/testing";\nexport default () => ({ ...fakeTracker(), errorName: new SousError("x").name });\n';
+    const root = join(repository("engine: ^0.9.0\ntracker: trackers/custom.ts\n", { "trackers/custom.ts": tracker }), ".sous");
     const { deps: lines, out, err } = io();
     expect(await validateCommand([], { ...deps(root), ...lines })).toBe(0);
-    expect(out.filter((l) => l.startsWith("warning:"))).toEqual([`warning: ${join(root, "..")} states no engine: range in sous.yaml; add engine: ^0.9.0`]);
     expect(err).toEqual([]);
+    expect(out.at(-1)).toBe("ok: sous.yaml and 0 flow(s) valid");
+  });
+
+  it("exits 2 on a .sous/ whose package.json is not an ES module package, or is missing, naming the fix", async () => {
+    const commonjs = join(repository("engine: ^0.9.0\n", { "package.json": '{ "name": "defs" }\n' }), ".sous");
+    const none = join(repository("engine: ^0.9.0\n", { "package.json": undefined }), ".sous");
+    const a = io();
+    const b = io();
+    expect(await validateCommand([], { ...deps(commonjs), ...a.deps })).toBe(2);
+    expect(await validateCommand([], { ...deps(none), ...b.deps })).toBe(2);
+    expect(a.err[0]).toBe('package.json: package: "type" is not "module", so steps and tracker modules load as CommonJS, where sous-factory cannot be imported; add "type": "module" to .sous/package.json');
+    expect(b.err[0]).toBe('package.json: package: there is none, so steps and tracker modules load as CommonJS, where sous-factory cannot be imported; add .sous/package.json with "type": "module"');
   });
 
   it("exits 2 naming a range that is not a semver range", async () => {
@@ -73,7 +99,7 @@ describe("validateCommand", () => {
     const root = join(repository("engine: ^0.8.0\n"), ".sous");
     const { deps: lines, err } = io();
     expect(await validateCommand([], { ...deps(root), ...lines })).toBe(2);
-    expect(err[0]).toBe(`sous.yaml: settings: engine 0.9.0 does not satisfy engine: ^0.8.0 of ${join(root, "..")}`);
+    expect(err[0]).toBe(`sous.yaml: settings: engine 0.9.0 does not satisfy engine: ^0.8.0 of ${join(root, "..")}; run it with an engine in that range or widen the range`);
   });
 
   it("in a home repository reports every listed repository whose range this engine does not satisfy, by name", async () => {
@@ -84,8 +110,8 @@ describe("validateCommand", () => {
     const { deps: lines, err } = io();
     expect(await validateCommand([], { ...deps(home), ...lines })).toBe(2);
     expect(err).toEqual([
-      "sous.yaml: settings: repos.old: engine 0.9.0 does not satisfy engine: ^0.8.0 of old",
-      "sous.yaml: settings: repos.bare: bare states no engine: range in sous.yaml",
+      "sous.yaml: settings: repos.old: engine 0.9.0 does not satisfy engine: ^0.8.0 of old; run it with an engine in that range or widen the range",
+      "sous.yaml: settings: repos.bare: bare states no engine: range in sous.yaml; add engine: ^0.9.0",
       "2 error(s)",
     ]);
   });

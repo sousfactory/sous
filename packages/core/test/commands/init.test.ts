@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import type { Exec, ExecResult } from "../../src/adapters/exec.js";
 import { defaultStarterDir, engineLine, GITIGNORE, initCommand, parseInitArgs, setupChecklist, SKILL_TARGET } from "../../src/commands/init.js";
 import { homeRunCommand, type RunChild } from "../../src/commands/homerun.js";
+import { runEngineRefusal } from "../../src/commands/run.js";
+import { validateCommand } from "../../src/commands/validate.js";
 import { createWatcher, watchReposOf, type Spawn } from "../../src/commands/watch.js";
 import { validateProject } from "../../src/config/validate.js";
 import { fakeTracker, issue } from "../fakes/tracker.js";
@@ -16,6 +18,13 @@ const ENGINE = ["/usr/bin/node", "/engine/cli.js"];
 
 const ok: ExecResult = { code: 0, stdout: "", stderr: "" };
 
+/** What `sous validate` and the engine check of `sous run` say about the project at `root`, on the engine init ran with. */
+const checked = async (root: string): Promise<{ validate: number; err: string[]; refusal: string | undefined }> => {
+  const { deps, err } = io();
+  const validate = await validateCommand([], { root, engineVersion: "0.9.0", ...deps });
+  return { validate, err, refusal: runEngineRefusal(root, join(root, ".."), "0.9.0") };
+};
+
 /** A starter with the fixture project's flows and steps plus a skill, and leftovers a copy must skip. */
 const starterOf = async (): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), "sous-starter-"));
@@ -24,7 +33,8 @@ const starterOf = async (): Promise<string> => {
     await mkdir(join(dir, "skills", skill), { recursive: true });
     await writeFile(join(dir, "skills", skill, "SKILL.md"), text, "utf8");
   }
-  await writeFile(join(dir, "package.json"), '{ "name": "starter" }\n', "utf8");
+  // As the real starter's: its steps are ES modules.
+  await writeFile(join(dir, "package.json"), '{ "name": "starter", "type": "module" }\n', "utf8");
   await writeFile(join(dir, "sous"), "#!/usr/bin/env bash\nexec npx sous \"$@\"\n", "utf8");
   for (const leftover of ["node_modules/x", "logs/1", "runs/1"]) {
     await mkdir(join(dir, leftover), { recursive: true });
@@ -97,6 +107,7 @@ describe("initCommand", () => {
     expect(existsSync(join(s.repoRoot, ".claude", "skills", "tdd"))).toBe(false);
     expect(s.out.slice(-6)).toEqual(setupChecklist(".sous"));
     expect(validateProject(root).errors).toEqual([]);
+    expect(await checked(root)).toEqual({ validate: 0, err: [], refusal: undefined });
   });
 
   it("--no-install writes the definitions and engine: but no wrapper, installs nothing, and says what package.json is for", async () => {
@@ -116,6 +127,7 @@ describe("initCommand", () => {
     expect(checklist).not.toContain("./sous");
     expect(checklist).not.toContain("repos:");
     expect(validateProject(root).errors).toEqual([]);
+    expect(await checked(root)).toEqual({ validate: 0, err: [], refusal: undefined });
   });
 
   it("--no-install <path> initialises that repository and names the repos: entry to add here", async () => {
@@ -157,7 +169,7 @@ describe("initCommand", () => {
 
     const ran: { command: string; args: string[]; cwd: string; env: Record<string, string> }[] = [];
     const runChild: RunChild = async (command, args, { cwd, env }) => (ran.push({ command, args: [...args], cwd, env }), 0);
-    const homeRun = { root: home, tracker, engine: ENGINE, runChild, runHere: async () => 1, out: () => undefined, err: () => undefined };
+    const homeRun = { root: home, tracker, engine: ENGINE, engineVersion: "0.9.0", runChild, runHere: async () => 1, out: () => undefined, err: () => undefined };
     expect(await homeRunCommand(["7", "--flow", "task"], homeRun)).toBe(0);
 
     const started = { command: "/usr/bin/node", args: ["/engine/cli.js", "run", "7", "--flow", "task"], cwd: api.repoRoot, env: { SOUS_ROOT: api.root } };

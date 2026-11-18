@@ -145,7 +145,7 @@ describe("runCommand", () => {
 
     const session = await savedSession();
     expect(session).toMatchObject({
-      schemaVersion: 9,
+      schemaVersion: 10,
       closed: true,
       flow: "walk",
       issue: "7",
@@ -180,12 +180,12 @@ describe("runCommand", () => {
   });
 
   it("writes nothing to the tracker under lifecycle: steps, from the settings or from the flow", async () => {
-    await writeFile(join(root, "sous.yaml"), "lifecycle: steps\n");
+    await writeFile(join(root, "sous.yaml"), "engine: ^0.9.0\nlifecycle: steps\n");
     expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
     expect(tracker.claims).toEqual([]);
     expect(tracker.issues.get("7")).toMatchObject({ state: "open", labels: ["type:task"] });
 
-    await rm(join(root, "sous.yaml"));
+    await writeFile(join(root, "sous.yaml"), "engine: ^0.9.0\n");
     const flowFile = join(root, "flows", "walk.yaml");
     await writeFile(flowFile, `lifecycle: steps\n${await readFile(flowFile, "utf8")}`);
     expect(await runCommand(["7", "--flow", "walk", "--restart"], deps())).toBe(0);
@@ -449,25 +449,46 @@ describe("runCommand", () => {
     expect(await lockExists()).toBe(false);
   });
 
+  /** The project's sous.yaml with its `engine:` line replaced by `line`, or dropped for "". */
+  const withEngine = async (line: string): Promise<void> => {
+    const file = join(root, "sous.yaml");
+    await writeFile(file, (await readFile(file, "utf8")).replace(/^engine:.*\n/m, line));
+  };
+
   it("refuses a repository whose engine: range this engine does not satisfy with exit 2, before taking the lock", async () => {
-    await writeFile(join(root, "sous.yaml"), `${await readFile(join(root, "sous.yaml"), "utf8")}engine: ^0.8.0\n`);
+    await withEngine("engine: ^0.8.0\n");
     expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(2);
     expect(err).toEqual([`sous run: engine 0.9.1 does not satisfy engine: ^0.8.0 of ${repoRoot}; run it with an engine in that range or widen the range`]);
     expect(opened).toEqual([]);
     expect(await lockExists()).toBe(false);
   });
 
+  it("refuses a repository without engine: with exit 2, before taking the lock, naming the key and the line to add", async () => {
+    await withEngine("");
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(2);
+    expect(err).toEqual([`sous run: ${repoRoot} states no engine: range in sous.yaml; add engine: ^0.9.1`]);
+    expect(opened).toEqual([]);
+    expect(await lockExists()).toBe(false);
+  });
+
+  it("refuses an engine: that is no semver range with exit 2, naming the value, before taking the lock", async () => {
+    await withEngine("engine: nonsense\n");
+    expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(2);
+    expect(err).toEqual(['sous run: engine: "nonsense" is not a semver range']);
+    expect(await lockExists()).toBe(false);
+  });
+
   it("refuses by its range a repository written for a newer engine, before settings keys this engine does not know fail validation", async () => {
-    await writeFile(join(root, "sous.yaml"), `${await readFile(join(root, "sous.yaml"), "utf8")}engine: ^0.10.0\nfromTheFuture: true\n`);
+    await withEngine("engine: ^0.10.0\nfromTheFuture: true\n");
     expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(2);
     expect(err).toEqual([`sous run: engine 0.9.1 does not satisfy engine: ^0.10.0 of ${repoRoot}; run it with an engine in that range or widen the range`]);
     expect(await lockExists()).toBe(false);
   });
 
-  it("runs a repository whose engine: range this engine satisfies, and one without engine:, recording the engine in the session", async () => {
+  it("runs a repository whose engine: range this engine satisfies, recording the engine in the session", async () => {
     expect(await runCommand(["7", "--flow", "walk"], deps())).toBe(0);
     expect((await savedSession()).engine).toBe("0.9.1");
-    await writeFile(join(root, "sous.yaml"), `${await readFile(join(root, "sous.yaml"), "utf8")}engine: ^0.9.0\n`);
+    await withEngine("engine: ^0.9.0\n");
     expect(await runCommand(["7", "--flow", "walk", "--restart"], deps({ engineVersion: "0.9.4" }))).toBe(0);
     expect((await savedSession()).engine).toBe("0.9.4");
   });

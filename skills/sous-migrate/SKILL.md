@@ -22,6 +22,13 @@ fields or expression variables.
 ## 0. Preconditions
 
 - `.sous/sous.yaml` exists. If not, stop and point to `/sous-setup`.
+- **First step: `engine:` in `.sous/sous.yaml`.** The engine refuses a
+  project without it (manual §9). When the key is missing, add
+  `engine: ^<version>` among the settings at the top, before any port or
+  §D: the version of the engine installed in `.sous/node_modules/sous-factory/package.json`,
+  or, for a move to definitions-only (§D), the home repository's engine's.
+  Show the line as a diff and write it after a yes. A present key is
+  left as it is here.
 - A home repository: one beside the checkout (a sibling folder whose
   `.sous/sous.yaml` has `repos:`) or one the human names. When there is
   one and this repository's `.sous/` carries its own engine (a `.sous/sous`
@@ -186,8 +193,7 @@ file list first, and change it only after a yes.
    `.sous/package.json` and its lock file: they serve the editor and the
    project's tests. Keep `node_modules/` in `.sous/.gitignore` for a later
    dev install.
-3. **Add `engine:`.** Without the key, add `engine: ^<home version>` to
-   `.sous/sous.yaml`, among the settings at the top. With a range the home
+3. **Widen `engine:`.** The key is there since §0. With a range the home
    engine does not satisfy, propose widening it to `^<home version>` once
    §D.6 passes; leave a satisfied range as it is.
 4. **Register the repository.** Add `<name>: <path from the home

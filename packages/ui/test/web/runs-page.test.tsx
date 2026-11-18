@@ -48,7 +48,7 @@ describe("RunsPage", () => {
       rows: [
         { ...run, repo: tag("web") } as RunsResponse["rows"][number],
         { ...run, updatedAt: "2026-10-04T12:04:00.000Z", repo: tag("api") } as RunsResponse["rows"][number],
-        { kind: "error", updatedAt: "2026-10-03T12:00:00.000Z", issue: "70", error: "/schemaVersion must be equal to constant", schema: { found: 4, expected: 9 }, title: "old run", flow: "task", repo: tag("web") },
+        { kind: "error", updatedAt: "2026-10-03T12:00:00.000Z", issue: "70", error: "/schemaVersion must be equal to constant", schema: { found: 4, expected: 10 }, title: "old run", flow: "task", repo: tag("web") },
       ],
     };
     render(<RunsPage data={repos} error={undefined} flow={undefined} />);
@@ -57,7 +57,7 @@ describe("RunsPage", () => {
     const foreign = screen.getByTestId("run-row-error");
     expect(foreign.textContent).toContain("old run");
     expect(foreign.textContent).toContain("task 70");
-    expect(foreign.textContent).toContain("70: unreadable, session schema version 4; this sous ui reads 9");
+    expect(foreign.textContent).toContain("70: unreadable, session schema version 4; this sous ui reads 10");
   });
 
   it("lists a repository whose sous.yaml this sous ui cannot read as one row naming it and why", () => {

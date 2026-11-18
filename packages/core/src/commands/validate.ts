@@ -1,11 +1,12 @@
 /** `sous validate`: `sous.yaml`, every flow and a project tracker module; exit 2 with one line per error. */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { checkEngine, ENGINE_VERSION, engineCheckOf, initialRange } from "../config/engine.js";
+import { checkEngine, ENGINE_VERSION, engineCheckOf, engineRefusalOf } from "../config/engine.js";
 import { repoEntries } from "../config/repos.js";
 import { loadSettings, SETTINGS_FILE } from "../config/settings.js";
 import { validateProject, type ValidationError } from "../config/validate.js";
 import { PROJECT_DIR, repoRootOf } from "../root.js";
+import { useRunningEngine } from "../exec/imports.js";
 import { isTrackerModule, loadTracker } from "../tracker.js";
 import { messageOf } from "../config/schema.js";
 
@@ -47,30 +48,47 @@ const checkTrackerModule = async (root: string): Promise<ValidationError | undef
 /**
  * `engine:` against this engine: this repository's range, and in a home
  * repository every listed one's, since `sous watch` skips those it does not
- * satisfy. A missing range here is a warning, `sous run` accepts it; a listed
- * repository without one is an error, the daemon never runs it. An invalid
- * range or a broken `sous.yaml` here is `validateProject`'s to report.
+ * satisfy. A missing range is an error everywhere, as `run` and `watch`
+ * refuse it. An invalid range or a broken `sous.yaml` here is
+ * `validateProject`'s to report.
  */
-const checkEngines = (root: string, version: string): { errors: ValidationError[]; warnings: string[] } => {
+const checkEngines = (root: string, version: string): ValidationError[] => {
   const file = join(root, SETTINGS_FILE);
   let settings;
   try {
     settings = loadSettings(file);
   } catch {
-    return { errors: [], warnings: [] };
+    return [];
   }
   const errors: ValidationError[] = [];
-  const warnings: string[] = [];
-  const own = checkEngine(version, settings.engine, repoRootOf(root));
-  if (own.kind === "missing") warnings.push(`${own.message}; add engine: ${initialRange(version)}`);
-  else if (own.kind !== "satisfied") errors.push({ file, rule: "settings", message: own.message });
+  const own = engineRefusalOf(checkEngine(version, settings.engine, repoRootOf(root)), version);
+  if (own !== undefined) errors.push({ file, rule: "settings", message: own });
   for (const { name, path } of repoEntries(root, settings) ?? []) {
     const listed = join(path, PROJECT_DIR);
     if (!existsSync(join(listed, SETTINGS_FILE))) continue;
-    const check = engineCheckOf(listed, version, name);
-    if (check.kind !== "satisfied") errors.push({ file, rule: "settings", message: `repos.${name}: ${check.message}` });
+    const refusal = engineRefusalOf(engineCheckOf(listed, version, name), version);
+    if (refusal !== undefined) errors.push({ file, rule: "settings", message: `repos.${name}: ${refusal}` });
   }
-  return { errors, warnings };
+  return errors;
+};
+
+const COMMONJS = "so steps and tracker modules load as CommonJS, where sous-factory cannot be imported";
+
+/**
+ * The project's `package.json` makes its `.ts` files ES modules; without
+ * `"type": "module"` they load as CommonJS, which the running-engine hook
+ * does not reach, and a step's `sous-factory` import fails only at run time.
+ */
+const checkModuleType = (root: string): ValidationError | undefined => {
+  const file = join(root, "package.json");
+  if (!existsSync(file)) return { file, rule: "package", message: `there is none, ${COMMONJS}; add ${PROJECT_DIR}/package.json with "type": "module"` };
+  let type: unknown;
+  try {
+    type = (JSON.parse(readFileSync(file, "utf8")) as { type?: unknown }).type;
+  } catch (error: unknown) {
+    return { file, rule: "package", message: `${messageOf(error)}; it must be JSON with "type": "module"` };
+  }
+  return type === "module" ? undefined : { file, rule: "package", message: `"type" is not "module", ${COMMONJS}; add "type": "module" to ${PROJECT_DIR}/package.json` };
 };
 
 export const validateCommand = async (args: readonly string[], deps: ValidateDeps): Promise<number> => {
@@ -79,11 +97,13 @@ export const validateCommand = async (args: readonly string[], deps: ValidateDep
     return 2;
   }
   const report = validateProject(deps.root);
+  // As `run` and `watch` load it: a definitions-only repository's tracker module imports this engine.
+  await useRunningEngine();
   const tracker = await checkTrackerModule(deps.root);
   if (tracker !== undefined) report.errors.push(tracker);
-  const engines = checkEngines(deps.root, deps.engineVersion ?? ENGINE_VERSION);
-  report.errors.push(...engines.errors);
-  for (const warning of engines.warnings) deps.out(`warning: ${warning}`);
+  report.errors.push(...checkEngines(deps.root, deps.engineVersion ?? ENGINE_VERSION));
+  const moduleType = checkModuleType(deps.root);
+  if (moduleType !== undefined) report.errors.push(moduleType);
   for (const e of report.errors) deps.err(formatError(deps.root, e));
   if (report.note !== undefined) deps.out(`note: ${report.note}`);
   if (report.errors.length > 0) {

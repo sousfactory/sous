@@ -417,8 +417,15 @@ loop: true                         # false: a failed eval routes instead of retr
   `ctx.repoRoot`, `ctx.specDir`), never from the process directory, which
   is wherever the command was started. `sous-factory` in a step, eval,
   prepare or tracker module is always the engine running the command,
-  whatever version the repository's own `node_modules` holds; other
-  packages resolve through the repository's install.
+  whatever version the repository's own `node_modules` holds, and the
+  same module instance the engine uses, so an error the engine throws is
+  `instanceof SousError` in the step; other packages resolve through the
+  repository's install.
+- **ES modules.** Steps, evals, prepares and tracker modules are ES
+  modules: `.sous/package.json` carries `"type": "module"`, as the
+  starter's does. Without it they load as CommonJS, where `sous-factory`
+  cannot be found; `sous validate` reports a missing `package.json` or
+  `"type"` as an error.
 
 ### 5.1 Signatures
 
@@ -620,8 +627,8 @@ the agent's tool calls; mismatches are warnings only.
 
 ## 9. Settings: `sous.yaml`
 
-Every key has a default; an empty or missing file is valid, unknown keys
-are an error.
+Every key but `engine` has a default; `engine` is required, and unknown
+keys are an error.
 
 ```yaml
 engine: ^0.9.0                                    # the engines these definitions are written for; sous init writes it
@@ -645,20 +652,26 @@ runsDir: runs                                     # gitignored
 ```
 
 Folders are relative to `.sous/`; `repos` paths to the repository
-([how-to 21](#21-multi-repo-setup)). `engine`, `name` and `repos` have no default.
+([how-to 21](#21-multi-repo-setup)). `engine`, `name` and `repos` have no default;
+`engine` is the one required key.
 Models, caps and commands live in flows
 and steps, not here.
 
 `engine` is a semver range, read with npm's semantics, naming the engine
 versions the project's flows, steps and prompts were written for. `sous
 init` writes a caret on the exact version that ran it (`^0.9.0`), which on
-0.x keeps the minor, as the changelog breaks per minor. `sous run` refuses
-a repository whose range the running engine does not satisfy with exit 2,
-before taking a lock; without the key it runs. `sous watch` also refuses a
-repository without the key: alone it does not start, over `repos:` it
-skips that entry and says why once. `sous validate` rejects a value that
-is not a range, warns when the key is missing, and in a home repository
-reports every listed repository whose range it does not satisfy; `sous ui`
+0.x keeps the minor, as the changelog breaks per minor. A prerelease
+engine is compared by its version: `1.3.0-rc.1` satisfies `^1.2.0`,
+`1.2.0-rc.1` does not. The key is required. `sous run` and `sous watch`
+refuse a repository whose key is missing, is no semver range, or names
+a range the running engine does not satisfy, with exit 2 before taking a
+lock; the message names the key and the line to add (`engine: ^<the
+running version>`), or the value. A home repository's own `sous.yaml`
+needs the key too. Over `repos:` the daemon skips an entry it would
+refuse and says why once, and `sous run` in the home repository refuses
+an issue routed to that entry with the same reason. `sous validate`
+reports a missing key or a value that is not a range as an error, and in
+a home repository every listed repository it would refuse; `sous ui`
 shows such a repository as an error row. `session.json` records the
 engine version that last started the run, and `sous status` shows it.
 
@@ -1509,7 +1522,9 @@ what to skip or change in the skill.
 | `sous run: #12: no flow accepts its labels (…)` | The issue has no label a flow's `allowedLabels` declare. Label it, then `./sous run 12`. |
 | `sous run: #12: flows feature, task all accept it: …` | The issue carries several `type:*` labels (keep one), or several flows declare its label (keep it in one). Then `./sous run 12`. |
 | `sous run: #12 has none of the labels flow "task" accepts` | `--flow` named a flow whose `allowedLabels` refuse the issue. Label it, or `./sous run 12`. |
-| `sous run: engine 0.9.1 does not satisfy engine: ^0.8.0 of …` (or `sous watch: … states no engine: range in sous.yaml`) | The repository's definitions were written for other engine versions. Run it with an engine in the range (its own `./sous`, or install that version), or, once the flows and steps work on this engine, widen `engine:` in `sous.yaml`; [chapter 9](#9-settings-sousyaml). `sous watch` needs the key: add the `engine:` line `sous validate` suggests. |
+| `sous run: engine 0.9.1 does not satisfy engine: ^0.8.0 of …` (or `sous watch: …`) | The repository's definitions were written for other engine versions. Run it with an engine in the range (its own `./sous`, or install that version), or, once the flows and steps work on this engine, widen `engine:` in `sous.yaml`; [chapter 9](#9-settings-sousyaml). |
+| `sous run: … states no engine: range in sous.yaml; add engine: ^0.9.1` (or `sous watch: …`, or `engine: "…" is not a semver range`) | Every project needs the key, `sous run`, `sous watch` and `sous validate` alike. Add the line the message names to `.sous/sous.yaml`, or correct the value; [chapter 9](#9-settings-sousyaml). |
+| `package.json: package: … load as CommonJS …` from `sous validate` | Steps and tracker modules are ES modules: add `"type": "module"` to `.sous/package.json`, or create it with that line; [chapter 5](#5-steps). |
 | `validate: … input "x" has no placeholder in the prompt` | Every declared input must be used; add `{{x}}` to the prompt or mark the input `prompt: false` when prepare or eval reads it. |
 | `validate: route to "…" names no step id` / `the last route must be an else` | Routes need an existing target and a fallthrough; see [chapter 6](#6-flows). |
 | `tracker: … the tracker lacks children, parent` | The tracker module's default export is missing port methods; [chapter 10](#10-trackers) lists them. |
@@ -1517,7 +1532,7 @@ what to skip or change in the skill.
 | The run stops `blocked` at `review` and you disagree with a finding | Edit the spec in the worktree (`specs/<id>-*/spec.md` on the branch) or the issue body, then run the same command. Both are read again at start, the recorded findings fail the eval, and a fresh reviewer judges against the edited text; the old reviewer session is not resumed. |
 | `WARN: no checks configured` in every eval log | `CHECKS` in `steps/verify/eval.ts` is empty; [how-to 13](#13-change-the-check-commands). |
 | `another sous run holds .sous/locks/<id>.lock` | That issue is already running. If the pid is dead, the message says `stale`: delete the file. |
-| `session.json: /schemaVersion must be equal to constant` | A run folder from an older engine. Delete `runs/<id>/` (and the worktree) or `--restart`. |
+| `session.json: /schemaVersion must be equal to constant` | A run folder from another engine's schema version (10 since `engine` was recorded): an older engine's run read by a newer one, or the other way round; `sous ui` shows both versions. Finish it with the engine that started it, or delete `runs/<id>/` (and the worktree) or `--restart`. |
 | ``sous run: #12 was started with flow "feature"; run `sous run 12 --flow feature` or pass --restart`` | A run record exists for another flow, and this run picks another; continue that flow or restart. |
 | The UI shows a step as "Crashed (no end recorded)" | The process died without writing `run.end`. Run the same command; it re-enters at the open step. |
 | The agent's answer "did not match the schema" twice | The `run.output` schema and the prompt disagree, or the model cannot produce it; compare the printed contract in the agent log with the schema. |

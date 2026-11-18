@@ -27,6 +27,20 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   `sous run` report a module without it as lacking `list`; one that has
   no way to search returns the matching issues it knows of, or `[]`, in
   ascending numeric id order, as the `Tracker` port now says.
+- **`engine:` in `sous.yaml` is required.** Existing projects add
+  `engine: ^<their version>` to `.sous/sous.yaml` (`^0.8.0` on 0.8.0), as
+  `sous init` writes it. `sous run` and `sous watch` refuse a repository
+  without the key, or with a value that is no semver range, with exit 2
+  and their prefix before any lock, naming the key and the line to add,
+  or the value; `sous validate` reports the missing key as an error, a
+  home repository's own included. `/sous-migrate` adds the line first.
+- **A `.sous/` is an ES module package.** `sous validate` reports a
+  `.sous/package.json` that is missing or lacks `"type": "module"`, and
+  names the fix: steps loaded as CommonJS cannot import `sous-factory`.
+- **`session.json` is schema version 10.** It gained the `engine` field;
+  an older engine reports a new record as another schema version, and
+  `sous ui` shows it unreadable with both versions. Finish or `--restart`
+  runs started by an older engine before upgrading.
 
 ### Changed
 
@@ -52,6 +66,14 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   a home repository runs the issue in the `repos:` entry its `repo:<name>`
   label names, or the one `--repo <name>` names, as the daemon would;
   lock, run record, logs and worktree stay in that repository's `.sous/`.
+  That `sous run` refuses an entry the daemon would set aside, without
+  `engine:` or outside its range, with the daemon's reason. Both start a
+  child with the parent's loader flags only (`--import`, `--loader`,
+  `--require`), so `sous watch --inspect` no longer makes every run fight
+  for the debugger port.
+- **A prerelease engine runs the repositories of its line.** `1.3.0-rc.1`
+  satisfies `engine: ^1.2.0`; `1.2.0-rc.1`, which precedes `1.2.0`, does
+  not.
 - **`sous run` prints what a code step did.** After a module step's
   `start` line the run prints the step's summary, so the output shows
   `merge: squashed … into main as abc1234, pushed main to origin`, the
@@ -84,21 +106,20 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   chapter opens with the choice between one repository and several.
 - **`engine:` in `sous.yaml`: the engine range a repository's definitions
   were written for.** `sous init` writes a caret on the version that ran it
-  (`engine: ^0.9.0`). `sous run` refuses a repository whose range the
-  running engine does not satisfy with exit 2, before any lock, naming
-  engine, range and repository; without the key it runs as before. `sous
-  watch` refuses to start in a repository without the key or outside its
-  range, and over `repos:` skips such an entry, saying why once. `sous
-  validate` rejects a value that is not a semver range, warns on a missing
-  key and, in a home repository, reports each listed repository outside
-  its range; `sous ui` shows it as an error row. `session.json` records the
-  engine version that started the run, and `sous status` shows it. Add the
-  line to an existing project before running `sous watch` on it.
+  (`engine: ^0.9.0`). `sous run` and `sous watch` refuse a repository
+  whose range the running engine does not satisfy with exit 2, before any
+  lock, naming engine, range and repository, and over `repos:` the daemon
+  skips such an entry, saying why once. `sous validate` rejects a value
+  that is not a semver range and, in a home repository, reports each
+  listed repository outside its range; `sous ui` shows it as an error row.
+  `session.json` records the engine version that started the run, and
+  `sous status` shows it.
 - **`sous-factory` in a project's modules is the engine running the
-  command.** `sous run` and `sous watch` map `sous-factory`,
-  `sous-factory/read` and `sous-factory/testing` in steps, evals,
-  prepares and tracker modules to the running engine's own files, so a
-  `.sous/` without `node_modules` runs from an engine installed elsewhere,
+  command.** `sous run`, `sous watch` and `sous validate` map
+  `sous-factory`, `sous-factory/read` and `sous-factory/testing` in steps,
+  evals, prepares and tracker modules to the running engine's own modules,
+  one instance shared with the engine, so `instanceof SousError` holds in a
+  step, and a `.sous/` without `node_modules` runs from an engine installed elsewhere,
   and a repository's own install on another version no longer mixes into
   a run. Every other import resolves through the repository's
   `node_modules` as before; `npx vitest` and `tsc` in `.sous/` still use

@@ -11,6 +11,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { ENGINE_VERSION, engineCheckOf, engineRefusalOf } from "../config/engine.js";
 import { repoEntries, routeIssue, type Route } from "../config/repos.js";
 import { loadSettings, SETTINGS_FILE } from "../config/settings.js";
 import type { Tracker } from "../ports/tracker.js";
@@ -27,6 +28,8 @@ export type HomeRunDeps = {
   tracker: Tracker;
   /** The running engine's CLI as a command line (`engineCommandOf`). */
   engine: readonly string[];
+  /** The running engine's version, checked against the entry's `engine:` as the daemon checks it; injectable for tests. */
+  engineVersion?: string;
   runChild: RunChild;
   /** `sous run` in this repository, for an issue routed to the home repository itself; gets the arguments without `--repo`. */
   runHere: (args: readonly string[]) => Promise<number>;
@@ -64,6 +67,13 @@ export const homeRunCommand = async (args: readonly string[], deps: HomeRunDeps)
   const root = join(path, PROJECT_DIR);
   if (!existsSync(join(root, SETTINGS_FILE))) {
     deps.err(`sous run: ${name}: ${path} holds no ${PROJECT_DIR}/${SETTINGS_FILE}`);
+    return 2;
+  }
+  // What the daemon would set aside is refused here, in its words: the two agree on what runs.
+  const version = deps.engineVersion ?? ENGINE_VERSION;
+  const refusal = engineRefusalOf(engineCheckOf(root, version, path), version);
+  if (refusal !== undefined) {
+    deps.err(`sous run: ${name}: ${refusal}`);
     return 2;
   }
   const own = [parsed.issue, ...(parsed.flow !== undefined ? ["--flow", parsed.flow] : []), ...(parsed.restart ? ["--restart"] : [])];

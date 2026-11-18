@@ -16,12 +16,15 @@ export type EngineCheck = { kind: "satisfied" } | { kind: "missing" | "invalid" 
 /**
  * Whether the engine `version` may run the repository `repo` (a name or a
  * path, as the message should show it) whose `sous.yaml` states `range`.
- * A missing range is its own verdict: `run` accepts it, `watch` refuses it.
+ * A missing range is its own verdict, so each command can name the line to
+ * add. A prerelease engine is compared as its version: `1.3.0-rc.1` runs
+ * what was written for `^1.2.0`, a release candidate being for testing the
+ * repositories of its line.
  */
 export const checkEngine = (version: string, range: string | undefined, repo: string): EngineCheck => {
   if (range === undefined) return { kind: "missing", message: `${repo} states no engine: range in ${SETTINGS_FILE}` };
   if (semver.validRange(range) === null) return { kind: "invalid", message: `engine: ${JSON.stringify(range)} is not a semver range` };
-  if (!semver.satisfies(version, range)) return { kind: "unsatisfied", message: `engine ${version} does not satisfy engine: ${range} of ${repo}` };
+  if (!semver.satisfies(version, range, { includePrerelease: true })) return { kind: "unsatisfied", message: `engine ${version} does not satisfy engine: ${range} of ${repo}` };
   return { kind: "satisfied" };
 };
 
@@ -31,6 +34,25 @@ export const checkEngine = (version: string, range: string | undefined, repo: st
  * `^1.2.0` excludes `1.2.0-rc.1`, so the engine that wrote it would refuse it.
  */
 export const initialRange = (version: string): string => `^${semver.valid(version) ?? version}`;
+
+/**
+ * Why a repository is not run under the engine `version`, or undefined when
+ * it may be: the check's message and what to change. One text for every
+ * command that refuses a repository, so `sous run`, a home `sous run` and
+ * the daemon say the same; each adds its own prefix.
+ */
+export const engineRefusalOf = (check: EngineCheck, version: string): string | undefined => {
+  switch (check.kind) {
+    case "satisfied":
+      return undefined;
+    case "missing":
+      return `${check.message}; add engine: ${initialRange(version)}`;
+    case "unsatisfied":
+      return `${check.message}; run it with an engine in that range or widen the range`;
+    case "invalid":
+      return check.message;
+  }
+};
 
 /** The `package.json` of this package, found upward from this file whether it runs from `src/` or `dist/src/`. */
 const ownPackageVersion = (): string => {

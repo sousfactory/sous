@@ -16,7 +16,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { Exec } from "../adapters/exec.js";
 import { logDir } from "../adapters/logs.js";
-import { ENGINE_VERSION, engineCheckOf, initialRange } from "../config/engine.js";
+import { ENGINE_VERSION, engineCheckOf, engineRefusalOf } from "../config/engine.js";
 import { flowLabelsOf, resolveFlow } from "../config/resolve.js";
 import { messageOf, readYaml } from "../config/schema.js";
 import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
@@ -57,8 +57,30 @@ export type Child = { pid: number | undefined; exited: Promise<ChildExit>; kill:
 /** Starts `command args` in `cwd` with `env` over the daemon's own; `onOutput` gets each line the child prints on stdout. Injected so tests start no processes. */
 export type Spawn = (command: string, args: readonly string[], options: { cwd: string; env?: Record<string, string>; onOutput: (line: string) => void }) => Child;
 
-/** The running engine's CLI as a command line: this node, its flags (tsx's loader in a checkout) and the CLI file. */
-export const engineCommandOf = (cliFile: string): string[] => [process.execPath, ...process.execArgv, cliFile];
+/** Node's flags that load code before the CLI, as tsx registers its loader in a checkout; each takes a value. */
+const LOADER_FLAGS = new Set(["--import", "--loader", "--experimental-loader", "--require", "-r"]);
+
+/**
+ * The loader flags of `execArgv`, each with its value, whether that follows
+ * as the next argument or after `=`. An allowlist: an inspector flag would
+ * make every child fight for the parent's debugger port, a memory flag sized
+ * for the daemon is not the run's.
+ */
+const loaderFlagsOf = (execArgv: readonly string[]): string[] => {
+  const kept: string[] = [];
+  for (let i = 0; i < execArgv.length; i++) {
+    const arg = execArgv[i]!;
+    const eq = arg.indexOf("=");
+    if (LOADER_FLAGS.has(eq === -1 ? arg : arg.slice(0, eq))) {
+      kept.push(arg);
+      if (eq === -1 && i + 1 < execArgv.length) kept.push(execArgv[++i]!);
+    }
+  }
+  return kept;
+};
+
+/** The running engine's CLI as a command line: this node, its loader flags (tsx's in a checkout) and the CLI file. */
+export const engineCommandOf = (cliFile: string, execArgv: readonly string[] = process.execArgv): string[] => [process.execPath, ...loaderFlagsOf(execArgv), cliFile];
 
 /** A repository the daemon serves: its project root (`.sous/`), checkout and tracker. */
 export type WatchRepo = {
@@ -80,7 +102,7 @@ export type WatchDeps = {
   engine: readonly string[];
   /** `repos:` entries the daemon cannot run (no `.sous/sous.yaml`, no `engine:` this engine satisfies): reported once, issues routed to them not run. */
   unrunnable?: readonly { name: string; reason: string }[];
-  /** The running engine's version, checked against the repository's `engine:` without `repos:`; injectable for tests. */
+  /** The running engine's version, checked against the project's own `engine:`; injectable for tests. */
   engineVersion?: string;
   spawn: Spawn;
   out: (line: string) => void;
@@ -434,9 +456,9 @@ export const watchReposOf = async (root: string, exec?: Exec, engineVersion: str
     const projectRoot = join(path, PROJECT_DIR);
     // Before its settings load: a repository written for a newer engine may hold keys this one rejects.
     // A missing range counts too: a run nobody watches must say what it was written for.
-    const engine = engineCheckOf(projectRoot, engineVersion, path);
-    if (engine.kind !== "satisfied") {
-      unrunnable.push({ name, reason: `${engine.message}; sous watch starts nothing there` });
+    const refusal = engineRefusalOf(engineCheckOf(projectRoot, engineVersion, path), engineVersion);
+    if (refusal !== undefined) {
+      unrunnable.push({ name, reason: `${refusal}; sous watch starts nothing there` });
       continue;
     }
     try {
@@ -456,15 +478,13 @@ const pause = (ms: number, signal: AbortSignal): Promise<void> =>
 
 /**
  * Why `sous watch` refuses to start on the project at `root` under the engine
- * `version`, or undefined. Read tolerantly, so the CLI asks it with
- * `onlyUnsatisfied` before anything loads the settings strictly: a range this
- * engine does not satisfy is refused there; a missing or invalid one only by
- * `watchCommand` in single-repository mode, a home repository needing none.
+ * `version`, or undefined: an `engine:` that is missing, invalid or not
+ * satisfied, a home repository's own included. Read tolerantly, so the CLI
+ * asks it before anything loads the settings strictly.
  */
-export const watchEngineRefusal = (root: string, version: string, onlyUnsatisfied: boolean): string | undefined => {
-  const engine = engineCheckOf(root, version, repoRootOf(root));
-  if (engine.kind === "satisfied" || (onlyUnsatisfied && engine.kind !== "unsatisfied")) return undefined;
-  return `sous watch: ${engine.message}${engine.kind === "missing" ? `; an unattended run needs one, add engine: ${initialRange(version)}` : ""}`;
+export const watchEngineRefusal = (root: string, version: string): string | undefined => {
+  const refusal = engineRefusalOf(engineCheckOf(root, version, repoRootOf(root)), version);
+  return refusal === undefined ? undefined : `sous watch: ${refusal}`;
 };
 
 export const watchCommand = async (args: readonly string[], deps: WatchDeps): Promise<number> => {
@@ -473,13 +493,11 @@ export const watchCommand = async (args: readonly string[], deps: WatchDeps): Pr
     deps.err(parsed.error);
     return 2;
   }
-  // Listed repositories were checked one by one and set aside; the one repository is the daemon's whole job.
-  if (!deps.listed) {
-    const refusal = watchEngineRefusal(deps.root, deps.engineVersion ?? ENGINE_VERSION, false);
-    if (refusal !== undefined) {
-      deps.err(refusal);
-      return 2;
-    }
+  // The project the daemon starts on; listed repositories were checked one by one and set aside.
+  const refusal = watchEngineRefusal(deps.root, deps.engineVersion ?? ENGINE_VERSION);
+  if (refusal !== undefined) {
+    deps.err(refusal);
+    return 2;
   }
   const isAlive = deps.isAlive ?? isProcessAlive;
   const path = watchLockPath(deps.root);

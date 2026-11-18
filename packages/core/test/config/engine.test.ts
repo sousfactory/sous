@@ -54,3 +54,13 @@ describe("engineRangeOf", () => {
     expect(engineRangeOf(project())).toBeUndefined();
   });
 });
+
+describe("checkEngine on a prerelease engine", () => {
+  it("satisfies a caret range below its own base version", () => {
+    expect(checkEngine("1.3.0-rc.1", "^1.2.0", "/work/app")).toEqual({ kind: "satisfied" });
+  });
+
+  it("does not satisfy a caret range on its own base version, which it precedes", () => {
+    expect(checkEngine("1.2.0-rc.1", "^1.2.0", "/work/app").kind).toBe("unsatisfied");
+  });
+});

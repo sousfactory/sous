@@ -34,7 +34,8 @@ export type Rule =
   | "agent"
   | "env"
   | "expression"
-  | "gate";
+  | "gate"
+  | "package";
 
 export type ValidationError = { file: string; id?: string; rule: Rule; message: string };
 

@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ENGINE_VERSION } from "../../src/config/engine.js";
+import { SousError } from "../../src/index.js";
 import { DONE, type Flow, type LoadedEntry } from "../../src/config/flow.js";
 import { isAgentic, loadStep } from "../../src/config/step.js";
 import { useRunningEngine } from "../../src/exec/imports.js";
@@ -73,8 +74,8 @@ const stubPackage = (name: string, source: string): Record<string, string> => ({
   [`node_modules/${name}/index.js`]: source,
 });
 
-beforeAll(() => {
-  useRunningEngine();
+beforeAll(async () => {
+  await useRunningEngine();
 });
 
 beforeEach(async () => {
@@ -111,6 +112,28 @@ describe("the running engine as sous-factory", () => {
     const tracker = (await loadTracker({ tracker: "trackers/custom.ts", trackerOptions: {} }, { root, repoRoot, runsDir: join(root, "runs"), labelPrefix: "sous:" })) as unknown as { seen: unknown };
 
     expect(tracker.seen).toEqual(RUNNING);
+  });
+
+  it("hands a tracker module the engine's own exported classes, the same objects the engine uses", async () => {
+    await write({ "trackers/classes.ts": `import { SousError } from "sous-factory";\nimport { fakeTracker } from "sous-factory/testing";\nexport default () => ({ ...fakeTracker(), SousError });\n` });
+
+    const tracker = (await loadTracker({ tracker: "trackers/classes.ts", trackerOptions: {} }, { root, repoRoot, runsDir: join(root, "runs"), labelPrefix: "sous:" })) as unknown as { SousError: unknown };
+
+    expect(tracker.SousError).toBe(SousError);
+  });
+
+  it("lets a step see an error the engine throws as instanceof SousError, in run and eval alike", async () => {
+    const caught = (kind: string) =>
+      `import { SousError } from "sous-factory";\nconst caught = (ctx) => { try { ctx.readFile("no-such-file"); return "nothing thrown"; } catch (error) { return error instanceof SousError; } };\n${kind}`;
+    await write({
+      "steps/imports/run.ts": caught(`export default async (ctx) => ({ summary: "caught", commits: [], output: caught(ctx) });\n`),
+      "steps/imports/eval.ts": caught(`export default async (ctx) => ({ ok: true, log: JSON.stringify(caught(ctx)) });\n`),
+    });
+
+    const { run, eval: evaluated } = await runImports();
+
+    expect(run).toBe(true);
+    expect(evaluated).toBe(true);
   });
 
   it("fails a step importing a package the project lacks with Node's message naming the module and the step file", async () => {

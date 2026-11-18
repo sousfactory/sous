@@ -9,11 +9,11 @@ import { Log, session, tempHome, writeRun } from "../fixtures";
 
 const dead = () => false;
 
-/** web holds 84 (done) and a run record of schema version 4; api holds its own 84 and 12. */
+/** web holds 84 (done) and a run record of schema version 9, the previous engine's; api holds its own 84 and 12. */
 const twoRepos = () => {
   const roots = tempHome();
   writeRun(roots.web, "84", session(), new Log().start("r1", 0).visit("init", 0, 1, true, "implement").end(1, "done"));
-  writeRun(roots.web, "70", JSON.stringify({ schemaVersion: 4, issue: "70", title: "old run", flow: "task", unit: 1 }));
+  writeRun(roots.web, "70", JSON.stringify({ schemaVersion: 9, issue: "70", title: "old run", flow: "task", unit: 1 }));
   writeRun(roots.api, "84", session({ title: "api side of 84" }), new Log().start("r9", 0).visit("init", 0, 1, true, "implement").end(1, "blocked"));
   writeRun(roots.api, "12", session({ issue: "12", title: "twelve" }));
   mkdirSync(join(roots.api, "logs", "84"), { recursive: true });
@@ -44,7 +44,7 @@ describe("listRepoRows", () => {
       repo: { name: "web", folder: "web" },
       title: "old run",
       flow: "task",
-      schema: { found: 4, expected: 9 },
+      schema: { found: 9, expected: 10 },
     });
   });
 

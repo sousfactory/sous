@@ -6,7 +6,7 @@
  */
 import type { StepRecord, StepsScope, WorkRecord } from "../index.js";
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /** One transition: the step left, how its eval went, and where the run went next. */
 export type HistoryEntry = { step: string; at: string; ok: boolean; next: string };

@@ -79,8 +79,10 @@ npx sous init                 # copies this folder into .sous/, installs it, add
 
 `package.json` pins `sous-factory`, TypeScript and vitest for the editor,
 `npx tsc` and the tests under `test/`. In a repository served by a home
-repository's engine (`sous init --no-install`) it is optional: runs never
-use it, so `npm install` there only when you author steps or run the tests.
+repository's engine (`sous init --no-install`) it stays, since its
+`"type": "module"` makes the steps ES modules, but its install is optional:
+runs never use it, so `npm install` there only when you author steps or run
+the tests.
 
 Or, guided, with the `sous-setup` skill from the
 [sous repository](https://github.com/sousfactory/sous/tree/main/skills/sous-setup)

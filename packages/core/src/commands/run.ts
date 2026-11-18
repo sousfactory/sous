@@ -13,7 +13,7 @@ import { createInterface } from "node:readline";
 import { createFileEventLog } from "../adapters/eventlog.js";
 import { exec } from "../adapters/exec.js";
 import { worktreePathFor, type OpenSandbox } from "../adapters/sandbox.js";
-import { ENGINE_VERSION, engineCheckOf } from "../config/engine.js";
+import { ENGINE_VERSION, engineCheckOf, engineRefusalOf } from "../config/engine.js";
 import { acceptsLabels, BLOCKED, DONE, loadFlow, type Flow } from "../config/flow.js";
 import { flowLabelsOf, resolveFlow } from "../config/resolve.js";
 import { messageOf } from "../config/schema.js";
@@ -182,12 +182,12 @@ const resumePoint = (session: Session, flow: Flow): { step: string; iteration: n
 
 /**
  * Why `sous run` refuses the project at `root` of `repoRoot` under the engine `version`,
- * or undefined when it may go on: only a range the engine does not satisfy.
+ * or undefined when it may go on: an `engine:` that is missing, invalid or not satisfied.
  * Read tolerantly, so it is asked before anything loads the settings strictly.
  */
 export const runEngineRefusal = (root: string, repoRoot: string, version: string): string | undefined => {
-  const engine = engineCheckOf(root, version, repoRoot);
-  return engine.kind === "unsatisfied" ? `sous run: ${engine.message}; run it with an engine in that range or widen the range` : undefined;
+  const refusal = engineRefusalOf(engineCheckOf(root, version, repoRoot), version);
+  return refusal === undefined ? undefined : `sous run: ${refusal}`;
 };
 
 /** `ctx.work`: the run's issue itself, or the sub-issue on the bench fetched from the tracker. */
@@ -212,8 +212,8 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
   const log: Logger = { info: out, warn: err };
 
   // Definitions written for other engines are refused by name, before validation: a newer engine's
-  // settings keys would fail it with a message about the key. Without `engine:` the run goes on as before
-  // the key existed; an invalid range is validation's to report.
+  // settings keys would fail it with a message about the key. A missing or invalid range is refused
+  // here too, with the command's prefix, so nothing runs without saying which engines it was written for.
   const engineVersion = deps.engineVersion ?? ENGINE_VERSION;
   const refusal = runEngineRefusal(root, repoRoot, engineVersion);
   if (refusal !== undefined) {

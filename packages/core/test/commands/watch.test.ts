@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { liveLocks, lockPath, locksDir } from "../../src/commands/lock.js";
 import type { SignalHandler } from "../../src/commands/run.js";
-import { createWatcher, parseWatchArgs, spawnChild, watchCommand, watchLockPath, watchReposOf, type ChildExit, type Spawn, type WatchDeps, type WatchRepo } from "../../src/commands/watch.js";
+import { createWatcher, engineCommandOf, parseWatchArgs, spawnChild, watchCommand, watchLockPath, watchReposOf, type ChildExit, type Spawn, type WatchDeps, type WatchRepo } from "../../src/commands/watch.js";
 import type { Issue } from "../../src/ports/tracker.js";
 import { fakeTracker, issue, type FakeTracker } from "../fakes/tracker.js";
 
@@ -155,6 +155,17 @@ describe("sous watch", () => {
     await watcher.pass();
     expect(spawned.children.map(({ command, args, cwd, env }) => ({ command, args, cwd, env }))).toEqual([{ command: "/usr/bin/node", args: ["/engine/cli.js", "run", "7", "--flow", "task"], cwd: repoRoot, env: { SOUS_ROOT: root } }]);
     expect(out).toEqual([`#7: started sous run 7 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${repoRoot})`]);
+  });
+
+  it("starts a run with the parent's loader flags only, never its inspector or memory flags", async () => {
+    const parent = ["--inspect", "--import", "file:///tsx/esm/index.mjs", "--max-old-space-size=4096", "--inspect-brk=9230", "--require=/tsx/cjs.cjs", "-r", "/hooks.cjs", "--loader=/old.mjs", "--experimental-loader", "/older.mjs", "--import=/more.mjs", "--enable-source-maps"];
+    const engine = engineCommandOf("/engine/cli.js", parent);
+    seed(ready("7"));
+    await createWatcher(deps({ engine })).pass();
+    expect(spawned.children.map(({ args }) => args)).toEqual([
+      ["--import", "file:///tsx/esm/index.mjs", "--require=/tsx/cjs.cjs", "-r", "/hooks.cjs", "--loader=/old.mjs", "--experimental-loader", "/older.mjs", "--import=/more.mjs", "/engine/cli.js", "run", "7", "--flow", "task"],
+    ]);
+    expect(spawned.children[0]?.command).toBe(process.execPath);
   });
 
   it("leaves the label swap to the run: its claim turns sous:ready into sous:running", async () => {
@@ -461,15 +472,22 @@ describe("sous watch", () => {
     await writeFile(join(root, "sous.yaml"), "tracker: local\n");
     seed(ready("7"));
     expect(await watchCommand(["--once"], deps())).toBe(2);
-    expect(err).toEqual([`sous watch: ${repoRoot} states no engine: range in sous.yaml; an unattended run needs one, add engine: ^0.9.0`]);
+    expect(err).toEqual([`sous watch: ${repoRoot} states no engine: range in sous.yaml; add engine: ^0.9.0`]);
     expect(existsSync(watchLockPath(root))).toBe(false);
     expect(spawned.children).toEqual([]);
+  });
+
+  it("refuses to start in a home repository without engine: of its own, before taking its lock", async () => {
+    await writeFile(join(root, "sous.yaml"), "repos: { b: ../b }\n");
+    expect(await watchCommand(["--once"], deps({ listed: true }))).toBe(2);
+    expect(err).toEqual([`sous watch: ${repoRoot} states no engine: range in sous.yaml; add engine: ^0.9.0`]);
+    expect(existsSync(watchLockPath(root))).toBe(false);
   });
 
   it("refuses to start in a repository whose engine: range this engine does not satisfy", async () => {
     await writeFile(join(root, "sous.yaml"), "engine: ^0.8.0\n");
     expect(await watchCommand(["--once"], deps())).toBe(2);
-    expect(err).toEqual([`sous watch: engine 0.9.0 does not satisfy engine: ^0.8.0 of ${repoRoot}`]);
+    expect(err).toEqual([`sous watch: engine 0.9.0 does not satisfy engine: ^0.8.0 of ${repoRoot}; run it with an engine in that range or widen the range`]);
     expect(existsSync(watchLockPath(root))).toBe(false);
   });
 
@@ -648,8 +666,8 @@ describe("sous watch", () => {
       const built = await watchReposOf(home, undefined, "0.9.0");
       expect(built.repos.map((r) => r.name)).toEqual(["a"]);
       expect(built.unrunnable).toEqual([
-        { name: "old", reason: `engine 0.9.0 does not satisfy engine: ^0.8.0 of ${old.repoRoot}; sous watch starts nothing there` },
-        { name: "unstated", reason: `${unstated.repoRoot} states no engine: range in sous.yaml; sous watch starts nothing there` },
+        { name: "old", reason: `engine 0.9.0 does not satisfy engine: ^0.8.0 of ${old.repoRoot}; run it with an engine in that range or widen the range; sous watch starts nothing there` },
+        { name: "unstated", reason: `${unstated.repoRoot} states no engine: range in sous.yaml; add engine: ^0.9.0; sous watch starts nothing there` },
       ]);
 
       a.tracker.issues.set("3", ready("3", ["type:task", "repo:a"]));
