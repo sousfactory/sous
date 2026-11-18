@@ -59,8 +59,8 @@ they are and the file pretty-printed.
   section of `body`.
 - **Set the repo label:** put `repo:<name>` in `labels`, replacing any
   other `repo:*` entry.
-- **Set ready:** append `<labelPrefix>:ready` to `labels`, keeping the
-  other entries.
+- **Set ready:** add `<labelPrefix>:ready` to `labels` unless it is
+  already there, keeping the other entries.
 
 ## Child shape
 

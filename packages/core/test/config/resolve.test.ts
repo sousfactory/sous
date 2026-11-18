@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { resolveFlow } from "../../src/config/resolve.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { flowLabelsOf, resolveFlow } from "../../src/config/resolve.js";
 
 const FLOWS = [
   { name: "bench" },
@@ -34,7 +37,7 @@ describe("resolveFlow", () => {
       kind: "several",
       flows: ["feature", "task"],
       cause: "kinds",
-      message: "flows feature, task all accept it: the issue carries several type:* labels (type:task, type:feature); keep one",
+      message: "flows feature, task all accept it: the issue carries labels of several flows (type:task, type:feature); keep one",
     });
   });
 
@@ -46,5 +49,43 @@ describe("resolveFlow", () => {
       cause: "flows",
       message: "flows hotfix, task all accept it: several flows declare type:bug in allowedLabels; keep it in one",
     });
+  });
+
+  it("blames the flows when a shared label stays ambiguous, even beside a second kind only one flow declares", () => {
+    const flows = [...FLOWS, { name: "hotfix", allowedLabels: ["type:bug"] }];
+    expect(resolveFlow(["type:bug", "type:feature"], flows)).toMatchObject({ cause: "flows", message: expect.stringContaining("several flows declare type:bug") });
+  });
+
+  it("blames the issue when its labels, of any prefix, each point at a different flow", () => {
+    const flows = [...FLOWS, { name: "api", allowedLabels: ["area:api"] }];
+    expect(resolveFlow(["type:task", "area:api"], flows)).toEqual({
+      kind: "several",
+      flows: ["api", "task"],
+      cause: "kinds",
+      message: "flows api, task all accept it: the issue carries labels of several flows (type:task, area:api); keep one",
+    });
+  });
+});
+
+describe("flowLabelsOf", () => {
+  let dir: string;
+  afterEach(() => rm(dir, { recursive: true, force: true }));
+
+  it("reads name, file and allowedLabels of every .yaml and .yml flow, without the flow schema", async () => {
+    dir = await mkdtemp(join(tmpdir(), "sous-flows-"));
+    await writeFile(join(dir, "task.yaml"), "entry: a\nallowedLabels: [type:task]\nsteps: []\n");
+    await writeFile(join(dir, "hop.yml"), "entry: a\nallowedLabels: [type:hop]\nunknownField: 1\n");
+    await writeFile(join(dir, "bench.yaml"), "entry: a\n");
+    expect(flowLabelsOf(dir)).toEqual([
+      { name: "bench", file: join(dir, "bench.yaml") },
+      { name: "hop", file: join(dir, "hop.yml"), allowedLabels: ["type:hop"] },
+      { name: "task", file: join(dir, "task.yaml"), allowedLabels: ["type:task"] },
+    ]);
+    expect(resolveFlow(["type:hop"], flowLabelsOf(dir))).toEqual({ kind: "flow", flow: "hop" });
+  });
+
+  it("is empty for a missing directory", () => {
+    dir = join(tmpdir(), "sous-flows-none");
+    expect(flowLabelsOf(dir)).toEqual([]);
   });
 });

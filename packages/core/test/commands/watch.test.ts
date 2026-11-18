@@ -168,7 +168,7 @@ describe("sous watch", () => {
     expect(out).toEqual([
       "#8 skipped: blocked by #5",
       "#9 skipped: no flow accepts its labels (type:epic, sous:ready); give it the type:* label of one flow's allowedLabels",
-      "#10 skipped: flows feature, task all accept it: the issue carries several type:* labels (type:task, type:feature); keep one",
+      "#10 skipped: flows feature, task all accept it: the issue carries labels of several flows (type:task, type:feature); keep one",
       "#11 skipped: a run holds its lock (pid 4242)",
     ]);
   });

@@ -1422,6 +1422,6 @@ what to skip or change in the skill.
 | `WARN: no checks configured` in every eval log | `CHECKS` in `steps/verify/eval.ts` is empty; [how-to 13](#13-change-the-check-commands). |
 | `another sous run holds .sous/locks/<id>.lock` | That issue is already running. If the pid is dead, the message says `stale`: delete the file. |
 | `session.json: /schemaVersion must be equal to constant` | A run folder from an older engine. Delete `runs/<id>/` (and the worktree) or `--restart`. |
-| ``sous run: #12 was started with flow "feature"; run `sous run 12 --flow feature` or pass --restart`` | A run record exists for another flow, and the labels now pick another; continue that flow or restart. |
+| ``sous run: #12 was started with flow "feature"; run `sous run 12 --flow feature` or pass --restart`` | A run record exists for another flow, and this run picks another; continue that flow or restart. |
 | The UI shows a step as "Crashed (no end recorded)" | The process died without writing `run.end`. Run the same command; it re-enters at the open step. |
 | The agent's answer "did not match the schema" twice | The `run.output` schema and the prompt disagree, or the model cannot produce it; compare the printed contract in the agent log with the schema. |

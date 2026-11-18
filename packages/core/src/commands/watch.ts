@@ -17,8 +17,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { Exec } from "../adapters/exec.js";
 import { logDir } from "../adapters/logs.js";
-import { flowName } from "../config/flow.js";
-import { resolveFlow } from "../config/resolve.js";
+import { flowLabelsOf, resolveFlow } from "../config/resolve.js";
 import { messageOf, readYaml } from "../config/schema.js";
 import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
 import { listFlows } from "../config/validate.js";
@@ -94,14 +93,6 @@ export const WATCH_LOCK = "watch.pid";
 
 export const watchLockPath = (root: string): string => join(locksDir(root), WATCH_LOCK);
 
-/** The flows' `allowedLabels`, read from the flow files alone: the daemon needs no step to pick a flow. */
-const flowsOf = (flowsDir: string): { name: string; allowedLabels?: string[] }[] =>
-  listFlows(flowsDir).map((file) => {
-    const doc = readYaml(file) as { allowedLabels?: unknown } | null;
-    const allowed = doc?.allowedLabels;
-    return { name: flowName(file), ...(Array.isArray(allowed) ? { allowedLabels: allowed.map(String) } : {}) };
-  });
-
 /** The last line a child wrote to stderr, which names why `sous run` failed. */
 const lastLine = (text: string): string | undefined =>
   text
@@ -163,7 +154,7 @@ const createRepoWatcher = (repo: WatchRepo, deps: WatchDeps, report: Reporter, s
 
   /** The flow the issue's labels resolve to, by the rule `sous run <issue>` follows, or why there is none. */
   const flowFor = (issue: Issue): { flow: string } | { reason: string } => {
-    const resolved = resolveFlow(issue.labels, flowsOf(dirs.flows));
+    const resolved = resolveFlow(issue.labels, flowLabelsOf(dirs.flows));
     return resolved.kind === "flow" ? { flow: resolved.flow } : { reason: resolved.message };
   };
 

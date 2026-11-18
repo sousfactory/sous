@@ -475,6 +475,15 @@ describe("runCommand", () => {
       expect((await savedEvents())[0]).toMatchObject({ type: "run.start", flow: "task" });
     });
 
+    it("resolves to and loads a flow kept in a .yml file, named or not", async () => {
+      const walk = await readFile(join(root, "flows", "walk.yaml"), "utf8");
+      await writeFile(join(root, "flows", "hop.yml"), `allowedLabels: [type:task]\n${walk}`);
+      expect(await runCommand(["7"], deps())).toBe(0);
+      expect((await savedSession()).flow).toBe("hop");
+      expect(await runCommand(["7", "--flow", "hop"], deps())).toBe(0);
+      expect(err).toEqual([]);
+    });
+
     it("exits 2 naming the labels when no flow accepts them, never picking a flow without allowedLabels", async () => {
       await declare("feature", "type:feature");
       tracker.issues.set("8", issue({ id: "8", labels: ["sous:ready"] }));
@@ -489,7 +498,7 @@ describe("runCommand", () => {
       await declare("feature", "type:feature");
       tracker.issues.set("8", issue({ id: "8", labels: ["type:task", "type:feature"] }));
       expect(await runCommand(["8"], deps())).toBe(2);
-      expect(err).toEqual(["sous run: #8: flows feature, task all accept it: the issue carries several type:* labels (type:task, type:feature); keep one"]);
+      expect(err).toEqual(["sous run: #8: flows feature, task all accept it: the issue carries labels of several flows (type:task, type:feature); keep one"]);
       expect(opened).toEqual([]);
     });
 

@@ -1,9 +1,8 @@
 /**
  * `sous run <issue> [--flow <name>] [--restart]`: everything around the
  * executor (flow resolution, validation, lock, session, sandbox, run
- * segment, signals). Re-entry after
- * `blocked` and resume after a crash need nothing here; the executor reads
- * both from the session.
+ * segment, signals). Re-entry after `blocked` and resume after a crash
+ * need nothing here; the executor reads both from the session.
  */
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -14,11 +13,11 @@ import { createInterface } from "node:readline";
 import { createFileEventLog } from "../adapters/eventlog.js";
 import { exec } from "../adapters/exec.js";
 import { worktreePathFor, type OpenSandbox } from "../adapters/sandbox.js";
-import { acceptsLabels, BLOCKED, DONE, flowName, loadFlow, parseFlow, type Flow } from "../config/flow.js";
-import { resolveFlow } from "../config/resolve.js";
+import { acceptsLabels, BLOCKED, DONE, loadFlow, type Flow } from "../config/flow.js";
+import { flowLabelsOf, resolveFlow } from "../config/resolve.js";
 import { messageOf } from "../config/schema.js";
 import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
-import { listFlows, validateProject } from "../config/validate.js";
+import { validateProject } from "../config/validate.js";
 import { InterruptedError } from "../exec/errors.js";
 import { runFlow, type Logger } from "../exec/executor.js";
 import type { Session } from "../exec/scope.js";
@@ -197,9 +196,11 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
   }
   const settings = loadSettings(join(root, SETTINGS_FILE));
   const dirs = projectDirs(root, settings);
-  const flowFile = (name: string): string => join(dirs.flows, `${name}.yaml`);
-  if (parsed.flow !== undefined && !existsSync(flowFile(parsed.flow))) {
-    const known = listFlows(dirs.flows).map(flowName);
+  // Named or resolved, a flow is found by name among the flow files, whatever their extension.
+  const flows = flowLabelsOf(dirs.flows);
+  const flowFileOf = (name: string): string | undefined => flows.find((f) => f.name === name)?.file;
+  if (parsed.flow !== undefined && flowFileOf(parsed.flow) === undefined) {
+    const known = flows.map((f) => f.name);
     err(`sous run: unknown flow "${parsed.flow}" (known: ${known.length > 0 ? known.join(", ") : "none"})`);
     return 2;
   }
@@ -256,14 +257,14 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     // The flow the labels imply, by the rule `sous watch` follows too; a named one is taken as named.
     let flowChoice = parsed.flow;
     if (flowChoice === undefined) {
-      const resolved = resolveFlow(issue.labels, listFlows(dirs.flows).map(parseFlow));
+      const resolved = resolveFlow(issue.labels, flows);
       if (resolved.kind !== "flow") {
         err(`sous run: ${issue.ref}: ${resolved.message}`);
         return 2;
       }
       flowChoice = resolved.flow;
     }
-    const flow = loadFlow(flowFile(flowChoice), { stepsDir: dirs.steps });
+    const flow = loadFlow(flowFileOf(flowChoice)!, { stepsDir: dirs.steps });
     // Catches running an issue through the wrong flow, e.g. a feature through the single-issue flow.
     if (!acceptsLabels(flow, issue.labels)) {
       err(`sous run: ${issue.ref} has none of the labels flow "${flow.name}" accepts (${flow.allowedLabels?.join(", ")}); label the issue or run another flow`);

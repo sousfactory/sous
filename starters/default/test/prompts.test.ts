@@ -336,12 +336,18 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(flat.slice(flat.indexOf("## 9. GO gate"), gate)).toContain("Nothing to commit:** skip the gate and the second gate");
   });
 
+  it("names the ready label as the manual step when nothing is to commit and both gates are skipped", () => {
+    const bullet = flat.slice(flat.indexOf("- **Nothing to commit:**"), flat.indexOf("- **Something to commit:**"));
+    expect(bullet).toContain("skip the gate and the second gate");
+    expect(bullet).toContain("naming `<labelPrefix>:ready` as the manual step, as after a no");
+  });
+
   it("names the ready label in the report beside the run command: the manual step on a no, set on a yes", () => {
     const report = flat.slice(flat.indexOf("## 11. Sanity report"));
     expect(report).toContain("the next command: `./sous run <ISSUE>` in the target repository");
     expect(report).toContain("`<labelPrefix>:ready`");
     expect(report.indexOf("`<labelPrefix>:ready`")).toBeGreaterThan(report.indexOf("./sous run <ISSUE>"));
-    expect(report).toContain("On a no, a human sets `<labelPrefix>:ready`");
+    expect(report).toContain("On a no, or when the second gate was skipped, a human sets `<labelPrefix>:ready`");
     expect(report).toContain("On a yes, the issue now carries it");
   });
 

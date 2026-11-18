@@ -282,9 +282,9 @@ First check what changed in the target: `git status --porcelain` limited
 to the spec folder, `docs/adr/` and the glossary.
 
 - **Nothing to commit:** skip the gate and the second gate. Report as in
-  step 11, listing the
-  children you rewrote, if any, and stop. Issue edits were each announced
-  on their own; nothing is committed.
+  step 11, listing the children you rewrote, if any, and naming
+  `<labelPrefix>:ready` as the manual step, as after a no; then stop.
+  Issue edits were each announced on their own; nothing is committed.
 - **Something to commit:** before any `git commit` or `git push`, show the
   human a summary:
   - the target (base checkout, or the worktree on the branch);
@@ -362,6 +362,7 @@ Finish with a short report (nothing is enforced, this is for the human):
 - the next command: `./sous run <ISSUE>` in the target repository.
   For a blocked run that is the same
   command the blocked comment names; the run re-enters at the blocked
-  step. On a no, a human sets `<labelPrefix>:ready` on the issue when the
-  work may start, and `sous watch` runs it; name that manual step here.
+  step. On a no, or when the second gate was skipped, a human sets
+  `<labelPrefix>:ready` on the issue when the work may start, and
+  `sous watch` runs it; name that manual step here.
   On a yes, the issue now carries it, and `sous watch` picks it up.

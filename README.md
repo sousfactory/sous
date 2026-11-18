@@ -21,7 +21,7 @@ graph decides what happens next.
 CLI first, with an optional live UI. Runs locally with the `claude` or
 `codex` CLI you already have; not a hosted service. A run is either steered from a
 session with `sous run`, or started in the background by `sous watch`
-once a human labels its issue `sous:ready`.
+once its issue carries `sous:ready`, set by a human or by `/sous-plan`.
 
 ## What it looks like
 
