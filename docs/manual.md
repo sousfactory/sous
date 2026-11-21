@@ -131,8 +131,9 @@ npx sous init
    non-empty `.sous/` unless `--force`);
 2. writes `.sous/.gitignore` with `logs/`, `runs/`, `locks/`, `worktrees/` and `node_modules/`,
    and `engine: ^<version>` of the engine that ran it into `.sous/sous.yaml`;
-3. copies `.sous/skills/sous-plan` to `.claude/skills/sous-plan`, so
-   `/sous-plan` is available in Claude Code;
+3. copies `.sous/skills/sous-plan` and `.sous/skills/sous-run` to
+   `.claude/skills/`, so `/sous-plan` and `sous-run` are available in
+   Claude Code;
 4. runs `npm install` in `.sous/`;
 5. prints the checklist.
 
@@ -148,6 +149,7 @@ What the repository looks like afterwards:
 ```
 your-project/
 ├── .claude/skills/sous-plan/     # the planning skill, copied by init from .sous/skills/sous-plan
+├── .claude/skills/sous-run/      # the run skill, copied by init from .sous/skills/sous-run
 ├── specs/<id>-<slug>/spec.md     # written by /sous-plan; the specsDir setting, ../specs from .sous
 └── .sous/
     ├── .gitignore                # written by init: logs/, runs/, locks/, worktrees/, node_modules/
@@ -174,7 +176,7 @@ your-project/
     │   ├── merge/
     │   ├── hello-world/
     │   └── tell-a-joke/
-    ├── skills/                   # vendored skills (VENDORED.md names source and license) and sous-plan/
+    ├── skills/                   # vendored skills (VENDORED.md names source and license), sous-plan/ and sous-run/
     ├── prompts/plan.md           # the procedure /sous-plan follows; ADAPT notes mark what to change
     ├── trackers/<tracker>.md     # github, beads, local: the tracker's verbs for the plan prompt
     ├── templates/                # spec.md, spec-amendment.md, child.md, task.md: the shapes the prompts write
@@ -628,6 +630,22 @@ used, as `followed`, `not-applicable` or `skipped` with a reason. The
 engine compares that with the skills the prompt reaches and the reads in
 the agent's tool calls; mismatches are warnings only.
 
+`sous init` installs two skills of sous's own into `.claude/skills/`:
+`/sous-plan` ([how-to 17](#17-adapt-the-plan-phase)) and `sous-run`, the
+bridge between a Claude Code session and the CLI. The model invokes
+`sous-run` when the human talks about the factory or a run in plain words
+(or as `/sous-run <words>`); it reads `sous status --json` or `sous status
+<issue> --json` and serves four intents: status in one fixed layout (mode,
+daemon and UI lines, the table, the notes), starting a run of an issue
+named in the same turn (`<name>#<issue>` in a home when the number is
+ambiguous), explaining a blocked run with its two ways out (fix in the
+worktree, or amend with `/sous-plan`, then run again), and a report of
+runs, steps, time, cost and where the time went; on an explicit ask it
+also hands an issue to the daemon by setting `<labels>:ready` through the
+tracker sheet. It never runs `sous run` for an issue not named in the same
+turn, never pushes, never edits a worktree, never closes an issue, never
+sets a label other than ready and never runs `sous watch`.
+
 ## 9. Settings: `sous.yaml`
 
 Every key but `engine` and `tracker` has a default; those two are
@@ -932,9 +950,9 @@ changes nothing). Everything else on the tracker, such as the
 ## 12. CLI
 
 ```
-sous init [--starter <dir>] [--force] [--no-install] [<path>]  # copy a starter into .sous/ (of <path>), npm install, add the /sous-plan skill, print the checklist; --no-install: definitions only
+sous init [--starter <dir>] [--force] [--no-install] [<path>]  # copy a starter into .sous/ (of <path>), npm install, add the /sous-plan and /sous-run skills, print the checklist; --no-install: definitions only
 sous run <issue | name#issue> [--flow <name>] [--restart]  # validate, then start or continue; <issue> is the tracker's id (96, #96, a bead id), passed on as typed but for one leading #; name#issue, in a home repository (repos:) only: that entry's tracker alone
-sous status <issue>                   # session facts and the timeline
+sous status [<issue>] [--json]        # the factory overview, or one issue's session facts and timeline; --json: the same as one JSON document
 sous graph <flow>                     # Mermaid diagram from the YAML
 sous validate                         # sous.yaml, every flow and step, the tracker module
 sous watch [--once] [--interval s]    # start ready issues unattended, one run per repository at a time (how-tos 20, 21)
@@ -942,7 +960,12 @@ sous ui [--port n]                    # the run viewer on 127.0.0.1:4680, or the
 ```
 
 `sous run` takes the flow the issue's labels pick ([6. Flows](#6-flows))
-unless `--flow` names one. The starter's `.sous/sous` wrapper runs the installed `sous` from any
+unless `--flow` names one. `sous status` without an issue prints the
+factory overview: the single repository or the home's entries with their
+trackers, whether a daemon and the run viewer are up, and one row per
+running, blocked, crashed, interrupted and ready issue. It reads the
+tracker only for titles and ready issues, says so when the tracker does
+not answer, and writes nothing. The starter's `.sous/sous` wrapper runs the installed `sous` from any
 directory. The project root is `SOUS_ROOT`, else the cwd when it is named
 `.sous`, else `<cwd>/.sous`; the repository is its parent. Exit codes: 2
 bad arguments, validation errors, an issue no flow or several flows
@@ -1409,7 +1432,9 @@ skipped issue (an open blocker, no or several accepting flows, a live
 lock, a blocker the tracker cannot follow) is reported once per daemon,
 again only when the reason changes. A quiet pass prints nothing. The
 run's own output goes to its record (`sous status`, `sous ui`), not to
-the daemon's.
+the daemon's. `./sous status` shows the daemon (its pid and since when,
+or none) and the ready queue: the issues carrying `sous:ready` that have
+no run yet, below the running and blocked ones.
 
 **The hand-back after blocked.** A `sous:blocked` issue is left alone.
 Fix what the comment asks, then add `sous:ready`: the next pass runs the
@@ -1627,7 +1652,7 @@ session's `history` is the step sequence; `ports.tracker.comments`,
 
 **When:** updating the skills the prompts point at, or replacing them.
 
-**Files:** `skills/` (everything but `sous-plan/` is vendored from
+**Files:** `skills/` (everything but `sous-plan/` and `sous-run/` is vendored from
 [mattpocock/skills](https://github.com/mattpocock/skills), MIT),
 `skills/VENDORED.md` (source commit and the table of who uses what).
 
@@ -1665,8 +1690,8 @@ what to skip or change in the skill.
 | The run stops `blocked` right after `implement` | The verify checks failed three times; the issue comment carries the last log. Fix the worktree by hand and run the same command; it re-enters at the eval. |
 | The run stops `blocked` at `review` and you disagree with a finding | Edit the spec in the worktree (`specs/<id>-*/spec.md` on the branch) or the issue body, then run the same command. Both are read again at start, the recorded findings fail the eval, and a fresh reviewer judges against the edited text; the old reviewer session is not resumed. |
 | `WARN: no checks configured` in every eval log | `CHECKS` in `steps/verify/eval.ts` is empty; [how-to 13](#13-change-the-check-commands). |
-| `another sous run holds .sous/locks/<id>.lock` | That issue is already running. If the pid is dead, the message says `stale`: delete the file. |
+| `another sous run holds .sous/locks/<id>.lock` | That issue is already running; `./sous status` lists it with its current step. If the pid is dead, the message says `stale`: delete the file. |
 | `session.json: /schemaVersion must be equal to constant` | A run folder from another engine's schema version (10 since `engine` was recorded): an older engine's run read by a newer one, or the other way round; `sous ui` shows both versions. Finish it with the engine that started it, or delete `runs/<id>/` (and the worktree) or `--restart`. |
 | ``sous run: #12 was started with flow "feature"; run `sous run 12 --flow feature` or pass --restart`` | A run record exists for another flow, and this run picks another; continue that flow or restart. |
-| The UI shows a step as "Crashed (no end recorded)" | The process died without writing `run.end`. Run the same command; it re-enters at the open step. |
+| The UI shows a step as "Crashed (no end recorded)" | The process died without writing `run.end`; `./sous status` lists every such run as `crashed`, no need to read `runs/` by hand. Run the same command; it re-enters at the open step. |
 | The agent's answer "did not match the schema" twice | The `run.output` schema and the prompt disagree, or the model cannot produce it; compare the printed contract in the agent log with the schema. |

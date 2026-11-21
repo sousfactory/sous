@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Exec, ExecResult } from "../../src/adapters/exec.js";
-import { defaultStarterDir, engineLine, GITIGNORE, initCommand, parseInitArgs, setupChecklist, SKILL_TARGET, trackerBlock } from "../../src/commands/init.js";
+import { defaultStarterDir, engineLine, GITIGNORE, initCommand, parseInitArgs, setupChecklist, SKILLS_TARGET, trackerBlock } from "../../src/commands/init.js";
 import { loadSettings } from "../../src/config/settings.js";
 import { homeRunCommand, type RunChild } from "../../src/commands/homerun.js";
 import { runEngineRefusal } from "../../src/commands/run.js";
@@ -30,7 +30,7 @@ const checked = async (root: string): Promise<{ validate: number; err: string[];
 const starterOf = async (): Promise<string> => {
   const dir = await mkdtemp(join(tmpdir(), "sous-starter-"));
   await cp(fixture("project"), dir, { recursive: true });
-  for (const [skill, text] of [["sous-plan", "# plan\n"], ["tdd", "# vendored\n"]] as const) {
+  for (const [skill, text] of [["sous-plan", "# plan\n"], ["sous-run", "# run\n"], ["tdd", "# vendored\n"]] as const) {
     await mkdir(join(dir, "skills", skill), { recursive: true });
     await writeFile(join(dir, "skills", skill, "SKILL.md"), text, "utf8");
   }
@@ -106,8 +106,10 @@ describe("initCommand", () => {
     expect(await readFile(join(root, ".gitignore"), "utf8")).toBe(GITIGNORE);
     expect(existsSync(join(root, "sous")), "the wrapper").toBe(true);
     expect(s.calls).toEqual([{ command: "npm", args: ["install"], cwd: root }]);
-    expect(await readFile(join(s.repoRoot, SKILL_TARGET, "SKILL.md"), "utf8")).toBe("# plan\n");
+    expect(await readFile(join(s.repoRoot, SKILLS_TARGET, "sous-plan", "SKILL.md"), "utf8")).toBe("# plan\n");
+    expect(await readFile(join(s.repoRoot, SKILLS_TARGET, "sous-run", "SKILL.md"), "utf8")).toBe("# run\n");
     expect(existsSync(join(s.repoRoot, ".claude", "skills", "tdd"))).toBe(false);
+    expect(s.out).toContain(`init: installed the /sous-plan and /sous-run skills in ${join(s.repoRoot, SKILLS_TARGET)}`);
     expect(s.out.slice(-6)).toEqual(setupChecklist(".sous"));
     expect(validateProject(root).errors).toEqual([]);
     expect(await checked(root)).toEqual({ validate: 0, err: [], refusal: undefined });

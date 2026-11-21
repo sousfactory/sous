@@ -20,7 +20,7 @@ Once per machine: Node 22, `gh auth login`, and `claude` or `codex` on the
 
 ```
 npm install -D sous-factory
-npx sous init                 # copies the starter into .sous/, installs it, adds /sous-plan
+npx sous init                 # copies the starter into .sous/, installs it, adds /sous-plan and /sous-run
 cd .sous && ./sous validate
 ./sous run <issue> --flow bench   # a smoke test; touches neither the issue nor the code
 ```

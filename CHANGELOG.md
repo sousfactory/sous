@@ -171,6 +171,24 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Added
 
+- **The `sous-run` skill: the factory from a Claude Code session.**
+  `sous init` installs it into `.claude/skills/sous-run` next to
+  `/sous-plan` and names both. The model invokes it on "what is
+  running", "how is 42 doing", "run 42", "42 is blocked, what now" or
+  "what happened on 42" (or `/sous-run <words>`): it reads `sous status
+  --json`, answers status in one fixed layout, starts an issue named in
+  the same turn, sets `<labels>:ready` on an explicit ask, explains a
+  blocked run and condenses a report. It never pushes, edits a worktree,
+  closes an issue or runs `sous watch`.
+- **`sous status` without an issue: the factory overview.** It says
+  whether this is a single repository or a home with its entries, each
+  entry's tracker, whether a daemon runs and the run viewer answers, and
+  one table of the issues that need attention: running, blocked, crashed,
+  interrupted and ready. `sous status <issue>` prints one issue's facts
+  and timeline as before.
+- **`sous status --json` and `sous status <issue> --json`.** Both forms
+  print the same facts as one JSON document with stable keys, for a
+  script or a skill to read instead of the text.
 - **`sous init --no-install [<path>]`: a definitions-only `.sous/`.** It
   copies the starter and writes `engine:` but no `sous` wrapper and runs
   no `npm install`, for a repository a home repository's engine runs;

@@ -126,7 +126,7 @@ Once per machine: Node 22, `gh auth login`, and `claude` or `codex` on the
 
 ```sh
 npm install -D sous-factory
-npx sous init                 # copies the starter into .sous/, installs it, adds /sous-plan
+npx sous init                 # copies the starter into .sous/, installs it, adds /sous-plan and /sous-run
 
 cd .sous
 ./sous validate
@@ -156,7 +156,7 @@ Daily use:
 ```sh
 /sous-plan <issue>            # in Claude Code: spec, sub-issues, commit on GO
 ./sous run <issue>            # claims the issue, builds, reviews, merges, closes
-./sous status <issue>         # facts + timeline
+./sous status [<issue>]       # the factory overview, or one issue's facts + timeline; --json for both
 ./sous graph task             # the flow as a diagram
 ./sous ui                     # live, at http://127.0.0.1:4680 (uiPort in sous.yaml)
 ./sous watch                  # unattended: runs issues labelled sous:ready, one at a time
@@ -233,6 +233,7 @@ What `sous init` leaves in a repository:
 ```
 your-project/
 ├── .claude/skills/sous-plan/     # the planning skill, installed by init
+├── .claude/skills/sous-run/      # the run skill: status, start, blocked, report, from a session
 ├── specs/<id>-<slug>/spec.md     # written by /sous-plan (specsDir, ../specs from .sous)
 └── .sous/
     ├── sous.yaml                 # settings: the tracker: block, baseBranch, branch, lifecycle, dirs
@@ -240,7 +241,7 @@ your-project/
     ├── package.json              # depends on sous-factory; node_modules/ lives here
     ├── flows/                    # task.yaml, feature.yaml, bench.yaml
     ├── steps/                    # init, plan, next-work, implement, review, fix, verify, merge, …
-    ├── skills/                   # vendored skills and sous-plan
+    ├── skills/                   # vendored skills, sous-plan and sous-run
     ├── prompts/plan.md           # what /sous-plan follows
     ├── trackers/<tracker>.md     # the tracker's verbs for the plan prompt (github, beads, local)
     ├── templates/                # the shapes the prompts write: spec.md, child.md, task.md

@@ -1,6 +1,6 @@
 # Vendored skills
 
-Every folder here except `sous-plan/` is copied **verbatim** from Matt Pocock's
+Every folder here except `sous-plan/` and `sous-run/` is copied **verbatim** from Matt Pocock's
 skills repo (<https://github.com/mattpocock/skills>, `skills/engineering/*` and
 `skills/productivity/grilling`), so the factory has a pinned, offline-stable copy.
 
@@ -21,5 +21,5 @@ the context those skills expect, and point at the copies under `skills/`
 through `{{ctx.skillsDir}}`. Do not hand-edit the vendored files, so a diff
 against upstream stays clean; re-vendor by copying again.
 
-`sous-plan/` is sous's own skill, which `sous init` installs into the
-repository's `.claude/skills/`.
+`sous-plan/` and `sous-run/` are sous's own skills, which `sous init`
+installs into the repository's `.claude/skills/`.

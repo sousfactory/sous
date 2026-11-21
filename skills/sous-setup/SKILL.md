@@ -56,7 +56,7 @@ npx sous init
 ```
 
 `init` copies the starter into `.sous/`, installs it and places `/sous-plan`
-under `.claude/skills/`. Read its checklist output.
+and `sous-run` under `.claude/skills/`. Read its checklist output.
 
 ## 3. Adapt, one file at a time
 
@@ -148,7 +148,9 @@ each with its path and one line on what it does, and ask the human:
 - **No**: leave it.
 
 Finish with a two-line summary of what was set and what was deferred,
-including the answer here.
+including the answer here, and one line saying that from now on the human
+can ask in plain words ("what is running", "how is 42 doing"): the
+`sous-run` skill answers from `sous status --json`.
 
 # Several repositories
 
@@ -213,7 +215,7 @@ repository's root (the path resolves against the current directory):
 ```
 
 It copies the starter, writes `engine:` for the home repository's engine,
-places `/sous-plan` in that repository's `.claude/skills/`, and writes no
+places `/sous-plan` and `sous-run` in that repository's `.claude/skills/`, and writes no
 wrapper and runs no `npm install`. Its checklist ends with the `repos:`
 entry; check it matches what S2 wrote. A repository that already has a
 `.sous/` with its own `sous` wrapper or `node_modules` is left as it is;
@@ -275,6 +277,7 @@ Finish by naming, without running them:
 
 Then step 5 above for an existing development loop, in each listed
 repository the human picks, and a two-line summary: the home repository,
-the entries and their dev installs, and what was deferred.
+the entries and their dev installs, and what was deferred, then the
+`sous-run` line of step 5's summary.
 
 Argument received: $ARGUMENTS

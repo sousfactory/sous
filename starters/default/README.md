@@ -63,7 +63,7 @@ Thirteen steps, each with its own `README.md`:
 | `merge` | module | Squashes the branch onto the base branch, cleans up, labels and comments. |
 | `hello-world`, `tell-a-joke` | module, prompt | The bench. |
 
-Plus `skills/` (the vendored skills and `sous-plan`, see
+Plus `skills/` (the vendored skills, `sous-plan` and `sous-run`, see
 `skills/VENDORED.md`), `prompts/plan.md` (what `/sous-plan` follows),
 `sous.yaml` (settings) and `test/` (the flows and steps walked through the
 engine over fakes: `npx vitest run`).
@@ -74,7 +74,7 @@ It arrives with the engine:
 
 ```
 npm install -D sous-factory
-npx sous init                 # copies this folder into .sous/, installs it, adds /sous-plan
+npx sous init                 # copies this folder into .sous/, installs it, adds /sous-plan and /sous-run
 ```
 
 `package.json` pins `sous-factory`, TypeScript and vitest for the editor,
@@ -122,6 +122,10 @@ npx vitest run                    # the flows over fakes
 /sous-plan <issue>                # in Claude Code: spec and sub-issues
 ./sous run <issue>                # status and ui to follow
 ```
+
+In Claude Code, ask in plain words ("what is running", "how is 42
+doing", "42 is blocked, what now"): the `sous-run` skill reads
+`sous status --json` and answers.
 
 The [manual](https://github.com/sousfactory/sous/blob/main/docs/manual.md)
 covers the rest: [getting started](https://github.com/sousfactory/sous/blob/main/docs/manual.md#part-i-getting-started)

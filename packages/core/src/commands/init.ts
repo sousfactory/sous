@@ -1,6 +1,6 @@
 /**
  * `sous init`: copies a starter into `<repoRoot>/.sous/`, installs its
- * dependencies and puts the `/sous-plan` skill where Claude Code finds it,
+ * dependencies and puts the `/sous-plan` and `/sous-run` skills where Claude Code finds them,
  * so a new project begins from working flows instead of an empty folder.
  * The starter is copied, not linked: the project owns it from then on.
  * What stays manual is printed as a checklist, so nobody has to read the
@@ -25,9 +25,9 @@ export const WRAPPER = "sous";
 /** What a run leaves behind and what `npm install` creates; never committed. */
 export const GITIGNORE = "logs/\nruns/\nlocks/\nworktrees/\nnode_modules/\n";
 
-/** The skill as the starter ships it, and where Claude Code looks for it. */
-export const SKILL_SOURCE = join("skills", "sous-plan");
-export const SKILL_TARGET = join(".claude", "skills", "sous-plan");
+/** The skills init installs, as the starter ships them under `skills/`, and where Claude Code looks for them. */
+export const SKILLS = ["sous-plan", "sous-run"] as const;
+export const SKILLS_TARGET = join(".claude", "skills");
 
 /**
  * A definitions-only project (`--no-install`): the repository's name in
@@ -217,12 +217,17 @@ export const initCommand = async (args: readonly string[], deps: InitDeps): Prom
   await writeFile(settingsFile, withTracker(withEngine(settings, deps.engineVersion ?? ENGINE_VERSION), origin ?? REPO_PLACEHOLDER), "utf8");
   out(`init: copied ${starter} to ${target}`);
 
-  const skill = join(target, SKILL_SOURCE);
-  if (existsSync(skill)) {
-    const installed = join(repoRoot, SKILL_TARGET);
-    await mkdir(dirname(installed), { recursive: true });
-    await cp(skill, installed, { recursive: true });
-    out(`init: installed the /sous-plan skill at ${installed}`);
+  const installed: string[] = [];
+  for (const name of SKILLS) {
+    const skill = join(target, "skills", name);
+    if (!existsSync(skill)) continue;
+    await mkdir(join(repoRoot, SKILLS_TARGET), { recursive: true });
+    await cp(skill, join(repoRoot, SKILLS_TARGET, name), { recursive: true });
+    installed.push(`/${name}`);
+  }
+  if (installed.length > 0) {
+    const names = installed.length === 1 ? `${installed[0]} skill` : `${installed.slice(0, -1).join(", ")} and ${installed.at(-1)} skills`;
+    out(`init: installed the ${names} in ${join(repoRoot, SKILLS_TARGET)}`);
   }
 
   // A path argument's project as typed from where init ran, so the checklist reads right in that shell.

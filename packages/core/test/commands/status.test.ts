@@ -1,10 +1,12 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFileEventLog } from "../../src/adapters/eventlog.js";
 import { formatCost } from "../../src/session/cost.js";
-import { formatDuration, laneName, renderStatus, statusCommand, type StatusPaths } from "../../src/commands/status.js";
+import { formatDuration, laneName, renderStatus, statusCommand, type StatusDeps, type StatusPaths } from "../../src/commands/status.js";
+import { lookupOf, type Lookup } from "../../src/lookup.js";
+import { fakeTracker, issue, type FakeTracker } from "../fakes/tracker.js";
 import { recordVisit, type Session } from "../../src/exec/scope.js";
 import type { Event } from "../../src/session/events.js";
 import { eventsFile, runDir, sessionFile } from "../../src/session/paths.js";
@@ -288,11 +290,339 @@ describe("statusCommand", () => {
     expect(err).toEqual(["sous status: no session for 999"]);
   });
 
-  it("exits 2 on a missing, invalid or extra argument", async () => {
-    const { deps, err } = io();
-    expect(await statusCommand([], deps)).toBe(2);
-    expect(await statusCommand(["#"], deps)).toBe(2);
-    expect(await statusCommand(["1", "2"], deps)).toBe(2);
-    expect(err).toEqual(["usage: sous status <issue>", "usage: sous status <issue>", "usage: sous status <issue>"]);
+  it("exits 2 naming sous status [<issue>] [--json] on an invalid, extra or unknown argument", async () => {
+    const { deps, out, err } = io();
+    const bad = [["#"], ["1", "2"], ["--yaml"], ["1", "--json", "--json"], ["--json", "1", "2"]];
+    for (const args of bad) expect(await statusCommand(args, deps)).toBe(2);
+    expect(out).toEqual([]);
+    expect(err).toEqual(bad.map(() => "usage: sous status [<issue>] [--json]"));
+  });
+
+  it("prints the per-issue facts and the timeline's runs and spans as one JSON document with --json, before or after the issue", async () => {
+    const runs = join(root, "runs");
+    await saveSession(sessionFile(runs, "12"), { ...sample(), engine: "0.9.1" });
+    const log = createFileEventLog(eventsFile(runs, "12"));
+    await log.append({ type: "run.start", at: "2026-10-02T09:00:00.000Z", runId: "r1", pid: 1, host: "h", sha: "x", flow: "feature" });
+    await log.append({ type: "span.open", at: "2026-10-02T09:00:01.000Z", runId: "r1", spanId: "r1-1", step: "build", scope: "15" });
+
+    for (const args of [["12", "--json"], ["--json", "#12"]]) {
+      const { deps, out } = io();
+      expect(await statusCommand(args, deps)).toBe(0);
+      expect(out).toHaveLength(1);
+      expect(JSON.parse(out[0]!)).toEqual({
+        issue: "12",
+        flow: "feature",
+        branch: "feature/12-some-slug",
+        current: "build",
+        previous: "review",
+        work: "15",
+        visits: 1,
+        iteration: 2,
+        blocked: false,
+        transitions: 2,
+        spec: "specs/12-some-slug",
+        run: runDir(runs, "12"),
+        logs: join(root, "logs", "12"),
+        engine: "0.9.1",
+        workProgress: [
+          { work: "12", state: "open", commits: [] },
+          { work: "14", state: "done", commits: ["abc1234567890", "def4567890123"] },
+          { work: "15", state: "open", commits: [] },
+        ],
+        lastEval: { step: "review", ok: false, log: "FAILED tests\n> Task :test FAILED" },
+        runs: [{ id: "r1", startedAt: "2026-10-02T09:00:00.000Z", pid: 1, host: "h", sha: "x", flow: "feature", costUnknown: 0 }],
+        spans: [{ id: "r1-1", runId: "r1", step: "build", scope: "15", startedAt: "2026-10-02T09:00:01.000Z", iterations: [], costUnknown: 0 }],
+      });
+    }
+  });
+});
+
+describe("sous status: the overview", () => {
+  const T0 = Date.parse("2026-11-21T10:00:00.000Z");
+  const iso = (minutes: number) => new Date(T0 + minutes * 60_000).toISOString();
+  const LIVE = 100;
+  const TRACKER = "tracker: { type: local, dir: issues, shared: false, labels: sous }";
+
+  let dir: string;
+  /** The fake behind each entry, by name. */
+  let trackers: Map<string, FakeTracker>;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "sous-overview-"));
+    trackers = new Map();
+  });
+  afterEach(() => rm(dir, { recursive: true, force: true }));
+
+  /** A repository `name` under the temp dir with its own `.sous/sous.yaml`. */
+  const repository = async (name: string, extra = ""): Promise<string> => {
+    const root = join(dir, name, ".sous");
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, "sous.yaml"), `engine: ^0.9.0\nname: ${name}\n${TRACKER}\n${extra}`);
+    return root;
+  };
+
+  /** A session of issue `id` at `current`, its run segments as `events`. */
+  const run = async (root: string, id: string, current: string, events: Event[], blocked = false): Promise<void> => {
+    const runs = join(root, "runs");
+    const s = createSession({ flow: "task", issue: id, title: `stored ${id}`, branch: `task/${id}-x`, specDir: "", entry: current });
+    await saveSession(sessionFile(runs, id), { ...s, blocked });
+    const log = createFileEventLog(eventsFile(runs, id));
+    for (const event of events) await log.append(event);
+  };
+  const start = (runId: string, at: string): Event => ({ type: "run.start", at, runId, pid: 1, host: "h", sha: "x", flow: "task" });
+  const end = (runId: string, at: string, outcome: "done" | "blocked" | "crashed" | "interrupted"): Event => ({ type: "run.end", at, runId, outcome });
+  const open = (runId: string, spanId: string, at: string, step: string): Event => ({ type: "span.open", at, runId, spanId, step, scope: "x" });
+  const lock = async (root: string, name: string, pid: number, issueId: string): Promise<void> => {
+    await mkdir(join(root, "locks"), { recursive: true });
+    await writeFile(join(root, "locks", name), `${JSON.stringify({ pid, issue: issueId })}\n`);
+  };
+
+  /** The lookup `sous watch` builds, each entry's tracker swapped for its fake. */
+  const lookup = (root: string) => async (): Promise<Lookup> => {
+    const built = await lookupOf(root, undefined, "0.9.1");
+    return { ...built, repos: built.repos.map((r) => ({ ...r, tracker: trackers.get(r.name) ?? r.tracker })) };
+  };
+
+  const deps = (root: string, extra: Partial<StatusDeps> = {}) => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const probed: string[] = [];
+    return {
+      out,
+      err,
+      probed,
+      deps: {
+        root,
+        out: (l: string) => out.push(l),
+        err: (l: string) => err.push(l),
+        lookup: lookup(root),
+        isAlive: (pid: number) => pid === LIVE,
+        probe: async (url: string) => (probed.push(url), false),
+        engineVersion: "0.9.1",
+        now: () => T0 + 60 * 60_000,
+        ...extra,
+      } satisfies StatusDeps,
+    };
+  };
+
+  /** One issue of each state in repository `web`: 1 running, 2 blocked, 3 crashed, 4 interrupted, 5 and 6 done, 9 ready. */
+  const fixtureRepo = async (): Promise<string> => {
+    const root = await repository("web");
+    await run(root, "1", "build", [start("r1", iso(10)), open("r1", "s1", iso(12), "build")]);
+    await lock(root, "1.lock", LIVE, "1");
+    await run(root, "2", "review", [start("r1", iso(0)), end("r1", iso(20), "blocked")], true);
+    await run(root, "3", "build", [start("r1", iso(0)), end("r1", iso(30), "crashed")]);
+    await run(root, "4", "implement", [start("r1", iso(0)), end("r1", iso(40), "interrupted")]);
+    await run(root, "5", "done", [start("r1", iso(0)), end("r1", iso(5), "done")]);
+    await run(root, "6", "done", [start("r1", iso(0)), end("r1", iso(6), "done")]);
+    trackers.set(
+      "web",
+      fakeTracker({
+        issues: [
+          issue({ id: "1", title: "Running one" }),
+          issue({ id: "2", title: "Blocked one" }),
+          issue({ id: "3", title: "Crashed one" }),
+          issue({ id: "4", title: "Interrupted one" }),
+          issue({ id: "9", title: "Ready one", labels: ["sous:ready"] }),
+          issue({ id: "2b", title: "Not ready" }),
+        ],
+      }),
+    );
+    return root;
+  };
+
+  it("prints the single repository, its tracker, no daemon, no UI and one row per issue needing attention, in state order", async () => {
+    const root = await fixtureRepo();
+    const { deps: d, out, err, probed } = deps(root);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    expect(err).toEqual([]);
+    expect(probed).toEqual(["http://127.0.0.1:4680/"]);
+    expect(out.join("\n")).toBe(
+      [
+        "single repository web",
+        "engine 0.9.1",
+        `tracker local ${join(root, "issues")}, shared: false`,
+        "daemon: none",
+        "ui: not running (sous ui)",
+        "",
+        "issue  title            state        step       since",
+        "1      Running one      running      build      48m00s",
+        "2      Blocked one      blocked      review     40m00s",
+        "3      Crashed one      crashed      build      30m00s",
+        "4      Interrupted one  interrupted  implement  20m00s",
+        "9      Ready one        ready        -          -",
+        "2 done, see sous ui",
+      ].join("\n"),
+    );
+  });
+
+  it("names a daemon whose watch lock holds a live pid, with its start, and a stale watch lock as stale", async () => {
+    const root = await repository("web");
+    await lock(root, "watch.pid", LIVE, "watch");
+    const since = new Date(Date.parse("2026-11-21T09:30:00.000Z"));
+    await utimes(join(root, "locks", "watch.pid"), since, since);
+    const live = deps(root);
+    expect(await statusCommand([], live.deps)).toBe(0);
+    expect(live.out.join("\n")).toContain("\ndaemon: running (pid 100, since 2026-11-21 09:30:00 UTC)\n");
+
+    await lock(root, "watch.pid", 999, "watch");
+    const stale = deps(root);
+    expect(await statusCommand([], stale.deps)).toBe(0);
+    expect(stale.out.join("\n")).toContain("\ndaemon: none (stale locks/watch.pid, pid 999 is not running)\n");
+    expect(stale.out.join("\n")).toContain("\nno issue needs attention");
+  });
+
+  it("prints the run viewer's link on a line of its own when something answers on the project's uiPort", async () => {
+    const root = await repository("web", "uiPort: 4999\n");
+    const { deps: d, out, probed } = deps(root, { probe: async (url) => (probed.push(url), true) });
+    expect(await statusCommand([], d)).toBe(0);
+    expect(probed).toEqual(["http://127.0.0.1:4999/"]);
+    expect(out.join("\n").split("\n")).toContain("ui: http://127.0.0.1:4999");
+  });
+
+  it("prints the same facts as one JSON document with --json", async () => {
+    const root = await fixtureRepo();
+    await lock(root, "watch.pid", LIVE, "watch");
+    const since = new Date(Date.parse("2026-11-21T09:30:00.000Z"));
+    await utimes(join(root, "locks", "watch.pid"), since, since);
+    const { deps: d, out } = deps(root, { probe: async () => true });
+
+    expect(await statusCommand(["--json"], d)).toBe(0);
+
+    expect(out).toHaveLength(1);
+    const repoRoot = join(dir, "web");
+    const row = (issueId: string, title: string, state: string, step: string, since: string) => ({
+      issue: issueId,
+      title,
+      state,
+      step,
+      since,
+      branch: `task/${issueId}-x`,
+      worktree: join(repoRoot, ".sous", "worktrees", `task-${issueId}-x`),
+    });
+    expect(JSON.parse(out[0]!)).toEqual({
+      mode: "single",
+      engine: "0.9.1",
+      entries: [
+        {
+          name: "web",
+          path: repoRoot,
+          tracker: { type: "local", location: join(root, "issues"), shared: false },
+          unrunnable: null,
+          runs: [
+            row("1", "Running one", "running", "build", iso(12)),
+            row("2", "Blocked one", "blocked", "review", iso(20)),
+            row("3", "Crashed one", "crashed", "build", iso(30)),
+            row("4", "Interrupted one", "interrupted", "implement", iso(40)),
+          ],
+          ready: [{ issue: "9", title: "Ready one" }],
+          done: 2,
+          note: null,
+        },
+      ],
+      daemon: { running: true, pid: 100, since: "2026-11-21T09:30:00.000Z", stale: false },
+      ui: { port: 4680, url: "http://127.0.0.1:4680/", up: true },
+    });
+  });
+
+  it("leaves - titles, no ready rows and one note when the tracker does not answer, and still exits 0", async () => {
+    const root = await fixtureRepo();
+    const broken = trackers.get("web")!;
+    broken.list = async () => {
+      throw new Error("gh: connection refused");
+    };
+    const { deps: d, out, err } = deps(root);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    expect(err).toEqual([]);
+    expect(out.join("\n").split("\n").slice(6)).toEqual([
+      "issue  title  state        step       since",
+      "1      -      running      build      48m00s",
+      "2      -      blocked      review     40m00s",
+      "3      -      crashed      build      30m00s",
+      "4      -      interrupted  implement  20m00s",
+      "2 done, see sous ui",
+      `tracker ${join(root, "issues")} did not answer; ready issues not shown`,
+    ]);
+  });
+
+  it("orders each entry's runs in the JSON by state, then by issue, as the table does", async () => {
+    const root = await repository("web");
+    await run(root, "3", "review", [start("r1", iso(0)), end("r1", iso(20), "blocked")], true);
+    await run(root, "5", "build", [start("r1", iso(0)), end("r1", iso(30), "crashed")]);
+    await run(root, "7", "build", [start("r1", iso(10)), open("r1", "s1", iso(12), "build")]);
+    await lock(root, "7.lock", LIVE, "7");
+    const { deps: d, out } = deps(root);
+
+    expect(await statusCommand(["--json"], d)).toBe(0);
+
+    const overview = JSON.parse(out[0]!) as { entries: { runs: { issue: string; state: string }[] }[] };
+    expect(overview.entries[0]!.runs.map(({ issue, state }) => `${issue} ${state}`)).toEqual(["7 running", "3 blocked", "5 crashed"]);
+  });
+
+  it("shows the home's own runs when the list names the home", async () => {
+    const home = await repository("home", "repos: { home: ., api: ../api }\n");
+    await run(home, "50", "build", [start("r1", iso(0)), end("r1", iso(10), "blocked")], true);
+    const api = await repository("api");
+    await run(api, "7", "review", [start("r1", iso(0)), end("r1", iso(25), "blocked")], true);
+    trackers.set("home", fakeTracker({ issues: [issue({ id: "50", title: "Home blocked" })] }));
+    trackers.set("api", fakeTracker({ issues: [issue({ id: "7", title: "Api blocked" })] }));
+    const { deps: d, out } = deps(home);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    expect(out.join("\n").split("\n").slice(-3)).toEqual([
+      "entry  issue  title         state    step    since",
+      "home   50     Home blocked  blocked  build   50m00s",
+      "api    7      Api blocked   blocked  review  35m00s",
+    ]);
+  });
+
+  it("covers in a home every entry sous watch would serve, an entry set aside with the daemon's reason, the home's own runs only when listed", async () => {
+    const home = await repository("home", "repos: { api: ../api, web: ../web, gone: ../gone }\n");
+    // The home's own run is not shown: the list does not name the home.
+    await run(home, "50", "build", [start("r1", iso(0)), end("r1", iso(10), "blocked")], true);
+    const api = await repository("api");
+    await run(api, "7", "review", [start("r1", iso(0)), end("r1", iso(25), "blocked")], true);
+    const web = await fixtureRepo();
+    trackers.set("api", fakeTracker({ issues: [issue({ id: "7", title: "Api blocked" }), issue({ id: "8", title: "Api ready", labels: ["sous:ready"] })] }));
+    const { deps: d, out } = deps(home);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    expect(out.join("\n")).toBe(
+      [
+        "home repository, 3 entries: api, web, gone",
+        "engine 0.9.1",
+        `  api   tracker local ${join(api, "issues")}, shared: false`,
+        `  web   tracker local ${join(web, "issues")}, shared: false`,
+        `  gone  set aside: ${join(dir, "gone")} holds no .sous/sous.yaml; sous watch starts nothing there`,
+        "daemon: none",
+        "ui: not running (sous ui)",
+        "",
+        "entry  issue  title            state        step       since",
+        "web    1      Running one      running      build      48m00s",
+        "api    7      Api blocked      blocked      review     35m00s",
+        "web    2      Blocked one      blocked      review     40m00s",
+        "web    3      Crashed one      crashed      build      30m00s",
+        "web    4      Interrupted one  interrupted  implement  20m00s",
+        "api    8      Api ready        ready        -          -",
+        "web    9      Ready one        ready        -          -",
+        "2 done, see sous ui",
+      ].join("\n"),
+    );
+
+    const json = deps(home);
+    expect(await statusCommand(["--json"], json.deps)).toBe(0);
+    const overview = JSON.parse(json.out[0]!) as { mode: string; entries: { name: string; path: string; tracker: unknown; unrunnable: string | null; done: number }[] };
+    expect(overview.mode).toBe("home");
+    expect(overview.entries.map(({ name, path, tracker, done }) => ({ name, path, tracker: tracker !== null, done }))).toEqual([
+      { name: "api", path: join(dir, "api"), tracker: true, done: 0 },
+      { name: "web", path: join(dir, "web"), tracker: true, done: 2 },
+      { name: "gone", path: join(dir, "gone"), tracker: false, done: 0 },
+    ]);
   });
 });
