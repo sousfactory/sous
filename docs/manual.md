@@ -700,27 +700,10 @@ in a home repository; `sous run <issue>` in a repository without `repos:`
 runs the issue it is given whatever its labels
 ([how-to 20](#20-run-as-an-automated-loop), [how-to 21](#21-multi-repo-setup)).
 
-The keys before the block are refused by `sous validate`, `sous run`,
-`sous watch` and the run viewer, one message per key, before any schema
-error: a string `tracker:` with the block of its own type, so `tracker:
-github` with `tracker is now a block: tracker: { type: github, repo:
-owner/name, shared: false, labels: sous }`, `tracker: beads` with `type:
-beads` and no location, `tracker: local` with `type: local, dir: issues`,
-and a module path with `type: <path>`;
-`trackerOptions.repo` with `trackerOptions.repo is now tracker.repo` (and
-so for every key under it), `labelPrefix` with `labelPrefix is now
-tracker.labels`.
+A `sous.yaml` from before the block is refused with one message per old
+key; the 0.9.0 section of the changelog shows the move.
 
-```yaml
-# before                          # after
-tracker: github                   tracker:
-trackerOptions:                     type: github
-  repo: acme/api                    repo: acme/api
-labelPrefix: sous                   shared: false
-                                    labels: sous
-```
-Models, caps and commands live in flows
-and steps, not here.
+Models, caps and commands live in flows and steps, not here.
 
 `engine` is a semver range, read with npm's semantics, naming the engine
 versions the project's flows, steps and prompts were written for. `sous
@@ -844,9 +827,7 @@ export default factory;
 tracker: { type: trackers/jira.ts, shared: false, labels: sous, project: CA }
 ```
 
-`sous validate` builds the module and lists any port method it lacks;
-a module written before `list` joined the port is reported as lacking
-`list`.
+`sous validate` builds the module and lists any port method it lacks.
 The only parsing the engine does on issue text is none at all: what a
 body means is the adapter's business, which is why the GitHub adapter
 owns the `## Blocked by` rule.
@@ -1684,8 +1665,7 @@ what to skip or change in the skill.
 | `validate: route to "…" names no step id` / `the last route must be an else` | Routes need an existing target and a fallthrough; see [chapter 6](#6-flows). |
 | `sous run: issue 42 is in several trackers; name the entry: sous run web#42, …` | In a home repository more than one entry's tracker holds that number open. Type the qualified form for the entry you mean; [chapter 21](#21-multi-repo-setup) describes the lookup. |
 | `repos: web and api use one tracker (github acme/planning) with shared: false; …` from `sous validate` or `sous watch` in a home repository | Two entries the daemon loads name the same tracker type and location, and at least one says `shared: false`, so no rule can tell which runs an unlabelled issue. Set `shared: true` in both and label the issues `repo:<name>`, or give each entry its own tracker; [chapter 21](#21-multi-repo-setup). An entry set aside for its `engine:` is not counted. |
-| `sous init: …/sous.yaml:<line>: tracker is now a block: …` | `--starter` names a starter whose `sous.yaml` has a key from before the `tracker:` block; nothing was copied. Move each key as the message says in the starter, then run `sous init` again. |
-| `tracker is now a block: …`, `trackerOptions.<key> is now tracker.<key>`, `labelPrefix is now tracker.labels` | A `sous.yaml` written before the `tracker:` block. Move each key as the message says; [chapter 9](#9-settings-sousyaml) shows the old and new block side by side. |
+| `tracker is now a block: …`, `trackerOptions.<key> is now tracker.<key>`, `labelPrefix is now tracker.labels` (also from `sous init --starter`) | A `sous.yaml` from before the `tracker:` block. Move each key as the message says; the 0.9.0 changelog shows the old and new block. |
 | `#42 skipped: tracker acme/planning is shared; add repo:web` from `sous watch`, or `sous run: #42: tracker …` | The issue lives on a tracker several repositories share (`shared: true`), so it needs one `repo:<name>` label naming the repository that runs it. Add the label; [chapter 21](#21-multi-repo-setup). On a repository's own tracker, set `shared: false`. |
 | `tracker is required: tracker: { … }` | `sous.yaml` has no `tracker:` block. Add it with the type, location, `shared` and `labels`; [chapter 9](#9-settings-sousyaml). A home repository whose `repos:` does not name itself needs none. |
 | `tracker.repo is required for github: … not the owner/name placeholder` | `sous init` found no github.com `owner/name` origin and wrote the placeholder, or the key is missing. Set `tracker.repo` to the `owner/name` of the repository the issues live in. |
