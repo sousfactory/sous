@@ -19,3 +19,4 @@ starters/default/test/.steps-*/
 /.sous/
 /specs/
 /.claude/skills/sous-plan/
+/.claude/skills/sous-run/
