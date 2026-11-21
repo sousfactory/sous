@@ -964,8 +964,9 @@ unless `--flow` names one. `sous status` without an issue prints the
 factory overview: the single repository or the home's entries with their
 trackers, whether a daemon and the run viewer are up, and one row per
 running, blocked, crashed, interrupted and ready issue. It reads the
-tracker only for titles and ready issues, says so when the tracker does
-not answer, and writes nothing. The starter's `.sous/sous` wrapper runs the installed `sous` from any
+tracker only for titles and ready issues, says so in a note when an
+entry's tracker is not built or does not answer, still printing the
+other entries, and writes nothing. The starter's `.sous/sous` wrapper runs the installed `sous` from any
 directory. The project root is `SOUS_ROOT`, else the cwd when it is named
 `.sous`, else `<cwd>/.sous`; the repository is its parent. Exit codes: 2
 bad arguments, validation errors, an issue no flow or several flows
@@ -1433,8 +1434,10 @@ lock, a blocker the tracker cannot follow) is reported once per daemon,
 again only when the reason changes. A quiet pass prints nothing. The
 run's own output goes to its record (`sous status`, `sous ui`), not to
 the daemon's. `./sous status` shows the daemon (its pid and since when,
-or none) and the ready queue: the issues carrying `sous:ready` that have
-no run yet, below the running and blocked ones.
+or none) and one row per issue in this order: running, blocked,
+crashed, interrupted, then ready, the issues carrying `<labels>:ready`
+(an issue handed back after a block, a crash or an interrupt among
+them).
 
 **The hand-back after blocked.** A `sous:blocked` issue is left alone.
 Fix what the comment asks, then add `sous:ready`: the next pass runs the

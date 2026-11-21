@@ -38,6 +38,7 @@ export const STARTER = [
   "steps/tell-a-joke",
   "skills",
   "skills/sous-plan",
+  "skills/sous-run",
   "prompts/plan.md",
   "trackers/github.md",
   "trackers/beads.md",
@@ -55,6 +56,7 @@ export const STARTER = [
   "test/verify.test.ts",
   "test/steps",
   "test/review-findings.test.ts",
+  "test/skills.test.ts",
 ];
 
 const filesUnder = (path: string): string[] => (statSync(path).isDirectory() ? readdirSync(path).flatMap((name) => filesUnder(join(path, name))) : [path]);

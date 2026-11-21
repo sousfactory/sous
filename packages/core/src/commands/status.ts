@@ -16,9 +16,8 @@ import { ENGINE_VERSION } from "../config/engine.js";
 import { repoEntries, routeIssue } from "../config/repos.js";
 import { loadSettings, projectDirs, requiredTracker, SETTINGS_FILE } from "../config/settings.js";
 import { stepsOf, type HistoryEntry, type Session } from "../exec/scope.js";
-import { lookupOf, type Lookup, type LookupEntry } from "../lookup.js";
+import { overviewLookupOf, type BrokenEntry, type Lookup, type LookupEntry } from "../lookup.js";
 import { isIssueNotFound } from "../ports/tracker.js";
-import { repoRootOf } from "../root.js";
 import { eventsFile, runDir, sessionFile } from "../session/paths.js";
 import { formatCost } from "../session/cost.js";
 import { estimatedEnd, historyStatus, spanStatus, type RecordStatus } from "../session/status.js";
@@ -33,7 +32,7 @@ export type StatusDeps = {
   root: string;
   out: (line: string) => void;
   err: (line: string) => void;
-  /** The entries the overview covers; `lookupOf(root)`, the lookup `sous watch` serves, unless injected. */
+  /** The entries the overview covers; `overviewLookupOf(root)`, the lookup `sous watch` serves with the trackers that did not build set aside, unless injected. */
   lookup?: () => Promise<Lookup>;
   isAlive?: (pid: number) => boolean;
   /** Whether something answers at `url`; an HTTP GET with a half-second timeout unless injected. */
@@ -249,16 +248,23 @@ export type OverviewEntry = {
   name: string;
   /** The checkout. */
   path: string;
-  /** Null for an entry set aside, whose settings are not read. */
+  /** Null for an entry set aside, whose settings are not read, and for one whose settings did not load. */
   tracker: { type: string; location: string; shared: boolean } | null;
   /** Why `sous watch` sets the entry aside, or null. */
   unrunnable: string | null;
   runs: OverviewRun[];
-  /** Open issues carrying `<labels>:ready` that route here and have no run of their own yet. */
-  ready: { issue: string; title: string }[];
+  /**
+   * Open issues carrying `<labels>:ready` that route here and are neither
+   * running nor done: those without a run, and those handed back after a
+   * block, a crash or an interrupt, with their session's branch and worktree.
+   */
+  ready: { issue: string; title: string; branch: string | null; worktree: string | null }[];
   /** Runs at `done`: counted, not listed. */
   done: number;
-  /** Set when the tracker did not answer: its titles are null and its ready issues missing. */
+  /**
+   * Set when the tracker was not built or did not answer (its titles null,
+   * its ready issues missing), or did not give some titles (those null).
+   */
   note: string | null;
 };
 
@@ -282,15 +288,20 @@ const segmentEnd = (run: RunSegment, spans: readonly Span[]): string =>
 type SessionState = { state: OverviewRun["state"] | "done"; since: string | null };
 
 /**
- * A session's state: running under a live lock, done at `done`, else its
- * last run's outcome; a last run that never ended without a live lock
- * crashed, as does a session with no run recorded that is not blocked.
+ * A session's state: running under a live lock (`livePid`), done at `done`,
+ * else its last run's outcome; a last run that never ended without a live
+ * lock crashed, as does a session with no run recorded that is not blocked.
+ * A running run's since is that of the lock holder's own segment, the last
+ * one if it has not ended and its `run.start` names the lock's pid; before
+ * the holder wrote `run.start` it is null, never the previous run's start.
  */
-const stateOf = (session: Session, timeline: Timeline, live: boolean): SessionState => {
+const stateOf = (session: Session, timeline: Timeline, livePid: number | undefined): SessionState => {
   const last = timeline.runs.at(-1);
-  if (live) {
-    const open = last === undefined ? undefined : timeline.spans.filter((span) => span.runId === last.id && span.endedAt === undefined).at(-1);
-    return { state: "running", since: open?.startedAt ?? last?.startedAt ?? null };
+  if (livePid !== undefined) {
+    const own = last !== undefined && last.endedAt === undefined && last.pid === livePid ? last : undefined;
+    if (own === undefined) return { state: "running", since: null };
+    const open = timeline.spans.filter((span) => span.runId === own.id && span.endedAt === undefined).at(-1);
+    return { state: "running", since: open?.startedAt ?? own.startedAt };
   }
   if (session.current === "done") return { state: "done", since: null };
   if (last === undefined) return { state: session.blocked ? "blocked" : "crashed", since: null };
@@ -322,55 +333,81 @@ const sessionsOf = async (runsRoot: string): Promise<{ session: Session; timelin
 
 const byIssue = (a: { issue: string }, b: { issue: string }): number => a.issue.localeCompare(b.issue, undefined, { numeric: true });
 
+type EntryRuns = { runs: OverviewRun[]; done: number; doneIssues: Set<string> };
+
+/** The runs of the entry whose project root is `root`, from its runs folder and its live locks, in the table's order. */
+const runsOf = async (root: string, repoRoot: string, runsRoot: string, isAlive: (pid: number) => boolean): Promise<EntryRuns> => {
+  const live = new Map((await liveLocks(root, isAlive)).map((l) => [l.issue, l.pid]));
+  const sessions = await sessionsOf(runsRoot);
+  const runs: OverviewRun[] = [];
+  const doneIssues = new Set<string>();
+  for (const { session, timeline } of sessions) {
+    const { state, since } = stateOf(session, timeline, live.get(session.issue));
+    if (state === "done") doneIssues.add(session.issue);
+    else runs.push({ issue: session.issue, title: null, state, step: session.current, since, branch: session.branch, worktree: worktreePathFor(repoRoot, session.branch) });
+  }
+  // A run that holds its lock but has not written its session yet.
+  for (const issue of live.keys()) if (!sessions.some(({ session }) => session.issue === issue)) runs.push({ issue, title: null, state: "running", step: null, since: null, branch: null, worktree: null });
+  // In the table's order, so a reader of the JSON can keep it: by state, then by issue.
+  runs.sort((a, b) => ROW_STATES.indexOf(a.state) - ROW_STATES.indexOf(b.state) || byIssue(a, b));
+  return { runs, done: doneIssues.size, doneIssues };
+};
+
+/** A run that `<labels>:ready` hands back to the daemon: it ended blocked, crashed or interrupted. */
+const handedBack = (run: OverviewRun): boolean => run.state !== "running";
+
 const entryOf = async (entry: LookupEntry, lookup: Lookup, isAlive: (pid: number) => boolean): Promise<OverviewEntry> => {
   const settings = loadSettings(join(entry.root, SETTINGS_FILE));
   const { labels } = requiredTracker(settings, join(entry.root, SETTINGS_FILE));
-  const { runs: runsRoot } = projectDirs(entry.root, settings);
-  const live = new Set((await liveLocks(entry.root, isAlive)).map((l) => l.issue));
-  const sessions = await sessionsOf(runsRoot);
-  const runs: OverviewRun[] = [];
-  let done = 0;
-  for (const { session, timeline } of sessions) {
-    const { state, since } = stateOf(session, timeline, live.has(session.issue));
-    if (state === "done") done++;
-    else runs.push({ issue: session.issue, title: null, state, step: session.current, since, branch: session.branch, worktree: worktreePathFor(entry.repoRoot, session.branch) });
-  }
-  // A run that holds its lock but has not written its session yet.
-  for (const issue of live) if (!sessions.some(({ session }) => session.issue === issue)) runs.push({ issue, title: null, state: "running", step: null, since: null, branch: null, worktree: null });
-
-  const note = `tracker ${entry.location.at} did not answer; ready issues not shown`;
+  const { runs, done, doneIssues } = await runsOf(entry.root, entry.repoRoot, projectDirs(entry.root, settings).runs, isAlive);
   const result: OverviewEntry = {
     name: entry.name,
     path: entry.repoRoot,
     tracker: { type: entry.location.type, location: entry.location.at, shared: entry.shared },
     unrunnable: null,
-    // In the table's order, so a reader of the JSON can keep it: by state, then by issue.
-    runs: runs.sort((a, b) => ROW_STATES.indexOf(a.state) - ROW_STATES.indexOf(b.state) || byIssue(a, b)),
+    runs,
     ready: [],
     done,
     note: null,
   };
+  let listed;
   try {
-    const known = new Set(sessions.map(({ session }) => session.issue));
-    const others = [...lookup.repos, ...lookup.unrunnable.map(({ name }) => ({ name }))];
-    const ready = (await entry.tracker.list({ labels: [`${labels}:ready`] })).filter((issue) => {
-      const route = routeIssue(issue.labels, { listedBy: entry, entries: others, home: lookup.listed });
-      return "to" in route && route.to === entry.name && !known.has(issue.id);
-    });
-    result.ready = ready.map((issue) => ({ issue: issue.id, title: issue.title }));
-    for (const run of result.runs) {
-      try {
-        run.title = (await entry.tracker.getIssue(run.issue)).title;
-      } catch (error) {
-        if (!isIssueNotFound(error)) throw error;
-      }
-    }
+    listed = await entry.tracker.list({ labels: [`${labels}:ready`] });
   } catch {
-    for (const run of result.runs) run.title = null;
-    result.ready = [];
-    result.note = note;
+    result.note = `tracker ${entry.location.at} did not answer; ready issues not shown`;
+    return result;
   }
+  const others = [...lookup.repos, ...lookup.unrunnable.map(({ name }) => ({ name })), ...(lookup.broken ?? []).map((b) => b.lister ?? { name: b.name })];
+  const ready = listed.filter((issue) => {
+    const route = routeIssue(issue.labels, { listedBy: entry, entries: others, home: lookup.listed });
+    const run = runs.find((r) => r.issue === issue.id);
+    return "to" in route && route.to === entry.name && !doneIssues.has(issue.id) && (run === undefined || handedBack(run));
+  });
+  result.ready = ready.map((issue) => {
+    const run = runs.find((r) => r.issue === issue.id);
+    return { issue: issue.id, title: issue.title, branch: run?.branch ?? null, worktree: run?.worktree ?? null };
+  });
+  result.runs = runs.filter((r) => !ready.some((issue) => issue.id === r.issue));
+  let missed = false;
+  for (const run of result.runs) {
+    try {
+      run.title = (await entry.tracker.getIssue(run.issue)).title;
+    } catch (error) {
+      if (!isIssueNotFound(error)) missed = true;
+    }
+  }
+  if (missed) result.note = `tracker ${entry.location.at} did not answer for some issues; their titles not shown`;
   return result;
+};
+
+/** An entry whose tracker did not build: its runs with null titles when its settings loaded, none when they did not, and the note. */
+const brokenEntryOf = async (entry: BrokenEntry, isAlive: (pid: number) => boolean): Promise<OverviewEntry> => {
+  const note = `tracker of ${entry.name} not built: ${entry.reason}; ready issues not shown`;
+  const base = { name: entry.name, path: entry.repoRoot, unrunnable: null, ready: [], note };
+  if (entry.lister === undefined) return { ...base, tracker: null, runs: [], done: 0 };
+  const { location, shared } = entry.lister;
+  const { runs, done } = await runsOf(entry.root, entry.repoRoot, projectDirs(entry.root, loadSettings(join(entry.root, SETTINGS_FILE))).runs, isAlive);
+  return { ...base, tracker: { type: location.type, location: location.at, shared }, runs, done };
 };
 
 /** Whether something answers an HTTP GET at `url` within half a second. */
@@ -407,7 +444,10 @@ export const overviewOf = async (deps: OverviewDeps): Promise<Overview> => {
   const { root, isAlive } = deps;
   const settings = loadSettings(join(root, SETTINGS_FILE));
   const lookup = await deps.lookup();
-  const loaded = await Promise.all(lookup.repos.map((entry) => entryOf(entry, lookup, isAlive)));
+  const loaded = await Promise.all([
+    ...lookup.repos.map((entry) => entryOf(entry, lookup, isAlive)),
+    ...(lookup.broken ?? []).map((entry) => brokenEntryOf(entry, isAlive)),
+  ]);
   const listed = repoEntries(root, settings);
   // In the order `repos:` lists them, those set aside in their place.
   const entries =
@@ -440,7 +480,7 @@ export const renderOverview = (overview: Overview, now: number): string => {
   const lines: string[] = [];
   if (home) {
     lines.push(`home repository, ${entries.length} ${entries.length === 1 ? "entry" : "entries"}: ${entries.map((e) => e.name).join(", ")}`, `engine ${overview.engine}`);
-    lines.push(...indent(table(entries.map((e) => [e.name, e.tracker !== null ? trackerLine(e.tracker) : `set aside: ${e.unrunnable ?? ""}`])).join("\n")));
+    lines.push(...indent(table(entries.map((e) => [e.name, e.tracker !== null ? trackerLine(e.tracker) : e.unrunnable !== null ? `set aside: ${e.unrunnable}` : "tracker not built"])).join("\n")));
   } else {
     const entry = entries[0];
     lines.push(`single repository ${entry?.name ?? "-"}`, `engine ${overview.engine}`);
@@ -508,7 +548,7 @@ export const statusCommand = async (args: readonly string[], deps: StatusDeps): 
   if (parsed.issue !== undefined) return issueStatus(parsed.issue, parsed.json, deps);
   const overview = await overviewOf({
     root: deps.root,
-    lookup: deps.lookup ?? (() => lookupOf(deps.root)),
+    lookup: deps.lookup ?? (() => overviewLookupOf(deps.root)),
     isAlive: deps.isAlive ?? isProcessAlive,
     probe: deps.probe ?? probeHttp,
     engineVersion: deps.engineVersion ?? ENGINE_VERSION,

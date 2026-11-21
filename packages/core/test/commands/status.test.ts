@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFileEventLog } from "../../src/adapters/eventlog.js";
 import { formatCost } from "../../src/session/cost.js";
 import { formatDuration, laneName, renderStatus, statusCommand, type StatusDeps, type StatusPaths } from "../../src/commands/status.js";
-import { lookupOf, type Lookup } from "../../src/lookup.js";
+import { overviewLookupOf, type Lookup } from "../../src/lookup.js";
 import { fakeTracker, issue, type FakeTracker } from "../fakes/tracker.js";
 import { recordVisit, type Session } from "../../src/exec/scope.js";
 import type { Event } from "../../src/session/events.js";
@@ -369,7 +369,7 @@ describe("sous status: the overview", () => {
     const log = createFileEventLog(eventsFile(runs, id));
     for (const event of events) await log.append(event);
   };
-  const start = (runId: string, at: string): Event => ({ type: "run.start", at, runId, pid: 1, host: "h", sha: "x", flow: "task" });
+  const start = (runId: string, at: string, pid = 1): Event => ({ type: "run.start", at, runId, pid, host: "h", sha: "x", flow: "task" });
   const end = (runId: string, at: string, outcome: "done" | "blocked" | "crashed" | "interrupted"): Event => ({ type: "run.end", at, runId, outcome });
   const open = (runId: string, spanId: string, at: string, step: string): Event => ({ type: "span.open", at, runId, spanId, step, scope: "x" });
   const lock = async (root: string, name: string, pid: number, issueId: string): Promise<void> => {
@@ -377,9 +377,9 @@ describe("sous status: the overview", () => {
     await writeFile(join(root, "locks", name), `${JSON.stringify({ pid, issue: issueId })}\n`);
   };
 
-  /** The lookup `sous watch` builds, each entry's tracker swapped for its fake. */
+  /** The lookup the overview builds, each entry's tracker swapped for its fake. */
   const lookup = (root: string) => async (): Promise<Lookup> => {
-    const built = await lookupOf(root, undefined, "0.9.1");
+    const built = await overviewLookupOf(root, undefined, "0.9.1");
     return { ...built, repos: built.repos.map((r) => ({ ...r, tracker: trackers.get(r.name) ?? r.tracker })) };
   };
 
@@ -408,7 +408,7 @@ describe("sous status: the overview", () => {
   /** One issue of each state in repository `web`: 1 running, 2 blocked, 3 crashed, 4 interrupted, 5 and 6 done, 9 ready. */
   const fixtureRepo = async (): Promise<string> => {
     const root = await repository("web");
-    await run(root, "1", "build", [start("r1", iso(10)), open("r1", "s1", iso(12), "build")]);
+    await run(root, "1", "build", [start("r1", iso(10), LIVE), open("r1", "s1", iso(12), "build")]);
     await lock(root, "1.lock", LIVE, "1");
     await run(root, "2", "review", [start("r1", iso(0)), end("r1", iso(20), "blocked")], true);
     await run(root, "3", "build", [start("r1", iso(0)), end("r1", iso(30), "crashed")]);
@@ -517,7 +517,7 @@ describe("sous status: the overview", () => {
             row("3", "Crashed one", "crashed", "build", iso(30)),
             row("4", "Interrupted one", "interrupted", "implement", iso(40)),
           ],
-          ready: [{ issue: "9", title: "Ready one" }],
+          ready: [{ issue: "9", title: "Ready one", branch: null, worktree: null }],
           done: 2,
           note: null,
         },
@@ -553,7 +553,7 @@ describe("sous status: the overview", () => {
     const root = await repository("web");
     await run(root, "3", "review", [start("r1", iso(0)), end("r1", iso(20), "blocked")], true);
     await run(root, "5", "build", [start("r1", iso(0)), end("r1", iso(30), "crashed")]);
-    await run(root, "7", "build", [start("r1", iso(10)), open("r1", "s1", iso(12), "build")]);
+    await run(root, "7", "build", [start("r1", iso(10), LIVE), open("r1", "s1", iso(12), "build")]);
     await lock(root, "7.lock", LIVE, "7");
     const { deps: d, out } = deps(root);
 
@@ -623,6 +623,162 @@ describe("sous status: the overview", () => {
       { name: "api", path: join(dir, "api"), tracker: true, done: 0 },
       { name: "web", path: join(dir, "web"), tracker: true, done: 2 },
       { name: "gone", path: join(dir, "gone"), tracker: false, done: 0 },
+    ]);
+  });
+  it("shows a live lock without a session as running with - step and since", async () => {
+    const root = await repository("web");
+    await lock(root, "8.lock", LIVE, "8");
+    const { deps: d, out } = deps(root);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    expect(out.join("\n").split("\n").slice(-2)).toEqual(["issue  title  state    step  since", "8      -      running  -     -"]);
+  });
+
+  it("shows since as - for a live lock whose run has not written run.start yet, never the previous run's start", async () => {
+    const root = await repository("web");
+    // The previous run ended; the new one holds the lock but has written nothing yet.
+    await run(root, "7", "review", [start("r1", iso(0), LIVE), open("r1", "s1", iso(5), "review"), end("r1", iso(20), "blocked")], true);
+    await lock(root, "7.lock", LIVE, "7");
+    // The previous run crashed without run.end; the new one, another pid, has written nothing yet.
+    await run(root, "8", "build", [start("r1", iso(0), 7), open("r1", "s1", iso(5), "build")]);
+    await lock(root, "8.lock", LIVE, "8");
+    const { deps: d, out } = deps(root);
+
+    expect(await statusCommand(["--json"], d)).toBe(0);
+
+    const overview = JSON.parse(out[0]!) as { entries: { runs: { issue: string; state: string; since: string | null }[] }[] };
+    expect(overview.entries[0]!.runs.map(({ issue, state, since }) => ({ issue, state, since }))).toEqual([
+      { issue: "7", state: "running", since: null },
+      { issue: "8", state: "running", since: null },
+    ]);
+  });
+
+  it("names an unreadable watch lock as stale without a pid", async () => {
+    const root = await repository("web");
+    await mkdir(join(root, "locks"), { recursive: true });
+    await writeFile(join(root, "locks", "watch.pid"), "not json");
+    const text = deps(root);
+    expect(await statusCommand([], text.deps)).toBe(0);
+    expect(text.out.join("\n")).toContain("\ndaemon: none (stale locks/watch.pid, unreadable)\n");
+
+    const json = deps(root);
+    expect(await statusCommand(["--json"], json.deps)).toBe(0);
+    expect((JSON.parse(json.out[0]!) as { daemon: unknown }).daemon).toEqual({ running: false, pid: null, since: null, stale: true });
+  });
+
+  it("drops only the title a getIssue failed for to -, keeps the other titles and the ready rows, and notes it", async () => {
+    const root = await fixtureRepo();
+    const flaky = trackers.get("web")!;
+    const getIssue = flaky.getIssue.bind(flaky);
+    flaky.getIssue = async (id) => {
+      if (id === "3") throw new Error("gh: rate limited");
+      return getIssue(id);
+    };
+    const { deps: d, out } = deps(root);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    expect(out.join("\n").split("\n").slice(6)).toEqual([
+      "issue  title            state        step       since",
+      "1      Running one      running      build      48m00s",
+      "2      Blocked one      blocked      review     40m00s",
+      "3      -                crashed      build      30m00s",
+      "4      Interrupted one  interrupted  implement  20m00s",
+      "9      Ready one        ready        -          -",
+      "2 done, see sous ui",
+      `tracker ${join(root, "issues")} did not answer for some issues; their titles not shown`,
+    ]);
+  });
+
+  it("leaves the title - and sets no note when the tracker holds no such issue", async () => {
+    const root = await fixtureRepo();
+    trackers.get("web")!.issues.delete("3");
+    const { deps: d, out } = deps(root);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    const lines = out.join("\n").split("\n");
+    expect(lines).toContain("3      -                crashed      build      30m00s");
+    expect(lines.at(-1)).toBe("2 done, see sous ui");
+  });
+
+  it("shows an issue handed back with <labels>:ready after a block, crash or interrupt as one ready row with its session's branch and worktree", async () => {
+    const root = await fixtureRepo();
+    const tracker = trackers.get("web")!;
+    for (const id of ["1", "2", "3", "4"]) tracker.issues.set(id, { ...tracker.issues.get(id)!, labels: ["sous:ready"] });
+    const text = deps(root);
+
+    expect(await statusCommand([], text.deps)).toBe(0);
+
+    expect(text.out.join("\n").split("\n").slice(6)).toEqual([
+      "issue  title            state    step   since",
+      "1      Running one      running  build  48m00s",
+      "2      Blocked one      ready    -      -",
+      "3      Crashed one      ready    -      -",
+      "4      Interrupted one  ready    -      -",
+      "9      Ready one        ready    -      -",
+      "2 done, see sous ui",
+    ]);
+
+    const json = deps(root);
+    expect(await statusCommand(["--json"], json.deps)).toBe(0);
+    const entry = (JSON.parse(json.out[0]!) as { entries: { runs: { issue: string }[]; ready: unknown[] }[] }).entries[0]!;
+    expect(entry.runs.map((r) => r.issue)).toEqual(["1"]);
+    const worktree = (id: string) => join(dir, "web", ".sous", "worktrees", `task-${id}-x`);
+    expect(entry.ready).toEqual([
+      { issue: "2", title: "Blocked one", branch: "task/2-x", worktree: worktree("2") },
+      { issue: "3", title: "Crashed one", branch: "task/3-x", worktree: worktree("3") },
+      { issue: "4", title: "Interrupted one", branch: "task/4-x", worktree: worktree("4") },
+      { issue: "9", title: "Ready one", branch: null, worktree: null },
+    ]);
+  });
+
+  it("notes a tracker module whose factory throws in a single repository, lists its runs with - titles and exits 0", async () => {
+    const root = await repository("web");
+    await writeFile(join(root, "sous.yaml"), `engine: ^0.9.0\nname: web\ntracker: { type: ./boom.mjs, shared: false, labels: sous }\n`);
+    await writeFile(join(root, "boom.mjs"), `export default () => { throw new Error("no token"); };\n`);
+    await run(root, "2", "review", [start("r1", iso(0)), end("r1", iso(20), "blocked")], true);
+    const { deps: d, out, err } = deps(root);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    expect(err).toEqual([]);
+    expect(out.join("\n").split("\n").slice(-3)).toEqual([
+      "issue  title  state    step    since",
+      "2      -      blocked  review  40m00s",
+      "tracker of web not built: no token; ready issues not shown",
+    ]);
+  });
+
+  it("prints the other entries of a home and a note for an entry whose tracker module throws or whose sous.yaml does not load, and exits 0", async () => {
+    const home = await repository("home", "repos: { api: ../api, web: ../web, bad: ../bad }\n");
+    const api = await repository("api");
+    await writeFile(join(api, "sous.yaml"), `engine: ^0.9.0\nname: api\ntracker: { type: ./boom.mjs, shared: false, labels: sous }\n`);
+    await writeFile(join(api, "boom.mjs"), `export default () => { throw new Error("no token"); };\n`);
+    await run(api, "7", "review", [start("r1", iso(0)), end("r1", iso(25), "blocked")], true);
+    const bad = await repository("bad", "uiPort: nope\n");
+    await run(bad, "8", "review", [start("r1", iso(0)), end("r1", iso(25), "blocked")], true);
+    const web = await fixtureRepo();
+    const { deps: d, out, err } = deps(home);
+
+    expect(await statusCommand([], d)).toBe(0);
+
+    expect(err).toEqual([]);
+    const lines = out.join("\n").split("\n");
+    expect(lines.slice(0, 5)).toEqual([
+      "home repository, 3 entries: api, web, bad",
+      "engine 0.9.1",
+      `  api  tracker ${join(api, "boom.mjs")} {}, shared: false`,
+      `  web  tracker local ${join(web, "issues")}, shared: false`,
+      "  bad  tracker not built",
+    ]);
+    expect(lines).toContain("api    7      -                blocked      review     35m00s");
+    expect(lines).toContain("web    9      Ready one        ready        -          -");
+    expect(lines.some((l) => l.startsWith("bad "))).toBe(false);
+    expect(lines.slice(-2)).toEqual([
+      "tracker of api not built: no token; ready issues not shown",
+      expect.stringMatching(/^tracker of bad not built: .*uiPort.*; ready issues not shown$/),
     ]);
   });
 });

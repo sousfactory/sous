@@ -42,9 +42,26 @@ describe("the /sous-run skill", () => {
   });
 
   it("answers status in the fixed layout: mode line, daemon and UI lines, the table, the notes", () => {
-    const order = ["single repository <name>", "daemon: ", "ui: ", "| issue | title | state | step | since |", "done, see sous ui"].map((part) => flat.indexOf(part));
+    const order = ["single repository <name>", "daemon: ", "ui: ", "| issue | title | state | step | since |", "done, see sous ui", "<notes> ```"].map((part) => flat.indexOf(part));
     for (const at of order) expect(at).toBeGreaterThanOrEqual(0);
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("sorts the table itself by state, then entry, then issue, and does not claim the JSON comes ordered", () => {
+    expect(flat).toContain("Sort the rows by state (running, blocked, crashed, interrupted, ready), then by the entries' order in the JSON, then by issue");
+    expect(flat).not.toContain("already comes in");
+  });
+
+  it("runs --restart only after the human confirmed, answering the engine's [y/N] in a foreground call, and reads restart cancelled as cancelled", () => {
+    expect(flat).toContain("`[y/N]` on stdin");
+    expect(flat).toContain("only after the human confirmed");
+    expect(flat).toContain("in a foreground call");
+    expect(flat).toMatch(/exit 1 with `restart cancelled` as a cancelled restart, not as blocked/);
+  });
+
+  it("counts a step's iterations as its spans' iterations entries, the re-entry eval after a block among them", () => {
+    expect(flat).toContain("the number of `iterations` entries of its spans");
+    expect(flat).toMatch(/re-entry eval after a block \(`n: 0`\) counts as one/);
   });
 
   it("starts only an issue named in the same turn, with name#issue in a home, --flow and --restart only when asked", () => {

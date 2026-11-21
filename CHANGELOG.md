@@ -184,8 +184,12 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   whether this is a single repository or a home with its entries, each
   entry's tracker, whether a daemon runs and the run viewer answers, and
   one table of the issues that need attention: running, blocked, crashed,
-  interrupted and ready. `sous status <issue>` prints one issue's facts
-  and timeline as before.
+  interrupted and ready. An issue handed back with `<labels>:ready` after
+  a block, a crash or an interrupt is a ready row, as `sous watch` sees
+  it. A tracker that is not built or does not answer, or a title it does
+  not give, costs that entry a note line, never the overview: it prints
+  the other entries and exits 0. `sous status <issue>` prints one issue's
+  facts and timeline as before.
 - **`sous status --json` and `sous status <issue> --json`.** Both forms
   print the same facts as one JSON document with stable keys, for a
   script or a skill to read instead of the text.

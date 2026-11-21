@@ -57,17 +57,19 @@ ui: <url | not running (sous ui)>
   `ready[]` as rows with state `ready`, step `-` and since `-`. In a home,
   an `entry` column comes first. Sort the rows by state (running,
   blocked, crashed, interrupted, ready), then by the entries' order in
-  the JSON, then by issue number; each entry's `runs[]` already comes in
-  that state order. `since` is an ISO time; print how
+  the JSON, then by issue number; do this yourself, whatever order the
+  JSON lists them in. `since` is an ISO time; print how
   long ago (`12m`, `3h`, `2d`). An empty table is the line `no issue needs
   attention`.
 - **The done line.** The sum of `done` over the entries, only when it is
   more than zero.
-- **Notes.** One line each, in this order: every entry's `note` (the
-  tracker did not answer); every entry with `unrunnable` set, with its
+- **Notes.** After the table and the done line, one line each, in this
+  order: every entry's `note` (its tracker was not built, did not answer,
+  or did not give some titles); every entry with `unrunnable` set, with its
   reason; for a named issue, its current step with visit and iteration,
   the last eval (`step`, ok or failed, `log`), the open work items of
-  `workProgress`, and the `worktree` from its overview row. Nothing else:
+  `workProgress`, and the `worktree` from its overview row (in `runs[]`,
+  or in `ready[]` for an issue handed back after a block). Nothing else:
   no advice unless the human asked a question.
 
 ## Start
@@ -85,7 +87,13 @@ turn.
 - `--flow <flow>` only when the human names a flow.
 - `--restart` only when the human says the branch is wrong, and only
   after saying what will be removed: the run record under `runs/<issue>/`,
-  the worktree and the branch, with every commit on it not merged.
+  the worktree and the branch, with every commit on it not merged. The
+  engine asks `[y/N]` on stdin before it removes anything, and a tool call
+  cannot answer it interactively: run `--restart` only after the human
+  confirmed in the conversation, in a foreground call that answers their
+  yes on stdin (`printf 'y\n' | sous run <issue> --restart`). Read exit 1
+  with `restart cancelled` as a cancelled restart, not as blocked: nothing
+  was removed and nothing ran.
 - A run takes long. Start it in the background when the session can, and
   answer with the issue and how to watch it (`sous status <issue>` or the
   ui line). Report its exit when it ends: 0 done, 1 blocked or crashed or
@@ -128,8 +136,9 @@ short list or table:
 1. **Runs**: each segment's start, duration, flow and `outcome`
    (`running` when it has no end yet), `resumedFrom` when set, `error`
    when it crashed.
-2. **Steps**: per step, the visits (spans) and iterations (the sum of
-   their `iterations`), and whether its last visit was ok.
+2. **Steps**: per step, the visits (spans), the iterations (the number
+   of `iterations` entries of its spans; the re-entry eval after a block
+   (`n: 0`) counts as one), and whether its last visit was ok.
 3. **Time**: total agent time (the `agent` intervals of the iterations)
    and total eval time (the `eval` intervals), beside the wall time.
 4. **Cost**: the sum of the runs' `costUsd` when any is known, marked a
