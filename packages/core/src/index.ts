@@ -15,6 +15,7 @@ export { loadStep, type Step, type StepInput } from "./config/step.js";
 export { validateProject, type ProjectReport, type ValidationError } from "./config/validate.js";
 export { renderGraph } from "./commands/graph.js";
 export { SousError } from "./exec/errors.js";
+export { ISSUE_NOT_FOUND, IssueNotFoundError, isIssueNotFound } from "./ports/tracker.js";
 export { isOutput } from "./session/events.js";
 export type { TrackerEnv, TrackerFactory } from "./tracker.js";
 export { existingSpecDirName, specDirName } from "./session/paths.js";

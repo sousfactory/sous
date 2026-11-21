@@ -7,7 +7,7 @@
 import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SousError } from "../exec/errors.js";
-import { byId, isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { byId, IssueNotFoundError, isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { safeId } from "../session/paths.js";
 
 export const issueFile = (dir: string, id: string): string => join(dir, `${safeId(id)}.json`);
@@ -22,8 +22,11 @@ export const createLocalTracker = ({ dir, labelPrefix = "sous", clock = () => ne
     let text: string;
     try {
       text = await readFile(issueFile(dir, id), "utf8");
-    } catch {
-      throw new SousError(`local issues: ${issueFile(dir, id)} does not exist; import the issue first`);
+    } catch (error) {
+      const message = `local issues: ${issueFile(dir, id)} does not exist; import the issue first`;
+      // Only a missing file is a missing issue; one that cannot be read is a broken tracker.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new IssueNotFoundError(message);
+      throw new SousError(`local issues: ${issueFile(dir, id)} cannot be read: ${(error as Error).message}`);
     }
     const stored = JSON.parse(text) as Stored;
     if (stored.id !== id) throw new SousError(`local issues: ${issueFile(dir, id)} holds id ${String(stored.id)}, not ${id}`);

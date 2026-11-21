@@ -100,7 +100,9 @@ definitions-only `.sous/` into each listed repository with `sous init
 --no-install <path>`, offering per repository the `npm install` in its
 `.sous/` for authoring steps and running their tests, adapts and
 validates each, and ends by naming `./sous watch` in the home repository
-and the `repo:<name>` labels to create.
+and, for repositories on a shared planning tracker, the `repo:<name>`
+labels to create. In both paths it writes each repository's `tracker:`
+block with you: type, location, `shared` and `labels`.
 
 **Moving a repository to definitions-only.** When a home repository sits
 beside the checkout or the human names one, `/sous-migrate` (or
@@ -110,8 +112,8 @@ its own engine to definitions only: it removes the `sous` wrapper and
 `engine:` for the home repository's engine, registers the repository in
 `repos:` there, lists the scripts that called `./sous`, validates with the
 home engine, and ends with the message for the repository's users: runs
-start in the home repository (`repo:<name>` and `sous:ready`, or `./sous
-run <issue>` there), and `npm install` in `.sous/` restores a local engine
+start in the home repository (`sous:ready`, plus `repo:<name>` on a
+shared tracker, or `./sous run <issue>` there), and `npm install` in `.sous/` restores a local engine
 for authoring.
 
 ### By hand
@@ -203,8 +205,9 @@ init: still to do by hand:
    taken against `ctx.baseBranch`. Until `CHECKS` is filled, every verify passes and
    writes `WARN: no checks configured` into its log, so the gap is visible
    in `sous status` and the UI. See [how-to 13](#13-change-the-check-commands).
-2. **`sous.yaml`.** `tracker` (`github` by default, `beads` for bd),
-   `baseBranch`, the `branch` template for run branches, `lifecycle`
+2. **`sous.yaml`.** The `tracker:` block (init writes `type: github`
+   with `repo` read from the checkout's origin, or the `owner/name`
+   placeholder to replace; `type: beads` for bd), `baseBranch`, the `branch` template for run branches, `lifecycle`
    (whether the run itself claims and closes the issue). `engine:` is
    written by init as a caret on its own version; widen it when the
    definitions are known to run on more. See
@@ -226,7 +229,7 @@ init: still to do by hand:
    and one agent step without touching the issue or the code.
 
 After `--no-install` item 5 reads `SOUS_ROOT=<path>/.sous sous validate`,
-then `sous run <issue> --repo <name> --flow bench` in the home repository,
+then `sous run <name>#<issue> --flow bench` in the home repository,
 and a line says that `package.json` serves the editor and the tests.
 
 ## 2. Engine, project, UI
@@ -627,21 +630,25 @@ the agent's tool calls; mismatches are warnings only.
 
 ## 9. Settings: `sous.yaml`
 
-Every key but `engine` has a default; `engine` is required, and unknown
-keys are an error.
+Every key but `engine` and `tracker` has a default; those two are
+required by `sous validate`, `sous run` and `sous watch` (`sous status`
+and the run viewer read a project without them), and unknown keys are an
+error.
 
 ```yaml
 engine: ^0.9.0                                    # the engines these definitions are written for; sous init writes it
 baseBranch: main
 branch: feature/${{ issue.id }}-${{ slug }}       # JS over issue { id, title } and slug
-labelPrefix: sous                                 # sous:running / sous:blocked by the run, sous:merged by the merge step
 lifecycle: core                                   # core: the run claims, blocks and closes its issue; steps: steps do all writes
 idleTimeoutSeconds: 1800                          # agent idle timeout
 uiPort: 4680                                      # sous ui on 127.0.0.1:<uiPort>; one per project on a machine, --port wins
-tracker: github                                   # github, beads, local, or the path of a project module
-trackerOptions: {}                                # handed to the tracker; local takes { dir }, github { repo }
+tracker:                                          # where this repository's issues live; no key has a default
+  type: github                                    # github, beads, local, or the path of a project module
+  repo: acme/api                                  # github: owner/name of the repository the issues live in; local: dir
+  shared: false                                   # true when the tracker holds the issues of several repositories
+  labels: sous                                    # sous:running / sous:blocked by the run, sous:merged by the merge step
 name: api                                         # this repository in repo:<name> labels; unset: origin's repo part, else the folder
-repos: { api: ../api }                            # the repositories sous watch serves from here; unset: this one
+repos: { api: ../api }                            # the repositories sous run and sous watch serve from here; unset: this one
 specsDir: ../specs                                # spec folders: <specsDir>/<issue>-<slug>/
 flowsDir: flows
 stepsDir: steps
@@ -652,8 +659,45 @@ runsDir: runs                                     # gitignored
 ```
 
 Folders are relative to `.sous/`; `repos` paths to the repository
-([how-to 21](#21-multi-repo-setup)). `engine`, `name` and `repos` have no default;
-`engine` is the one required key.
+([how-to 21](#21-multi-repo-setup)). `engine`, `tracker`, `name` and
+`repos` have no default; `engine` and `tracker` are required.
+
+**The `tracker:` block.** `type`, `shared` and `labels` are required, and
+so is the type's location: `repo: owner/name` for `github`, `dir` (relative
+to `.sous/`) for `local`, nothing for `beads`, which takes the checkout. A
+module type takes whatever further keys it documents under the same
+block. Each missing key is refused with a message naming it; `repo:
+owner/name`, the placeholder `sous init` writes for a checkout without an
+origin, counts as missing. The checkout's origin is never used at run
+time.
+
+`shared` says whose issues the tracker holds. `shared: false`: this
+repository's alone, so an issue it lists runs here and needs no label.
+`shared: true`: several repositories' issues (a planning tracker), so an
+issue runs in the repository its one `repo:<name>` label names, and one
+without is skipped with `tracker <location> is shared; add repo:<name>`.
+`labels` is the prefix of `<labels>:ready`, `<labels>:running` and
+`<labels>:blocked`. `sous watch` applies this rule, and so does `sous run`
+in a home repository; `sous run <issue>` in a repository without `repos:`
+runs the issue it is given whatever its labels
+([how-to 20](#20-run-as-an-automated-loop), [how-to 21](#21-multi-repo-setup)).
+
+The keys before the block are refused by `sous validate`, `sous run`,
+`sous watch` and the run viewer, one message per key, before any schema
+error: `tracker: github` (a string) with `tracker is now a block: tracker:
+{ type: github, repo: owner/name, shared: false, labels: sous }`,
+`trackerOptions.repo` with `trackerOptions.repo is now tracker.repo` (and
+so for every key under it), `labelPrefix` with `labelPrefix is now
+tracker.labels`.
+
+```yaml
+# before                          # after
+tracker: github                   tracker:
+trackerOptions:                     type: github
+  repo: acme/api                    repo: acme/api
+labelPrefix: sous                   shared: false
+                                    labels: sous
+```
 Models, caps and commands live in flows
 and steps, not here.
 
@@ -689,7 +733,7 @@ engine talks to it through one port, `Tracker`, which steps reach as
 
 | Method | Meaning |
 | --- | --- |
-| `getIssue(id)` | `{ id, ref, title, body, labels, state }`. `id` is the tracker's own id; `ref` is how it writes it in text. |
+| `getIssue(id)` | `{ id, ref, title, body, labels, state }`. `id` is the tracker's own id; `ref` is how it writes it in text. An id the tracker has no issue under throws `IssueNotFoundError` (exported by `sous-factory`), or any error whose `code` is `"ISSUE_NOT_FOUND"`; `sous run` in a home repository counts only that as a miss and stops at any other error. |
 | `children(parent)` | Ids of the native children, open and closed, in the order work should pick them. |
 | `parent(id)` | Id of the native parent, or `undefined`. |
 | `blockers(id)` | Ids of the issues still open that must close before `id` may start. |
@@ -708,19 +752,19 @@ engine talks to it through one port, `Tracker`, which steps reach as
 
 ### Built-in trackers
 
-**`github`** (default). Issues are read with `gh issue view` and listed
+**`github`**. Issues are read with `gh issue view` and listed
 with `gh api --paginate` over the open issues with the labels, every page,
 pull requests left out; children are
 native sub-issues ordered by number, blockers are the issue numbers under
 a `## Blocked by` heading in the body (as `/sous-plan` writes them); a
 line `owner/repo#n` names an issue of another repository, which `gh` is
 asked about (`blockers()` and `isClosed()`).
-`claim` sets `<labelPrefix>:running`, `block` sets `<labelPrefix>:blocked`
-and comments, `close` closes. Labels are created on first use. `#96` and
-`96` name the same issue. `gh` infers the repository from the checkout;
-`trackerOptions: { repo: owner/name }` addresses that repository instead
-on every call (`-R owner/name`, and the path of each `gh api` endpoint),
-for a repository whose issues live in another one
+`claim` sets `<labels>:running`, `block` sets `<labels>:blocked`
+and comments, `close` closes (`<labels>` is `tracker.labels`). Labels are
+created on first use. `#96` and `96` name the same issue. `tracker.repo`
+(`owner/name`, required) is addressed on every call (`-R owner/name`, and
+the path of each `gh api` endpoint); the checkout's origin is never
+asked, so a repository whose issues live in another one names that one
 ([how-to 21](#21-multi-repo-setup)).
 
 **`beads`** (`bd`). `sous run <bead-id>`. Issues are read live with
@@ -733,7 +777,7 @@ the run's branch, so two runs never take the same bead; `close` is `bd
 close`; comments go to `<runsDir>/<id>/comments.md`, since bd has none.
 
 **`local`**. Issues as files for a repository whose tracker sous must not
-touch: `trackerOptions: { dir: issues }`, one `<id>.json` per issue with
+touch: `tracker: { type: local, dir: issues, shared: false, labels: sous }`, one `<id>.json` per issue with
 `{ id, title, body, labels, state }` and optional `children` and
 `blockedBy` id lists; comments are appended to `<id>.comments.md`;
 `list` scans the folder. Nothing leaves the machine.
@@ -745,7 +789,7 @@ issue saying so.
 
 ### Writing a tracker module
 
-Any other `tracker:` value is a path relative to `.sous/`, loaded like a
+Any other `tracker.type` is a path relative to `.sous/`, loaded like a
 step module. Its default export is a `TrackerFactory`:
 
 ```ts
@@ -753,7 +797,7 @@ step module. Its default export is a `TrackerFactory`:
 import type { Tracker, TrackerFactory } from "sous-factory";
 
 const factory: TrackerFactory = (options, env) => {
-  // options: `trackerOptions` from sous.yaml; env: { root, repoRoot, runsDir, labelPrefix }
+  // options: the tracker: block of sous.yaml; env: { root, repoRoot, runsDir, labelPrefix } (labelPrefix is tracker.labels)
   const project = String(options["project"] ?? "");
   const tracker: Tracker = {
     getIssue: async (id) => { /* GET /issue/<id> */ return { id, ref: id, title: "…", body: "…", labels: ["type:task"], state: "open" }; },
@@ -776,8 +820,7 @@ export default factory;
 
 ```yaml
 # sous.yaml
-tracker: trackers/jira.ts
-trackerOptions: { project: CA }
+tracker: { type: trackers/jira.ts, shared: false, labels: sous, project: CA }
 ```
 
 `sous validate` builds the module and lists any port method it lacks;
@@ -887,7 +930,7 @@ changes nothing). Everything else on the tracker, such as the
 
 ```
 sous init [--starter <dir>] [--force] [--no-install] [<path>]  # copy a starter into .sous/ (of <path>), npm install, add the /sous-plan skill, print the checklist; --no-install: definitions only
-sous run <issue> [--flow <name>] [--restart]  # validate, then start or continue; <issue> is the tracker's id (96, #96, a bead id)
+sous run <issue | name#issue> [--flow <name>] [--restart]  # validate, then start or continue; <issue> is the tracker's id (96, #96, a bead id); name#issue: a repos: entry's tracker alone
 sous status <issue>                   # session facts and the timeline
 sous graph <flow>                     # Mermaid diagram from the YAML
 sous validate                         # sous.yaml, every flow and step, the tracker module
@@ -1204,12 +1247,16 @@ issue with no new scope changes nothing and commits nothing, which is what
 makes the skill safe to call twice and lets it bring a hand-filed feature
 into shape.
 
-At GO the issue and every child get exactly one `repo:<name>` label,
-created in the tracker when missing, which tells `sous watch` where the
-work runs ([how-to 21](#21-multi-repo-setup)): the repository's own name,
-or in a home repository the `repos:` entry the session asked for in its
-first step, whose checkout then holds the spec, the commit and the
-settings. A feature's children carry the parent's label; work spanning
+In a home repository the session first asks which `repos:` entry the
+work targets; that checkout then holds the spec, the commit, the
+settings and the tracker. On a shared tracker (`tracker.shared: true`),
+at GO the issue and every child get exactly one `repo:<name>` label,
+created in the tracker when missing, which tells `sous watch`, and
+`sous run` in a home repository, which repository runs the work ([how-to 21](#21-multi-repo-setup)):
+the repository's own name, or the chosen entry's. On a repository's own
+tracker (`shared: false`) the session sets no `repo:*` label: the tracker
+already says where the issue runs. A feature's children carry the
+parent's label; work spanning
 repositories is an epic, which the procedure does not plan. A second gate
 follows: the session asks once whether the work may start now,
 recommending yes. On a yes it sets `sous:ready` on the issue itself (never
@@ -1259,7 +1306,7 @@ not ship.
 **Files:** `sous.yaml`; for a module, a file under `.sous/`.
 
 ```yaml
-tracker: beads                      # bd; run as sous run <bead-id>
+tracker: { type: beads, shared: false, labels: sous }   # bd; run as sous run <bead-id>
 ```
 
 The plan phase follows the tracker too, through `trackers/<tracker>.md`:
@@ -1271,13 +1318,11 @@ edits the JSON files. A module tracker gets a sheet of its own beside it
 shipped ones: the same headings, the module's commands.
 
 ```yaml
-tracker: local                      # files under .sous/issues/
-trackerOptions: { dir: issues }
+tracker: { type: local, dir: issues, shared: false, labels: sous }   # files under .sous/issues/
 ```
 
 ```yaml
-tracker: trackers/jira.ts           # a module of your own, see chapter 10
-trackerOptions: { project: CA }
+tracker: { type: trackers/jira.ts, shared: false, labels: sous, project: CA }   # a module of your own, see chapter 10
 ```
 
 What changes with the tracker: how `ref` is written (`#96` on GitHub, the
@@ -1332,17 +1377,28 @@ machine that works through the queue overnight, or a cron entry.
 ```
 
 **What it picks up.** A human marks an issue ready for the factory with
-`<labelPrefix>:ready` (`sous:ready`), by hand or on the tracker's web page,
+`<labels>:ready` (`sous:ready`), by hand or on the tracker's web page,
 or by answering yes at `/sous-plan`'s second gate. Each pass takes the open issues carrying it,
-lowest number first, and starts `sous run <issue> --flow <flow>` of its own
+lowest number first, from the tracker of the `tracker:` block, and starts `sous run <issue> --flow <flow>` of its own
 engine, with `SOUS_ROOT` at the repository's `.sous/`, for the first one that has no open blockers (`blockers()`)
 and whose labels pick one flow, by the rule of `sous run <issue>`
 ([6. Flows](#6-flows)). One run
 at a time: while a run holds a live lock in `.sous/locks/`, its own or one
 a human started by hand, nothing else starts. The run's claim swaps
-`sous:ready` for `sous:running`, so an issue never starts twice. An
-issue labelled `repo:<name>` for another repository is skipped; a home
-repository serving several is [how-to 21](#21-multi-repo-setup).
+`sous:ready` for `sous:running`, so an issue never starts twice.
+
+**One lookup.** `sous watch` finds an issue by one rule: the repository
+whose tracker listed it runs it. On the
+repository's own tracker (`shared: false`) every listed issue is this
+repository's; one labelled `repo:<name>` for another repository is
+skipped. On a shared tracker (`shared: true`) only an issue labelled with
+this repository's name runs here; one without a `repo:*` label is skipped
+with `tracker <location> is shared; add repo:<name>`. `sous run <issue>`
+typed in this repository applies none of this: it runs the issue it is
+named, labels or not, as before. A home repository serving several
+repositories runs the same lookup over each of them, for `sous watch`
+and, without the ready label, for `sous run <issue>` typed there
+([how-to 21](#21-multi-repo-setup)).
 
 **What it says.** One line per action: started, rerun, a push a run
 reported, a run that exited with an error, an issue skipped and why. A
@@ -1421,26 +1477,83 @@ records, logs and worktrees stay in the repository's own `.sous/`,
 whichever engine started the run, so its `./sous status` finds them.
 
 **`sous run` in the home repository.** `sous run <issue>` typed there
-asks the home repository's tracker for the issue and runs it in the entry
-its `repo:<name>` label names, exactly as the daemon would start it;
-`--repo <name>` picks the entry instead of the label. No `repo:*` label,
-a name not in `repos:`, or an unknown `--repo` exits 2 with the daemon's
-message, the last naming the known entries. An issue routed to the home
-repository itself (`planning: .`) runs right there, as a `sous run` without
-`repos:` would. Ctrl-C reaches the run as it does one typed in the
-repository.
+looks the issue up as the daemon does, without the ready label: it asks
+every distinct tracker of the entries (by type and location, so entries
+sharing a tracker ask it once) and runs the issue where the daemon's rule
+says, started exactly as the daemon would start it. The home repository's
+own tracker is asked only when the list names the home itself.
 
-**The repo label.** With `repos:`, an issue runs where its `repo:<name>`
-label says, even when several repositories share one tracker; an issue
-reachable through two trackers is considered once. An issue without a
-`repo:*` label, or naming no entry, is reported once and skipped: nothing
-is inferred from the tracker it lives in. Without `repos:`, `sous watch`
-serves its own repository and skips an issue labelled with another
-repository's name. A repository's name is `name:` in its `sous.yaml`,
-else the repository part of its `origin` remote, else its folder.
+- Held open by several trackers, the number is refused with exit 2,
+  listing `sous run <name>#<issue>` for each entry that holds it; nothing
+  starts.
+- `sous run <name>#<issue>` asks entry `<name>`'s tracker alone and
+  treats the issue as listed by it; a name not in `repos:` exits 2
+  naming the known entries.
+- Held by none, or closed wherever held, exits 2 naming the trackers
+  asked. A tracker that fails to answer (a network error, a broken issue
+  file) stops the lookup with exit 2 naming it and its error, so a
+  tracker that is down never lets another's issue of the same number run.
+- The daemon's skip reasons (a shared tracker's issue without a
+  `repo:<name>` label, a label naming no entry or another repository) exit
+  2 with the same words.
+- `--repo` is gone: `sous run 42 --repo api` exits 2 naming
+  `sous run api#42`.
+
+An issue routed to the home repository itself (`planning: .`) runs right
+there, as a `sous run` without `repos:` would. Ctrl-C reaches the run as
+it does one typed in the repository.
+
+**Where an issue runs.** The lookup of [how-to 20](#20-run-as-an-automated-loop),
+over every entry's own `tracker:` block: an issue runs in the entry whose
+tracker listed it. An unshared tracker's issue runs in its entry, with no
+`repo:*` label or one naming that entry; one naming another repository is
+skipped. A shared tracker's issue runs in the entry its one
+`repo:<name>` label names; without one it is skipped with `tracker
+<location> is shared; add repo:<name>`, with several or with a name that
+is no entry it is skipped too, each reported once. Entries whose
+trackers have the same type and location list the same issue; it runs
+once, in the entry its label names. Two such entries are a `sous
+validate` error in the home repository and a refusal of `sous watch`
+there unless both say `shared: true`. A repository's name is `name:` in
+its `sous.yaml`, else the repository part of its `origin` remote, else
+its folder.
+
+**Repositories that own their issues.** Each repository keeps its issues
+on its own GitHub repository:
+
+```yaml
+# planning/.sous/sous.yaml (the home repository)
+repos: { api: ../api, web: ../web }
+# api/.sous/sous.yaml
+tracker: { type: github, repo: acme/api, shared: false, labels: sous }
+# web/.sous/sous.yaml
+tracker: { type: github, repo: acme/web, shared: false, labels: sous }
+```
+
+`acme/api#42` labelled `sous:ready` runs in `api`; no `repo:*` label is
+needed. `sous run 42` in the home repository asks `acme/api` and
+`acme/web`; when both hold an open #42 it exits 2 naming `sous run
+api#42` and `sous run web#42`.
+
+**A shared planning tracker.** Every issue lives on one planning
+repository, and the label picks the code repository:
+
+```yaml
+# planning/.sous/sous.yaml (the home repository)
+repos: { api: ../api, web: ../web }
+# api/.sous/sous.yaml and web/.sous/sous.yaml, the same location in both
+tracker: { type: github, repo: acme/planning, shared: true, labels: sous }
+```
+
+`acme/planning#42` labelled `repo:web` and `sous:ready` runs in `web`,
+and its start line names the tracker: `#42: running in web
+(acme/planning)`. Without a `repo:*` label it is skipped with `tracker
+acme/planning is shared; add repo:api or repo:web`. `sous run 42` asks
+`acme/planning` once. Create the `repo:<name>` labels there (`gh label
+create repo:web -R acme/planning`); `/sous-plan` sets them at GO.
 
 **Issues kept elsewhere.** A GitHub-tracked repository whose issues live
-in another repository sets `trackerOptions: { repo: owner/name }`
+in another repository names it in `tracker.repo: owner/name`
 ([chapter 10](#10-trackers)). Under `## Blocked by`, `owner/repo#n` names
 a blocker in another GitHub repository.
 
@@ -1527,6 +1640,11 @@ what to skip or change in the skill.
 | `package.json: package: … load as CommonJS …` from `sous validate` | Steps and tracker modules are ES modules: add `"type": "module"` to `.sous/package.json`, or create it with that line; [chapter 5](#5-steps). |
 | `validate: … input "x" has no placeholder in the prompt` | Every declared input must be used; add `{{x}}` to the prompt or mark the input `prompt: false` when prepare or eval reads it. |
 | `validate: route to "…" names no step id` / `the last route must be an else` | Routes need an existing target and a fallthrough; see [chapter 6](#6-flows). |
+| `sous run: issue 42 is in several trackers; name the entry: sous run web#42, …` | In a home repository more than one entry's tracker holds that number open. Type the qualified form for the entry you mean; [chapter 21](#21-multi-repo-setup) describes the lookup. |
+| `tracker is now a block: …`, `trackerOptions.<key> is now tracker.<key>`, `labelPrefix is now tracker.labels` | A `sous.yaml` written before the `tracker:` block. Move each key as the message says; [chapter 9](#9-settings-sousyaml) shows the old and new block side by side. |
+| `#42 skipped: tracker acme/planning is shared; add repo:web` from `sous watch`, or `sous run: #42: tracker …` | The issue lives on a tracker several repositories share (`shared: true`), so it needs one `repo:<name>` label naming the repository that runs it. Add the label; [chapter 21](#21-multi-repo-setup). On a repository's own tracker, set `shared: false`. |
+| `tracker is required: tracker: { … }` | `sous.yaml` has no `tracker:` block. Add it with the type, location, `shared` and `labels`; [chapter 9](#9-settings-sousyaml). A home repository whose `repos:` does not name itself needs none. |
+| `tracker.repo is required for github: … not the owner/name placeholder` | `sous init` found no origin and wrote the placeholder, or the key is missing. Set `tracker.repo` to the `owner/name` of the repository the issues live in. |
 | `tracker: … the tracker lacks children, parent` | The tracker module's default export is missing port methods; [chapter 10](#10-trackers) lists them. |
 | The run stops `blocked` right after `implement` | The verify checks failed three times; the issue comment carries the last log. Fix the worktree by hand and run the same command; it re-enters at the eval. |
 | The run stops `blocked` at `review` and you disagree with a finding | Edit the spec in the worktree (`specs/<id>-*/spec.md` on the branch) or the issue body, then run the same command. Both are read again at start, the recorded findings fail the eval, and a fresh reviewer judges against the edited text; the old reviewer session is not resumed. |

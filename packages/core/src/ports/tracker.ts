@@ -46,6 +46,22 @@ export type Tracker = {
   list(query: { labels: readonly string[] }): Promise<Issue[]>;
 };
 
+/** The `code` of an error saying the tracker holds no issue under the id asked for. */
+export const ISSUE_NOT_FOUND = "ISSUE_NOT_FOUND";
+
+/**
+ * `getIssue`'s answer when the tracker definitely holds no such issue, as
+ * opposed to failing to answer. `sous run` in a home repository asks every
+ * entry's tracker for an id and counts only this as a miss; any other error
+ * stops it. A tracker module throws it, or any error with this `code`.
+ */
+export class IssueNotFoundError extends SousError {
+  readonly code = ISSUE_NOT_FOUND;
+}
+
+/** Whether `error` says the tracker holds no such issue; by `code`, so a module's own error class counts too. */
+export const isIssueNotFound = (error: unknown): boolean => typeof error === "object" && error !== null && (error as { code?: unknown }).code === ISSUE_NOT_FOUND;
+
 /** What a project's own tracker module must implement; `sous validate` checks for these. */
 export const TRACKER_METHODS = ["getIssue", "children", "parent", "blockers", "claim", "block", "close", "setStateLabel", "comment", "isClosed", "list"] as const;
 

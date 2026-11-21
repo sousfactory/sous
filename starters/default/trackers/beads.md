@@ -1,9 +1,10 @@
 # Tracker sheet: beads
 
-How `/sous-plan` speaks to the tracker when `sous.yaml` says `tracker:
-beads`. The run phase uses the engine's bd adapter; this sheet is its prose
-twin, so the plan prompt can name a verb and this file says the command.
-Everything goes through the `bd` CLI in the repository.
+How `/sous-plan` speaks to the tracker when the `tracker:` block of
+`sous.yaml` says `type: beads`. The run phase uses the engine's bd adapter;
+this sheet is its prose twin, so the plan prompt can name a verb and this
+file says the command. Everything goes through the `bd` CLI in the
+repository. `<labels>` is `tracker.labels`.
 
 ## Identity
 
@@ -15,13 +16,15 @@ Everything goes through the `bd` CLI in the repository.
   bead. Never set a label for the kind.
 - **State labels:** the run phase claims a bead with `bd update --claim`
   under an actor named `… (sous:<branch>)`, and adds the bd label
-  `<labelPrefix>:blocked` (`sous:blocked` by default) when it stops. A bead
+  `<labels>:blocked` (`sous:blocked` by default) when it stops. A bead
   whose status is `in_progress` and whose owner names `sous:` is running; a
-  bead with the blocked label is blocked. `<labelPrefix>:ready` is set by
+  bead with the blocked label is blocked. `<labels>:ready` is set by
   a human; `/sous-plan` sets it only through **set ready**, on a yes at its
   second gate.
 - **Repo label:** the bd label `repo:<name>`, one per bead, naming the
-  repository the work runs in. bd labels need no creating; the run phase
+  repository the work runs in, set only on an issue of a shared tracker
+  (`tracker.shared: true`); on an unshared tracker the bead carries none.
+  bd labels need no creating; the run phase
   reads them as they are.
 
 ## Verbs
@@ -53,15 +56,15 @@ Everything goes through the `bd` CLI in the repository.
   Blockers are `blocks` dependencies, never text in the body.
 - **Set the acceptance criteria:** `bd update <id> --acceptance "<checklist>"`;
   the description stays as it is.
-- **Set the repo label:** `bd update <id> --add-label repo:<name>`, adding
+- **Set the repo label:** on a shared tracker only: `bd update <id> --add-label repo:<name>`, adding
   `--remove-label <other>` for any other `repo:*` label the bead carries.
-- **Set ready:** `bd update <id> --add-label <labelPrefix>:ready`; bd labels
+- **Set ready:** `bd update <id> --add-label <labels>:ready`; bd labels
   need no creating.
 
 ## Child shape
 
-A child is in shape when it is a task under the parent carrying the
-parent's `repo:<name>` label, its description
+A child is in shape when it is a task under the parent carrying, on a
+shared tracker, the parent's `repo:<name>` label, its description
 is the `## What to build` text of `.sous/templates/child.md` (what to
 build from the user's perspective, without the heading), its
 `acceptance_criteria` field holds the checklist, and its blockers are

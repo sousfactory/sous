@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Exec } from "../../src/adapters/exec.js";
-import { repoEntries, repoNameOf, routeIssue } from "../../src/config/repos.js";
+import { repoEntries, repoNameOf, routeIssue, sameLocationProblems, trackerLocationOf } from "../../src/config/repos.js";
 import { DEFAULT_SETTINGS, parseSettings } from "../../src/config/settings.js";
 import { validateProject } from "../../src/config/validate.js";
 
@@ -80,32 +80,6 @@ describe("sous validate with repos", () => {
   });
 });
 
-describe("routeIssue", () => {
-  const listed = { entries: ["a", "b"] };
-
-  it("routes an issue of a home repository to the entry its repo: label names", () => {
-    expect(routeIssue(["type:task", "repo:b"], listed)).toEqual({ to: "b" });
-  });
-
-  it("refuses an issue without a repo: label, with several, or naming no entry", () => {
-    expect(routeIssue(["type:task"], listed)).toEqual({ reason: "no repo:* label names its repository" });
-    expect(routeIssue(["repo:a", "repo:b"], listed)).toEqual({ reason: "carries several repo:* labels (repo:a, repo:b); keep one" });
-    expect(routeIssue(["repo:zzz"], listed)).toEqual({ reason: "repo:zzz names no entry of repos: (a, b)" });
-  });
-
-  it("takes an override over the label, and refuses one naming no entry", () => {
-    expect(routeIssue(["repo:a"], listed, "b")).toEqual({ to: "b" });
-    expect(routeIssue([], listed, "b")).toEqual({ to: "b" });
-    expect(routeIssue(["repo:a"], listed, "zzz")).toEqual({ reason: "--repo zzz names no entry of repos: (a, b)" });
-  });
-
-  it("without repos: routes to the one repository an issue without a label or naming it", () => {
-    expect(routeIssue(["type:task"], { self: "app" })).toEqual({ to: "app" });
-    expect(routeIssue(["repo:app"], { self: "app" })).toEqual({ to: "app" });
-    expect(routeIssue(["repo:web"], { self: "app" })).toEqual({ reason: "repo:web names another repository than app" });
-  });
-});
-
 describe("repoNameOf", () => {
   const origin =
     (url: string | undefined): Exec =>
@@ -125,5 +99,81 @@ describe("repoNameOf", () => {
 
   it("is the folder name without an origin remote", async () => {
     expect(await repoNameOf("/w/checkout", DEFAULT_SETTINGS, origin(undefined))).toBe("checkout");
+  });
+});
+
+describe("routeIssue for an issue a tracker listed", () => {
+  const unshared = (name: string) => ({ name, shared: false, location: { type: "github", at: `acme/${name}` } });
+  const planning = { type: "github", at: "acme/planning" };
+  const onPlanning = (name: string) => ({ name, shared: true, location: planning });
+
+  describe("on an unshared tracker", () => {
+    const scope = { listedBy: unshared("api"), entries: [unshared("api"), onPlanning("web")], home: true };
+
+    it("runs in the entry that listed it, without a label or with one naming that entry", () => {
+      expect(routeIssue(["type:task"], scope)).toEqual({ to: "api" });
+      expect(routeIssue(["repo:api"], scope)).toEqual({ to: "api" });
+    });
+
+    it("skips one naming another repository, entry or not", () => {
+      expect(routeIssue(["repo:web"], scope)).toEqual({ reason: "repo:web names another repository than api" });
+      expect(routeIssue(["repo:zzz"], scope)).toEqual({ reason: "repo:zzz names another repository than api" });
+    });
+  });
+
+  describe("on a shared tracker", () => {
+    const scope = { listedBy: onPlanning("web"), entries: [unshared("api"), onPlanning("web"), onPlanning("docs"), { name: "gone" }], home: true };
+
+    it("runs in the entry its label names among those on the tracker", () => {
+      expect(routeIssue(["repo:docs"], scope)).toEqual({ to: "docs" });
+      expect(routeIssue(["repo:web"], scope)).toEqual({ to: "web" });
+    });
+
+    it("skips an unlabelled issue, naming the tracker and the labels that would place it", () => {
+      expect(routeIssue(["type:task"], scope)).toEqual({ reason: "tracker acme/planning is shared; add repo:web or repo:docs" });
+      expect(routeIssue([], { listedBy: onPlanning("app"), entries: [onPlanning("app")], home: false })).toEqual({ reason: "tracker acme/planning is shared; add repo:app" });
+    });
+
+    it("skips several labels and an unknown name with the existing reasons", () => {
+      expect(routeIssue(["repo:web", "repo:docs"], scope)).toEqual({ reason: "carries several repo:* labels (repo:web, repo:docs); keep one" });
+      expect(routeIssue(["repo:zzz"], scope)).toEqual({ reason: "repo:zzz names no entry of repos: (api, web, docs, gone)" });
+      expect(routeIssue(["repo:web"], { listedBy: onPlanning("app"), entries: [onPlanning("app")], home: false })).toEqual({ reason: "repo:web names another repository than app" });
+    });
+
+    it("skips one naming an entry whose own tracker is elsewhere: a run there could not find it", () => {
+      expect(routeIssue(["repo:api"], scope)).toEqual({ reason: "repo:api, but the tracker of api does not list it; a run in api could not find it" });
+    });
+
+    it("leaves one naming an entry sous watch cannot run to that entry", () => {
+      expect(routeIssue(["repo:gone"], scope)).toEqual({ to: "gone" });
+    });
+  });
+});
+
+describe("trackerLocationOf", () => {
+  const place = { root: "/w/app/.sous", repoRoot: "/w/app" };
+
+  it("is the github repository, the local folder, the beads checkout", () => {
+    expect(trackerLocationOf({ type: "github", repo: "acme/app", shared: false, labels: "sous" }, place)).toEqual({ type: "github", at: "acme/app" });
+    expect(trackerLocationOf({ type: "local", dir: "../issues", shared: false, labels: "sous" }, place)).toEqual({ type: "local", at: "/w/app/issues" });
+    expect(trackerLocationOf({ type: "beads", shared: false, labels: "sous" }, place)).toEqual({ type: "beads", at: "/w/app" });
+  });
+
+  it("is a module's path and its own keys, so one module with the same options is one tracker", () => {
+    expect(trackerLocationOf({ type: "./jira.ts", project: "ACME", shared: true, labels: "sous" }, place)).toEqual({ type: "/w/app/.sous/jira.ts", at: '{"project":"ACME"}' });
+    expect(trackerLocationOf({ type: "../../app/.sous/jira.ts", labels: "x", project: "ACME", shared: true }, { root: "/w/x/y", repoRoot: "/w/x" })).toEqual({ type: "/w/app/.sous/jira.ts", at: '{"project":"ACME"}' });
+  });
+});
+
+describe("sameLocationProblems", () => {
+  const at = (name: string, shared: boolean, where = "acme/planning") => ({ name, shared, location: { type: "github", at: where } });
+
+  it("accepts entries on distinct trackers, and shared entries on one", () => {
+    expect(sameLocationProblems([at("api", false, "acme/api"), at("web", true), at("docs", true)])).toEqual([]);
+  });
+
+  it("names the two entries on one tracker where either is not shared", () => {
+    expect(sameLocationProblems([at("api", false), at("web", false)])).toEqual(["repos: api and web use one tracker (github acme/planning) with shared: false; set shared: true in both, or give each its own tracker"]);
+    expect(sameLocationProblems([at("api", true), at("web", false)])).toEqual(["repos: api and web use one tracker (github acme/planning) with shared: false; set shared: true in both, or give each its own tracker"]);
   });
 });

@@ -38,9 +38,10 @@ import { formatError } from "./validate.js";
 /**
  * `issue` is the tracker's id as typed, minus a leading `#`, so `sous run #96`
  * works. `flow` is named with `--flow`; absent, the issue's labels resolve it.
- * `repo` names the `repos:` entry to run in, in a home repository only.
+ * `entry` is the `repos:` entry of `name#issue`, in a home repository only:
+ * the name is everything before the last `#`.
  */
-export type RunArgs = { issue: string; flow?: string; repo?: string; restart: boolean };
+export type RunArgs = { issue: string; flow?: string; entry?: string; restart: boolean };
 
 export type RunDeps = {
   /** The project root (`.sous/`). */
@@ -69,7 +70,7 @@ export type RunDeps = {
   engineVersion?: string;
 };
 
-export const USAGE = "usage: sous run <issue> [--flow <name>] [--restart] [--repo <name>]";
+export const USAGE = "usage: sous run <issue | name#issue> [--flow <name>] [--restart]";
 
 export const parseRunArgs = (args: readonly string[]): RunArgs | { error: string } => {
   const positional: string[] = [];
@@ -84,11 +85,16 @@ export const parseRunArgs = (args: readonly string[]): RunArgs | { error: string
       if (value === undefined || value.startsWith("--") || value === "") return { error: `--flow takes a flow name\n${USAGE}` };
       flow = value;
     } else if (arg === "--repo") {
-      const value = args[++i];
-      if (value === undefined || value.startsWith("--") || value === "") return { error: `--repo takes the name of a repos: entry\n${USAGE}` };
-      repo = value;
+      const value = args[i + 1];
+      repo = value === undefined || value.startsWith("--") || value === "" ? "<name>" : (i++, value);
     } else if (arg.startsWith("--")) return { error: `unknown option ${arg}\n${USAGE}` };
     else positional.push(arg);
+  }
+  // Gone: the entry is named with the issue, as the collision message of a home repository names it.
+  if (repo !== undefined) {
+    const issue = positional.length === 1 ? positional[0]!.replace(/^#/, "") : "<issue>";
+    const rest = `${flow !== undefined ? ` --flow ${flow}` : ""}${restart ? " --restart" : ""}`;
+    return { error: `sous run: --repo is gone; name the entry with the issue: sous run ${repo}#${issue}${rest}\n${USAGE}` };
   }
   // The old form: a stale script would otherwise have its flow name read as the issue.
   if (positional.length === 2 && flow === undefined) {
@@ -97,9 +103,11 @@ export const parseRunArgs = (args: readonly string[]): RunArgs | { error: string
   }
   const [issueArg] = positional;
   if (issueArg === undefined || positional.length > 1) return { error: USAGE };
-  const issue = issueArg.replace(/^#/, "");
+  const hash = issueArg.lastIndexOf("#");
+  const entry = hash > 0 ? issueArg.slice(0, hash) : undefined;
+  const issue = hash > 0 ? issueArg.slice(hash + 1) : issueArg.replace(/^#/, "");
   if (issue === "") return { error: USAGE };
-  return { issue, ...(flow !== undefined ? { flow } : {}), ...(repo !== undefined ? { repo } : {}), restart };
+  return { ...(entry !== undefined ? { entry } : {}), issue, ...(flow !== undefined ? { flow } : {}), restart };
 };
 
 export const gitShortSha = (repoRoot: string) => async (): Promise<string> => {
@@ -204,8 +212,8 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
   }
   const { root, repoRoot, git, tracker, out, err } = deps;
   // A home repository's `sous run` routes before it gets here; this one is the repository the run is in.
-  if (parsed.repo !== undefined) {
-    err("sous run: --repo names an entry of repos:, and this repository's sous.yaml lists none");
+  if (parsed.entry !== undefined) {
+    err(`sous run: ${parsed.entry}#${parsed.issue} names an entry of repos:, and this repository's sous.yaml lists none; run sous run ${parsed.issue}`);
     return 2;
   }
   const clock = deps.clock ?? (() => new Date());

@@ -9,6 +9,58 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
 ### Breaking
 
+- **`sous.yaml`: one `tracker:` block says where the issues live.** The
+  type, the location, whether the tracker is shared and the label prefix
+  are one block, and the location has no default: the github adapter
+  addresses `tracker.repo` on every call and never falls back to the
+  checkout's origin; `local` needs `dir`; `beads` takes the checkout.
+  `type`, `shared` and `labels` are required, and a module type takes its
+  further keys under the same block. `sous validate`, `sous run` and
+  `sous watch` refuse a `sous.yaml` without the block.
+
+  ```yaml
+  # before                          # after
+  tracker: github                   tracker:
+  trackerOptions:                     type: github
+    repo: acme/web                    repo: acme/web
+  labelPrefix: sous                   shared: false
+                                      labels: sous
+  ```
+
+  The old keys are refused by `sous validate`, `sous run`, `sous watch`
+  and the run viewer, one message each: `tracker is now a block: …`,
+  `trackerOptions.repo is now tracker.repo`, `labelPrefix is now
+  tracker.labels`. `sous init` writes the block with `shared: false`,
+  `labels: sous` and `repo` read from the checkout's origin; without an
+  origin it writes `repo: owner/name`, which is refused until replaced. A
+  tracker module still receives the label prefix as `env.labelPrefix`,
+  and the block as its options.
+- **`sous watch` runs an issue where its tracker lives.** An issue listed
+  by an unshared tracker (`shared: false`) runs in the repository whose
+  tracker listed it, with no `repo:*` label needed, in a home repository
+  too; one naming another repository is skipped. On a shared tracker the
+  one `repo:<name>` label picks the repository, and an unlabelled issue is
+  skipped once with `tracker <location> is shared; add repo:<name>`. A
+  shared issue listed by several entries runs once, and its start is
+  preceded by `#42: running in web (acme/planning)`. Two `repos:` entries
+  on one tracker without `shared: true` in both are a `sous validate`
+  error in the home and a `sous watch` refusal naming both.
+- **`sous run` in a home repository looks the issue up as `sous watch`
+  does; `--repo` is gone.** `sous run 42` asks every distinct tracker of
+  the `repos:` entries (by type and location) for issue 42, ready label or
+  not, and runs it where the routing rule of `sous watch` says, so a home
+  repository needs no tracker of its own. A number several trackers hold
+  exits 2 listing `sous run <name>#42` for each entry that holds it;
+  `sous run web#42` asks entry web's tracker alone. Not found, or closed
+  wherever found, exits 2 naming the trackers asked. `sous run 42 --repo
+  api` exits 2 naming `sous run api#42`: update scripts to the qualified
+  form. The command is `sous run <issue | name#issue> [--flow <name>]
+  [--restart]`; outside a home repository a bare id behaves as before.
+  Only a definite miss counts: a tracker that fails to answer stops the
+  lookup with exit 2 naming it and its error. A tracker module's
+  `getIssue` throws `IssueNotFoundError` from `sous-factory` (or any error
+  with `code: "ISSUE_NOT_FOUND"`) for an id it has no issue under; any
+  other error it throws stops `sous run` in a home repository.
 - **`sous run <issue>`: the flow comes from the issue's labels.** The
   command is `sous run <issue> [--flow <name>] [--restart]`. Without
   `--flow` the one flow whose `allowedLabels` accept the issue runs; none
@@ -49,8 +101,12 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   writing, recommending one repository for a single checkout; for
   several it installs or extends the home repository's `repos:`, writes
   each listed repository's `.sous/` with `sous init --no-install`,
-  offers the dev install there for authoring, and names `sous watch` and
-  the `repo:<name>` labels to create. With a home repository found beside
+  offers the dev install there for authoring, and names `sous watch` and,
+  for a shared planning tracker, the `repo:<name>` labels to create. In
+  both paths it writes each repository's `tracker:` block with you (type,
+  location, `shared`, `labels`); a repository's own tracker needs no
+  label. Manual how-tos 20 and 21 describe the one lookup with an example
+  of repositories owning their issues and one of a shared tracker. With a home repository found beside
   the checkout or named, `/sous-migrate` offers to remove a repository's
   `sous` wrapper and `node_modules`, keep `package.json`, add `engine:`,
   register it in `repos:`, and tells its users what to type instead of
@@ -63,8 +119,8 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   listed repository needs `.sous/sous.yaml` and an `engine:` range the
   daemon satisfies; a missing wrapper or `node_modules` no longer sets it
   aside, and `sous validate` no longer reports one. `sous run <issue>` in
-  a home repository runs the issue in the `repos:` entry its `repo:<name>`
-  label names, or the one `--repo <name>` names, as the daemon would;
+  a home repository runs the issue in the `repos:` entry the daemon's
+  lookup picks, or the one `sous run <name>#<issue>` names;
   lock, run record, logs and worktree stay in that repository's `.sous/`.
   That `sous run` refuses an entry the daemon would set aside, without
   `engine:` or outside its range, with the daemon's reason. Both start a
@@ -78,12 +134,17 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   `start` line the run prints the step's summary, so the output shows
   `merge: squashed … into main as abc1234, pushed main to origin`, the
   line `sous watch` passes on for the runs it starts.
-- **`/sous-plan` labels what it plans `repo:<name>`.** At GO the issue and
-  every child get one `repo:<name>` label, created in the tracker when
-  missing: the repository's own name, or in a home repository the `repos:`
-  entry the session asks for first, whose checkout then supplies the
-  settings, tracker and templates and receives the spec and its commit. A
-  feature's children carry the parent's label; a feature split across
+- **`/sous-plan` labels what it plans `repo:<name>` on a shared
+  tracker.** The plan prompt and the tracker sheets read `tracker.type`
+  and `tracker.labels` from the `tracker:` block. On a shared tracker
+  (`tracker.shared: true`), at GO the issue and every child get one
+  `repo:<name>` label, created in the tracker when missing: the
+  repository's own name, or in a home repository the `repos:` entry the
+  session asks for first, whose checkout then supplies the settings,
+  tracker and templates and receives the spec and its commit. On a
+  repository's own tracker it sets none. The github sheet addresses
+  `tracker.repo` with `-R` on every `gh` call. A feature's children carry
+  the parent's label; a feature split across
   repositories is refused as an epic. The tracker sheets
   gain **set the repo label**, and `templates/child.md` names the label.
 - **`/sous-plan` asks whether the work may start now.** After GO and
@@ -169,15 +230,12 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   listed repository's tracker and starts its own `.sous/sous run <issue>
   --flow <flow>` in it, never on the home repository's engine: an entry without
   `.sous/sous` is reported once and runs nothing. One run per repository,
-  repositories in parallel. An issue runs in the entry its `repo:<name>`
-  label names; one without the label or naming no entry is reported once
-  and skipped. Without `repos:`, `sous watch` skips an issue labelled for
-  another repository, whose name is `name:` in `sous.yaml`, else the
-  `origin` remote's repository, else the folder.
-- **The GitHub tracker takes `trackerOptions: { repo: owner/name }`.**
-  Every `gh` call addresses that repository (`-R`, or the path of a `gh
-  api` endpoint), so a repository whose issues live elsewhere needs no
-  `GH_REPO`. Without it `gh` infers the repository from the checkout.
+  repositories in parallel. Which entry runs an issue is the rule of the
+  `tracker:` block (see Breaking): the one whose tracker listed it, picked
+  by the `repo:<name>` label on a shared tracker.
+- **The GitHub tracker addresses `tracker.repo`.** Every `gh` call
+  addresses that repository (`-R`, or the path of a `gh api` endpoint),
+  so a repository whose issues live elsewhere needs no `GH_REPO`.
 - **`sous ui` over `repos:` lists the runs of every listed repository.**
   One list with the repository's folder in a column; a run opens with its
   flow graph, steps and logs as before, and a step change in any listed

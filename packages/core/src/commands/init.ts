@@ -12,7 +12,8 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { exec as defaultExec, type Exec } from "../adapters/exec.js";
 import { ENGINE_VERSION, initialRange } from "../config/engine.js";
-import { SETTINGS_FILE } from "../config/settings.js";
+import { originRepoOf } from "../config/repos.js";
+import { REPO_PLACEHOLDER, SETTINGS_FILE } from "../config/settings.js";
 import { PROJECT_DIR } from "../root.js";
 
 export const USAGE = "usage: sous init [--starter <dir>] [--force] [--no-install] [<path>]";
@@ -44,7 +45,7 @@ export const setupChecklist = (project: string, served?: Served): string[] => [
   ...(served === undefined
     ? [`  5. cd ${project} && ./sous validate && npx vitest run; then ./sous run <issue> --flow bench as a smoke test`]
     : [
-        `  5. SOUS_ROOT=${project} sous validate; then, in the home repository, sous run <issue> --repo ${served.name} --flow bench as a smoke test`,
+        `  5. SOUS_ROOT=${project} sous validate; then, in the home repository, sous run ${served.name}#<issue> --flow bench as a smoke test`,
         `  ${join(project, "package.json")}: serves the editor and the project's tests (npm install there, then npx vitest run); runs need no install here`,
         ...(served.entry !== undefined ? [`  add to ${join(PROJECT_DIR, SETTINGS_FILE)} here, the home repository: repos: { ${served.name}: ${served.entry} }`] : []),
       ]),
@@ -64,6 +65,35 @@ const withEngine = (text: string, version: string): string => {
   const lines = text === "" ? [] : text.replace(/\n$/, "").split("\n");
   const first = lines.findIndex((l) => l.trim() !== "" && !l.trimStart().startsWith("#"));
   lines.splice(first === -1 ? lines.length : first, 0, line);
+  return `${lines.join("\n")}\n`;
+};
+
+/** The `tracker:` block `sous init` writes when the starter's `sous.yaml` has none: github at `repo`, written out so it is visible. */
+export const trackerBlock = (repo: string): string =>
+  [
+    ["tracker:", "where this repository's issues live; no key has a default"],
+    ["  type: github", "github, beads, local, or the path of a project module (see README)"],
+    [`  repo: ${repo}`, "github: owner/name of the repository the issues live in; local takes dir:, beads nothing"],
+    ["  shared: false", "true when the tracker holds the issues of several repositories"],
+    ["  labels: sous", "sous:running / sous:blocked set by the run, sous:merged by the merge step"],
+  ]
+    .map(([setting = "", comment = ""]) => `${setting.padEnd(50)}# ${comment}\n`)
+    .join("");
+
+/**
+ * `text` (a `sous.yaml`) with its `tracker:` block addressing `repo`: the
+ * block appended when there is none, the `owner/name` placeholder of a
+ * starter's block replaced. A block naming any other location is the
+ * starter's choice and stays.
+ */
+const withTracker = (text: string, repo: string): string => {
+  const lines = text === "" ? [] : text.replace(/\n$/, "").split("\n");
+  const start = lines.findIndex((l) => /^tracker:/.test(l));
+  if (start === -1) return `${lines.map((l) => `${l}\n`).join("")}${trackerBlock(repo)}`;
+  const after = lines.findIndex((l, i) => i > start && l.trim() !== "" && !/^\s/.test(l));
+  const end = after === -1 ? lines.length : after;
+  const placeholder = new RegExp(`(\\brepo:\\s*)${REPO_PLACEHOLDER}\\b`);
+  for (let i = start; i < end; i++) lines[i] = (lines[i] ?? "").replace(placeholder, `$1${repo}`);
   return `${lines.join("\n")}\n`;
 };
 
@@ -143,7 +173,9 @@ export const initCommand = async (args: readonly string[], deps: InitDeps): Prom
   await writeFile(join(target, ".gitignore"), GITIGNORE, "utf8");
   const settingsFile = join(target, SETTINGS_FILE);
   const settings = existsSync(settingsFile) ? await readFile(settingsFile, "utf8") : "";
-  await writeFile(settingsFile, withEngine(settings, deps.engineVersion ?? ENGINE_VERSION), "utf8");
+  // Read once, here: a run never falls back to the origin, so the block says where the issues live.
+  const origin = await originRepoOf(repoRoot, exec);
+  await writeFile(settingsFile, withTracker(withEngine(settings, deps.engineVersion ?? ENGINE_VERSION), origin ?? REPO_PLACEHOLDER), "utf8");
   out(`init: copied ${starter} to ${target}`);
 
   const skill = join(target, SKILL_SOURCE);
@@ -156,6 +188,9 @@ export const initCommand = async (args: readonly string[], deps: InitDeps): Prom
 
   // A path argument's project as typed from where init ran, so the checklist reads right in that shell.
   const project = relative(parsed.path !== undefined ? (deps.cwd ?? deps.repoRoot) : repoRoot, target);
+  if (origin === undefined && (await readFile(settingsFile, "utf8")).includes(REPO_PLACEHOLDER)) {
+    out(`init: the checkout has no origin; set tracker.repo in ${join(project, SETTINGS_FILE)} to the owner/name of the repository the issues live in`);
+  }
   if (!parsed.install) {
     const entry = resolve(repoRoot) === resolve(deps.repoRoot) ? undefined : relative(deps.repoRoot, repoRoot);
     for (const line of setupChecklist(project, { name: basename(repoRoot), ...(entry !== undefined ? { entry } : {}) })) out(line);

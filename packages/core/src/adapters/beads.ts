@@ -10,7 +10,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { SousError } from "../exec/errors.js";
-import { byId, isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { byId, IssueNotFoundError, isQualifiedRef, matchesList, parseBlockedBy, stateLabels, unsupportedQualifiedRef, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { safeId } from "../session/paths.js";
 import { exec as defaultExec, type Exec } from "./exec.js";
 
@@ -79,7 +79,7 @@ export const createBeadsTracker = ({ dir, cwd, labelPrefix = "sous", exec = defa
     const payload = await json(["show", id, "--json"]);
     // bd prints an array of one object on a hit and an object with `error` on a miss.
     const first = Array.isArray(payload) ? (payload[0] as unknown) : undefined;
-    if (typeof first !== "object" || first === null) throw new SousError(`beads: no bead ${id}`);
+    if (typeof first !== "object" || first === null) throw new IssueNotFoundError(`beads: no bead ${id}`);
     return first as Bead;
   };
 

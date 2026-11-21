@@ -4,7 +4,7 @@ import type { TrackerFactory } from "sous-factory";
 const factory: TrackerFactory = (options, env) => {
   const title = typeof options["title"] === "string" ? options["title"] : "untitled";
   return {
-    getIssue: async (id) => ({ id, ref: id, title: `${title} ${env.repoRoot}`, body: "", labels: ["type:task"], state: "open" }),
+    getIssue: async (id) => ({ id, ref: id, title: `${title} ${env.repoRoot} ${env.labelPrefix}`, body: "", labels: ["type:task"], state: "open" }),
     children: async () => [],
     parent: async () => undefined,
     blockers: async () => [],

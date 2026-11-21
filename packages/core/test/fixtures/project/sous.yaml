@@ -2,3 +2,4 @@ baseBranch: develop
 lifecycle: steps
 idleTimeoutSeconds: 60
 engine: ">=0.1.0"
+tracker: { type: github, repo: acme/web, shared: false, labels: sous }

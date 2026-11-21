@@ -25,10 +25,11 @@ sections above, as written; on bd and in the local tracker the parent and
 the blockers are fields, and the body is `## What to build` and the
 criteria only.
 
-Beside the body, the child carries the label `repo:<name>`, the same as
-its parent's: a feature runs in one repository, so its children never
-name another. /sous-plan sets it at GO (the sheet's **set the repo
-label**).
+Beside the body, a child of a shared tracker carries the label
+`repo:<name>`, the same as its parent's: a feature runs in one
+repository, so its children never name another. /sous-plan sets it at GO
+(the sheet's **set the repo label**). On a repository's own tracker the
+child carries none.
 
 What the run phase parses:
 

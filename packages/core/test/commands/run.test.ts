@@ -22,7 +22,18 @@ describe("parseRunArgs", () => {
   it("takes the issue, --flow <name> and --restart in any order", () => {
     expect(parseRunArgs(["12"])).toEqual({ issue: "12", restart: false });
     expect(parseRunArgs(["--restart", "3", "--flow", "feature"])).toEqual({ flow: "feature", issue: "3", restart: true });
-    expect(parseRunArgs(["3", "--repo", "web"])).toEqual({ issue: "3", repo: "web", restart: false });
+  });
+
+  it("reads name#issue as the issue of one repos: entry, the name being everything before the last #", () => {
+    expect(parseRunArgs(["web#42", "--flow", "task"])).toEqual({ entry: "web", issue: "42", flow: "task", restart: false });
+    expect(parseRunArgs(["a#b#7"])).toEqual({ entry: "a#b", issue: "7", restart: false });
+    expect(parseRunArgs(["#42"])).toEqual({ issue: "42", restart: false });
+    expect(parseRunArgs(["web#"])).toMatchObject({ error: expect.stringContaining("usage:") });
+  });
+
+  it("rejects --repo, naming the qualified form that replaces it", () => {
+    expect(parseRunArgs(["42", "--repo", "api"])).toEqual({ error: "sous run: --repo is gone; name the entry with the issue: sous run api#42\nusage: sous run <issue | name#issue> [--flow <name>] [--restart]" });
+    expect(parseRunArgs(["--repo", "api", "#42", "--restart"])).toMatchObject({ error: expect.stringContaining("sous run api#42 --restart\n") });
   });
 
   it("keeps anything that is not a run number as a tracker reference for the adapter to resolve", () => {
@@ -31,13 +42,13 @@ describe("parseRunArgs", () => {
   });
 
   it("rejects the old positional form with the new one, the values as typed", () => {
-    expect(parseRunArgs(["task", "42"])).toEqual({ error: "sous run: the flow is an option now: sous run 42 --flow task\nusage: sous run <issue> [--flow <name>] [--restart] [--repo <name>]" });
+    expect(parseRunArgs(["task", "42"])).toEqual({ error: "sous run: the flow is an option now: sous run 42 --flow task\nusage: sous run <issue | name#issue> [--flow <name>] [--restart]" });
     expect(parseRunArgs(["task", "#42", "--restart"])).toMatchObject({ error: expect.stringContaining("sous run #42 --flow task --restart\n") });
   });
 
   it("rejects missing or invalid arguments and unknown options", () => {
-    for (const args of [[], ["#"], ["task", "1", "extra"], ["1", "--flow"], ["1", "--flow", "--restart"], ["1", "--repo"]]) {
-      expect(parseRunArgs(args)).toMatchObject({ error: expect.stringContaining("usage: sous run <issue> [--flow <name>] [--restart]") });
+    for (const args of [[], ["#"], ["task", "1", "extra"], ["1", "--flow"], ["1", "--flow", "--restart"]]) {
+      expect(parseRunArgs(args)).toMatchObject({ error: expect.stringContaining("usage: sous run <issue | name#issue> [--flow <name>] [--restart]") });
     }
     expect(parseRunArgs(["1", "--force"])).toMatchObject({ error: expect.stringContaining("unknown option --force") });
   });
@@ -566,7 +577,7 @@ describe("runCommand", () => {
 
   it("rejects the old positional form with the new one and starts nothing", async () => {
     expect(await runCommand(["walk", "7"], deps())).toBe(2);
-    expect(err).toEqual(["sous run: the flow is an option now: sous run 7 --flow walk\nusage: sous run <issue> [--flow <name>] [--restart] [--repo <name>]"]);
+    expect(err).toEqual(["sous run: the flow is an option now: sous run 7 --flow walk\nusage: sous run <issue | name#issue> [--flow <name>] [--restart]"]);
     expect(opened).toEqual([]);
     expect(await loadSession(sessionFile(runs(), "7"))).toBeUndefined();
     expect(await lockExists()).toBe(false);

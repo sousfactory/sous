@@ -76,7 +76,7 @@ flowchart TD
   L0 -- "worktree" --> L2["9. add the same paths in the worktree; commit on the branch; no push"]:::write
   L1 --> R0
   L2 --> R0
-  R0["9. set the repo label: one repo:name on the issue and every child, created when missing; the repository's own name, or the repos: entry chosen in step 1"]:::write --> P0
+  R0["9. on a shared tracker, set the repo label: one repo:name on the issue and every child, created when missing; none on an unshared one; the repository's own name, or the repos: entry chosen in step 1"]:::write --> P0
   P0{"10. second gate: may the work start now? (recommend yes)"}:::gate
   P0 -- yes --> P1["10. set ready on the issue only, never on children; created when missing"]:::write
   P0 -- "no: set nothing" --> M0

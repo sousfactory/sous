@@ -25,6 +25,14 @@ describe("listRows", () => {
     expect(error?.kind === "error" && error.error).not.toContain(root);
   });
 
+  it("refuses a sous.yaml with an old tracker key, naming the key to write instead", () => {
+    const root = tempProject();
+    writeFileSync(join(root, "sous.yaml"), "runsDir: runs\ntracker: github\ntrackerOptions: { repo: acme/web }\nlabelPrefix: sous\n");
+    expect(() => openProject(root, dead)).toThrow(
+      "tracker is now a block: tracker: { type: github, repo: owner/name, shared: false, labels: sous }; trackerOptions.repo is now tracker.repo; labelPrefix is now tracker.labels",
+    );
+  });
+
   it("is empty when the runs folder does not exist", async () => {
     const root = tempProject();
     writeFileSync(join(root, "sous.yaml"), "runsDir: elsewhere\n");

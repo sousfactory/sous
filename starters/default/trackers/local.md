@@ -1,13 +1,14 @@
 # Tracker sheet: local
 
-How `/sous-plan` speaks to the tracker when `sous.yaml` says `tracker:
-local`. Issues are plain files the engine's local adapter reads; this sheet
+How `/sous-plan` speaks to the tracker when the `tracker:` block of
+`sous.yaml` says `type: local`. Issues are plain files the engine's local adapter reads; this sheet
 is its prose twin, so the plan prompt can name a verb and this file says
 the file edit. Nothing leaves the machine.
 
-The folder is `trackerOptions: { dir }` in `sous.yaml`, relative to
+The folder is `tracker.dir` in `sous.yaml`, relative to
 `.sous/` (`.sous/issues/` in the starter). Each issue is
-`<dir>/<id>.json`; its comments are `<dir>/<id>.comments.md`.
+`<dir>/<id>.json`; its comments are `<dir>/<id>.comments.md`. `<labels>`
+is `tracker.labels`.
 
 ```json
 {
@@ -27,13 +28,14 @@ The folder is `trackerOptions: { dir }` in `sous.yaml`, relative to
   commit subjects. `ISSUE` is the same id. Pick the next free id when you
   create one; any string without `/` works, numbers keep the order readable.
 - **Kind:** one of `type:feature`, `type:task`, `type:bug` in `labels`.
-- **State labels:** `<labelPrefix>:running` and `<labelPrefix>:blocked`
+- **State labels:** `<labels>:running` and `<labels>:blocked`
   (`sous:running`, `sous:blocked` by default) in `labels`, set and removed
   by the run phase only. A child carrying one is mid-run.
-  `<labelPrefix>:ready` is set by a human; `/sous-plan` sets it only
+  `<labels>:ready` is set by a human; `/sous-plan` sets it only
   through **set ready**, on a yes at its second gate.
 - **Repo label:** `repo:<name>` in `labels`, one per issue, naming the
-  repository the work runs in. Labels are plain strings; nothing is
+  repository the work runs in, set only on an issue of a shared tracker
+  (`tracker.shared: true`); on an unshared tracker the issue carries none. Labels are plain strings; nothing is
   created first.
 
 ## Verbs
@@ -57,15 +59,15 @@ they are and the file pretty-printed.
 - **Add a blocker:** append the blocker's id to the child's `blockedBy`.
 - **Set the acceptance criteria:** replace the `## Acceptance criteria`
   section of `body`.
-- **Set the repo label:** put `repo:<name>` in `labels`, replacing any
+- **Set the repo label:** on a shared tracker only: put `repo:<name>` in `labels`, replacing any
   other `repo:*` entry.
-- **Set ready:** add `<labelPrefix>:ready` to `labels` unless it is
+- **Set ready:** add `<labels>:ready` to `labels` unless it is
   already there, keeping the other entries.
 
 ## Child shape
 
-A child is in shape when its `labels` hold `type:task` and the parent's
-`repo:<name>`, the parent's
+A child is in shape when its `labels` hold `type:task` and, on a shared
+tracker, the parent's `repo:<name>`, the parent's
 `children` lists it, its blockers are in `blockedBy`, and its body is
 `.sous/templates/child.md` without the `## Parent` and `## Blocked by`
 sections, which are fields here: `## What to build`, then

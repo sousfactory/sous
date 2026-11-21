@@ -13,19 +13,18 @@
  */
 import { spawn as spawnProcess } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, relative } from "node:path";
 import type { Exec } from "../adapters/exec.js";
 import { logDir } from "../adapters/logs.js";
 import { ENGINE_VERSION, engineCheckOf, engineRefusalOf } from "../config/engine.js";
 import { flowLabelsOf, resolveFlow } from "../config/resolve.js";
 import { messageOf, readYaml } from "../config/schema.js";
-import { loadSettings, projectDirs, SETTINGS_FILE } from "../config/settings.js";
+import { loadSettings, projectDirs, requiredTracker, SETTINGS_FILE } from "../config/settings.js";
 import { listFlows } from "../config/validate.js";
-import { byId, stateLabels, type Issue, type Tracker } from "../ports/tracker.js";
-import { REPO_LABEL, repoEntries, repoNameOf, repoNameProblems, routeIssue, unrunnableRepos, type Route } from "../config/repos.js";
-import { SousError } from "../exec/errors.js";
-import { PROJECT_DIR, repoRootOf } from "../root.js";
-import { loadTracker } from "../tracker.js";
+import { byId, stateLabels, type Issue } from "../ports/tracker.js";
+import { routeIssue, type Route } from "../config/repos.js";
+import { lookupOf, type Lookup, type LookupEntry } from "../lookup.js";
+import { repoRootOf } from "../root.js";
 import { acquireLock, classifyLock, isProcessAlive, liveLocks, lockPath, locksDir, type AcquireResult } from "./lock.js";
 import { onProcessSignal, SIGNAL_EXIT_CODES, SIGNAL_GRACE_MS, type SignalHandler, type StopSignal } from "./run.js";
 
@@ -82,21 +81,15 @@ const loaderFlagsOf = (execArgv: readonly string[]): string[] => {
 /** The running engine's CLI as a command line: this node, its loader flags (tsx's in a checkout) and the CLI file. */
 export const engineCommandOf = (cliFile: string, execArgv: readonly string[] = process.execArgv): string[] => [process.execPath, ...loaderFlagsOf(execArgv), cliFile];
 
-/** A repository the daemon serves: its project root (`.sous/`), checkout and tracker. */
-export type WatchRepo = {
-  /** Its name in `repo:<name>` labels. */
-  name: string;
-  root: string;
-  repoRoot: string;
-  tracker: Tracker;
-};
+/** A repository the daemon serves: an entry of the lookup, with its tracker and where that tracker keeps its issues. */
+export type WatchRepo = LookupEntry;
 
 export type WatchDeps = {
   /** The project root (`.sous/`) the daemon is started in; its watch lock lives there. */
   root: string;
   /** The repositories served: the `repos:` entries, or the current repository alone. */
   repos: readonly WatchRepo[];
-  /** The repositories come from `repos:`, so every issue must name its own with a `repo:*` label. */
+  /** The repositories come from `repos:`: lines name the repository, and a label naming no entry is reported as such. */
   listed: boolean;
   /** What starts a run: the running engine's CLI (`engineCommandOf`), whatever the repository installed. */
   engine: readonly string[];
@@ -160,10 +153,12 @@ const createRepoWatcher = (repo: WatchRepo, deps: WatchDeps, report: Reporter, s
   const { root, repoRoot, tracker } = repo;
   const { out } = deps;
   const isAlive = deps.isAlive ?? isProcessAlive;
-  const settings = loadSettings(join(root, SETTINGS_FILE));
+  const file = join(root, SETTINGS_FILE);
+  const settings = loadSettings(file);
   const dirs = projectDirs(root, settings);
-  const ready = `${settings.labelPrefix}:ready`;
-  const { running, blocked } = stateLabels(settings.labelPrefix);
+  const { labels } = requiredTracker(settings, file);
+  const ready = `${labels}:ready`;
+  const { running, blocked } = stateLabels(labels);
   /** How a line names an issue: with its repository when several are served. */
   const name = (issue: Issue): string => (deps.listed ? `${repo.name} ${issue.ref}` : issue.ref);
 
@@ -212,6 +207,8 @@ const createRepoWatcher = (repo: WatchRepo, deps: WatchDeps, report: Reporter, s
     // The repository's definitions, this engine: SOUS_ROOT names the project, never its wrapper or install.
     const child = deps.spawn(command, args, { cwd: repoRoot, env: { SOUS_ROOT: root }, onOutput: (text) => (PUSHED.test(text) ? out(`${name(issue)}: ${text.trim()}`) : undefined) });
     const how = `(pid ${child.pid}, ${deps.engine.join(" ")} in ${repoRoot})`;
+    // Picked through a shared tracker: the label chose the repository, so the line says which tracker it came from.
+    if (repo.shared) out(`${issue.ref}: running in ${repo.name} (${repo.location.at})`);
     out(rerun ? `${name(issue)}: ${note}rerunning ${line} after a crash ${how}` : `${name(issue)}: ${note}started ${line} ${how}`);
     let interrupted = false;
     const kill = child.kill;
@@ -312,15 +309,11 @@ const createRepoWatcher = (repo: WatchRepo, deps: WatchDeps, report: Reporter, s
 };
 
 /**
- * Where an issue listed by `seenIn`'s tracker runs, by `routeIssue`: with
- * `repos:` among every entry, runnable or not; without, in this repository.
- * Nothing is inferred from the tracker the issue lives in.
+ * Where an issue listed by `seenIn`'s tracker runs, by `routeIssue`: among
+ * every entry, runnable or not; without `repos:`, the one repository.
  */
 const routeOf = (issue: Issue, seenIn: WatchRepo, deps: WatchDeps): Route =>
-  routeIssue(issue.labels, deps.listed ? { entries: [...deps.repos.map((r) => r.name), ...(deps.unrunnable ?? []).map((u) => u.name)] } : { self: seenIn.name });
-
-/** Whether two trackers' listings name the same issue: they cannot tell, so id and title together stand in. */
-const sameIssue = (a: Issue, b: Issue): boolean => a.id === b.id && a.title === b.title;
+  routeIssue(issue.labels, { listedBy: seenIn, entries: [...deps.repos, ...(deps.unrunnable ?? []).map(({ name }) => ({ name }))], home: deps.listed });
 
 export const createWatcher = (deps: WatchDeps): Watcher => {
   /** Keys once printed: an issue reachable through two trackers is reported once. */
@@ -347,20 +340,18 @@ export const createWatcher = (deps: WatchDeps): Watcher => {
         failures.push(`${prefix(watcher.repo)}${messageOf(error)}`);
       }
     }
-    // Each repository runs the issues its own tracker lists for it: that tracker is the one its run asks.
+    // Each repository runs the issues its own tracker lists for it: that tracker is the one its run asks. An issue
+    // of a shared tracker that names another entry there is that entry's, which lists it too: it runs once, there.
     const routed = new Map<string, Issue[]>(watchers.map((w) => [w.repo.name, []]));
     for (const watcher of watchers) {
       const { repo } = watcher;
       for (const issue of listings.get(repo.name) ?? []) {
         const route = routeOf(issue, repo, deps);
-        const isReady = issue.labels.includes(watcher.ready);
-        if ("reason" in route) {
-          if (isReady) report(`route|${issue.ref}|${issue.title}|${route.reason}`, `${issue.ref} skipped: ${route.reason}`);
-        } else if (route.to === repo.name) routed.get(repo.name)?.push(issue);
-        else {
-          const there = listings.get(route.to);
-          if (isReady && there !== undefined && !there.some((other) => sameIssue(other, issue)))
-            report(`route|${issue.ref}|${issue.title}|unlisted ${route.to}`, `${issue.ref} skipped: ${REPO_LABEL}${route.to}, but the tracker of ${route.to} does not list it; a run in ${route.to} could not find it`);
+        if ("to" in route) {
+          if (route.to === repo.name) routed.get(repo.name)?.push(issue);
+        } else if (issue.labels.includes(watcher.ready)) {
+          // Keyed by the tracker, not the entry: an issue two entries list is reported once.
+          report(`route|${repo.location.type}|${repo.location.at}|${issue.id}|${route.reason}`, `${issue.ref} skipped: ${route.reason}`);
         }
       }
     }
@@ -429,46 +420,12 @@ export const spawnChild: Spawn = (command, args, { cwd, env: extra = {}, onOutpu
   };
 };
 
-const watchRepoOf = async (name: string, root: string): Promise<WatchRepo> => {
-  const repoRoot = repoRootOf(root);
-  const settings = loadSettings(join(root, SETTINGS_FILE));
-  const tracker = await loadTracker(settings, { root, repoRoot, runsDir: resolve(root, settings.runsDir), labelPrefix: settings.labelPrefix });
-  return { name, root, repoRoot, tracker };
-};
-
 /**
- * The repositories `sous watch` in the project at `root` serves: each entry
- * of `repos:` built from its own `.sous/` (its settings, its tracker), or
- * without `repos:` this repository under its own name. An entry without
- * `.sous/sous.yaml`, or whose `engine:` this engine does not satisfy, is set
- * aside; a wrapper or `node_modules` there is neither needed nor used.
+ * The repositories `sous watch` in the project at `root` serves: the lookup
+ * (`lookupOf`), each entry built from its own `.sous/`; a wrapper or
+ * `node_modules` there is neither needed nor used.
  */
-export const watchReposOf = async (root: string, exec?: Exec, engineVersion: string = ENGINE_VERSION): Promise<{ repos: WatchRepo[]; listed: boolean; unrunnable: { name: string; reason: string }[] }> => {
-  const settings = loadSettings(join(root, SETTINGS_FILE));
-  const entries = repoEntries(root, settings);
-  if (entries === undefined) return { listed: false, unrunnable: [], repos: [await watchRepoOf(await repoNameOf(repoRootOf(root), settings, exec), root)] };
-  const problems = repoNameProblems(root, settings);
-  if (problems.length > 0) throw new SousError(`${join(root, SETTINGS_FILE)}: ${problems.join("; ")}`);
-  const unrunnable = unrunnableRepos(root, settings);
-  const repos: WatchRepo[] = [];
-  for (const { name, path } of entries) {
-    if (unrunnable.some((u) => u.name === name)) continue;
-    const projectRoot = join(path, PROJECT_DIR);
-    // Before its settings load: a repository written for a newer engine may hold keys this one rejects.
-    // A missing range counts too: a run nobody watches must say what it was written for.
-    const refusal = engineRefusalOf(engineCheckOf(projectRoot, engineVersion, path), engineVersion);
-    if (refusal !== undefined) {
-      unrunnable.push({ name, reason: `${refusal}; sous watch starts nothing there` });
-      continue;
-    }
-    try {
-      repos.push(await watchRepoOf(name, projectRoot));
-    } catch (error) {
-      throw new SousError(`repos.${name}: ${messageOf(error)}`);
-    }
-  }
-  return { listed: true, repos, unrunnable };
-};
+export const watchReposOf = (root: string, exec?: Exec, engineVersion: string = ENGINE_VERSION): Promise<Lookup> => lookupOf(root, exec, engineVersion);
 
 const pause = (ms: number, signal: AbortSignal): Promise<void> =>
   new Promise((resolve) => {

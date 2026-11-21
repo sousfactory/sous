@@ -13,6 +13,7 @@ import { loadSettings, SETTINGS_FILE } from "../config/settings.js";
 import { useRunningEngine } from "../exec/imports.js";
 import type { Tracker } from "../ports/tracker.js";
 import { repoRootOf } from "../root.js";
+import { lookupOf } from "../lookup.js";
 import { loadTracker } from "../tracker.js";
 import { homeRunCommand, isHomeRepository, runChildInTerminal } from "./homerun.js";
 import { confirmOnStdin, runCommand, runEngineRefusal } from "./run.js";
@@ -32,7 +33,7 @@ export type StartDeps = {
 /** Read at call time so a broken sous.yaml still reaches `validate`. */
 const trackerOf = (root: string, repoRoot: string): Promise<Tracker> => {
   const settings = loadSettings(join(root, SETTINGS_FILE));
-  return loadTracker(settings, { root, repoRoot, runsDir: resolve(root, settings.runsDir), labelPrefix: settings.labelPrefix });
+  return loadTracker(settings, { root, repoRoot, runsDir: resolve(root, settings.runsDir) });
 };
 
 export const startRun = async (args: readonly string[], deps: StartDeps): Promise<number> => {
@@ -46,11 +47,15 @@ export const startRun = async (args: readonly string[], deps: StartDeps): Promis
   }
   // Before the tracker module or any step loads: the project's `sous-factory` is this engine.
   await useRunningEngine();
-  const tracker = await trackerOf(root, repoRoot);
   const git = createGit();
-  const runHere = (runArgs: readonly string[]) => runCommand(runArgs, { root, repoRoot, git, tracker, openSandbox: createOpenSandbox(git), confirm: confirmOnStdin, engineVersion, out, err });
-  // A home repository runs nothing itself: the issue runs in its entry, as `sous watch` would start it.
-  if (isHomeRepository(root)) return homeRunCommand(args, { root, tracker, engine: engineCommandOf(deps.cliFile), engineVersion, runChild: runChildInTerminal, runHere, out, err });
+  // The tracker is read when the run starts here: a home repository's own takes part only when its repos: names it.
+  const runHere = async (runArgs: readonly string[]) =>
+    runCommand(runArgs, { root, repoRoot, git, tracker: await trackerOf(root, repoRoot), openSandbox: createOpenSandbox(git), confirm: confirmOnStdin, engineVersion, out, err });
+  // A home repository runs nothing itself: the issue is looked up as `sous watch` looks, and runs where it would.
+  if (isHomeRepository(root)) {
+    const lookup = await lookupOf(root, undefined, engineVersion);
+    return homeRunCommand(args, { root, lookup, engine: engineCommandOf(deps.cliFile), engineVersion, runChild: runChildInTerminal, runHere, out, err });
+  }
   return runHere(args);
 };
 

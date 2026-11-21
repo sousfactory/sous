@@ -1,3 +1,4 @@
+import { isIssueNotFound } from "../../src/ports/tracker.js";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -154,10 +155,12 @@ describe("beads adapter", () => {
   it("refuses an id bd does not know", async () => {
     const { beads } = bdOf({});
     await expect(beads.getIssue(A)).rejects.toThrow(`beads: no bead ${A}`);
+    expect(isIssueNotFound(await beads.getIssue(A).catch((e: unknown) => e))).toBe(true);
   });
 
   it("fails loudly when bd itself fails", async () => {
     const { beads } = bdOf({}, () => fail("connection refused"));
     await expect(beads.getIssue(A)).rejects.toThrow(/bd show proj-a\.1 failed \(exit 1\): connection refused/);
+    expect(isIssueNotFound(await beads.getIssue(A).catch((e: unknown) => e))).toBe(false);
   });
 });

@@ -1,2 +1,2 @@
-tracker: trackers/half.ts
+tracker: { type: trackers/half.ts, shared: false, labels: sous }
 engine: ">=0.1.0"

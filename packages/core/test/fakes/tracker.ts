@@ -1,5 +1,5 @@
 import { parseBlockedBy } from "../../src/adapters/github.js";
-import { byId, matchesList, stateLabels, swapStateLabel, type Tracker, type Issue } from "../../src/ports/tracker.js";
+import { byId, IssueNotFoundError, matchesList, stateLabels, swapStateLabel, type Tracker, type Issue } from "../../src/ports/tracker.js";
 
 export type FakeTracker = Tracker & {
   /** Live issue store, keyed by id; tests may read and edit it. */
@@ -36,7 +36,7 @@ export const fakeTracker = (options: FakeTrackerOptions = {}): FakeTracker => {
 
   const get = (id: string): Issue => {
     const found = issues.get(id);
-    if (found === undefined) throw new Error(`fakeTracker: no issue ${id}`);
+    if (found === undefined) throw new IssueNotFoundError(`fakeTracker: no issue ${id}`);
     return found;
   };
   const setStateLabel = async (id: string, label: string): Promise<void> => {

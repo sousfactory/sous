@@ -1,3 +1,4 @@
+import { isIssueNotFound } from "../../src/ports/tracker.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,8 +54,11 @@ describe("local issues", () => {
   it("names the missing file and refuses a file holding another id", async () => {
     const issues = createLocalTracker({ dir });
     await expect(issues.getIssue("8")).rejects.toThrow(`${issueFile(dir, "8")} does not exist`);
+    expect(isIssueNotFound(await issues.getIssue("8").catch((e: unknown) => e))).toBe(true);
     await writeFile(issueFile(dir, "9"), JSON.stringify({ id: "7", title: "x" }), "utf8");
     await expect(issues.getIssue("9")).rejects.toThrow("holds id 7, not 9");
+    // A file that is there but wrong is a broken tracker, not a missing issue.
+    expect(isIssueNotFound(await issues.getIssue("9").catch((e: unknown) => e))).toBe(false);
   });
 
   it("swaps state labels and closes in the file, keeping unknown keys", async () => {

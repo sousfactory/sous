@@ -14,9 +14,10 @@ const USAGE = `usage:
   sous init [--starter <dir>] [--force] [--no-install] [<path>]
                                         copy a starter into .sous/ of this repository or <path>, install it, add the /sous-plan skill;
                                         --no-install: definitions only, no wrapper, no npm install, for a home repository's engine
-  sous run <issue> [--flow <name>] [--restart] [--repo <name>]
+  sous run <issue | name#issue> [--flow <name>] [--restart]
                                         validate, then start or resume a run; the flow from the issue's labels unless named;
-                                        in a home repository, in the repos: entry its repo: label or --repo names
+                                        in a home repository, the issue is looked up in the entries' trackers and runs
+                                        where sous watch would run it; name#issue asks entry name's tracker alone
   sous watch [--once] [--interval <s>]  start ready issues unattended, one run per repository at a time
   sous status <issue>                   session facts and the timeline
   sous graph <flow>                     the flow as Mermaid

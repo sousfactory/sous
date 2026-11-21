@@ -1,3 +1,4 @@
+import { isIssueNotFound } from "../../src/ports/tracker.js";
 import { describe, expect, it } from "vitest";
 import type { Exec, ExecResult } from "../../src/adapters/exec.js";
 import { createGitHubTracker, isTransient, parseBlockedBy, toIssue } from "../../src/adapters/github.js";
@@ -7,7 +8,7 @@ const ok = (stdout: string): ExecResult => ({ code: 0, stdout, stderr: "" });
 const fail = (stderr: string): ExecResult => ({ code: 1, stdout: "", stderr });
 
 /** Scripts `gh` by a handler over its argument list; records every call. */
-const ghOf = (handler: (args: readonly string[]) => ExecResult | string, repo?: string) => {
+const ghOf = (handler: (args: readonly string[]) => ExecResult | string, repo = "acme/web") => {
   const calls: string[][] = [];
   const slept: number[] = [];
   const warned: string[] = [];
@@ -19,7 +20,7 @@ const ghOf = (handler: (args: readonly string[]) => ExecResult | string, repo?: 
   };
   const tracker = createGitHubTracker({
     exec,
-    ...(repo !== undefined ? { repo } : {}),
+    repo,
     sleep: async (ms) => {
       slept.push(ms);
     },
@@ -119,13 +120,13 @@ describe("createGitHubTracker", () => {
       state: "open",
       labels: ["type:task", "sous:running"],
     });
-    expect(calls).toEqual([["issue", "view", "14", "--json", "number,title,body,labels,state"]]);
+    expect(calls).toEqual([["issue", "view", "14", "--json", "number,title,body,labels,state", "-R", "acme/web"]]);
   });
 
   it("children pages the REST sub_issues endpoint and orders by number", async () => {
     const { tracker, calls } = ghOf(() => "13\n12\n\n14\n");
     expect(await tracker.children("10")).toEqual(["12", "13", "14"]);
-    expect(calls[0]).toEqual(["api", "--paginate", "repos/{owner}/{repo}/issues/10/sub_issues", "--jq", ".[].number"]);
+    expect(calls[0]).toEqual(["api", "--paginate", "repos/acme/web/issues/10/sub_issues", "--jq", ".[].number"]);
     const { tracker: empty } = ghOf(() => "");
     expect(await empty.children("10")).toEqual([]);
   });
@@ -135,8 +136,8 @@ describe("createGitHubTracker", () => {
       args[0] === "issue" && args[1] === "view" ? issueJson({ labels: [{ name: "type:task" }, { name: "sous:running" }, { name: "sous:blocked" }] }) : "",
     );
     await tracker.setStateLabel("14", "sous:merged");
-    expect(calls[1]).toEqual(["label", "create", "sous:merged", "--color", "0e8a16", "--description", "sous squashed the branch into main", "--force"]);
-    expect(calls[2]).toEqual(["issue", "edit", "14", "--add-label", "sous:merged", "--remove-label", "sous:running", "--remove-label", "sous:blocked"]);
+    expect(calls[1]).toEqual(["label", "create", "sous:merged", "--color", "0e8a16", "--description", "sous squashed the branch into main", "--force", "-R", "acme/web"]);
+    expect(calls[2]).toEqual(["issue", "edit", "14", "--add-label", "sous:merged", "--remove-label", "sous:running", "--remove-label", "sous:blocked", "-R", "acme/web"]);
     await tracker.setStateLabel("14", "sous:merged");
     expect(calls.filter((c) => c[0] === "label")).toHaveLength(1);
   });
@@ -144,11 +145,11 @@ describe("createGitHubTracker", () => {
   it("claim sets <prefix>:running and block sets <prefix>:blocked with the comment", async () => {
     const { tracker, calls } = ghOf((args) => (args[0] === "issue" && args[1] === "view" ? issueJson({ labels: [{ name: "type:task" }] }) : ""));
     await tracker.claim("14", { branch: "feature/14-x" });
-    expect(calls[1]).toEqual(["label", "create", "sous:running", "--color", "1d76db", "--description", "sous run in progress", "--force"]);
-    expect(calls[2]).toEqual(["issue", "edit", "14", "--add-label", "sous:running"]);
+    expect(calls[1]).toEqual(["label", "create", "sous:running", "--color", "1d76db", "--description", "sous run in progress", "--force", "-R", "acme/web"]);
+    expect(calls[2]).toEqual(["issue", "edit", "14", "--add-label", "sous:running", "-R", "acme/web"]);
     await tracker.block("14", "Blocked in `fix`.");
-    expect(calls.at(-2)).toEqual(["issue", "edit", "14", "--add-label", "sous:blocked"]);
-    expect(calls.at(-1)).toEqual(["issue", "comment", "14", "--body", "Blocked in `fix`."]);
+    expect(calls.at(-2)).toEqual(["issue", "edit", "14", "--add-label", "sous:blocked", "-R", "acme/web"]);
+    expect(calls.at(-1)).toEqual(["issue", "comment", "14", "--body", "Blocked in `fix`.", "-R", "acme/web"]);
   });
 
   it("setStateLabel skips the edit when the label is already in place", async () => {
@@ -164,10 +165,10 @@ describe("createGitHubTracker", () => {
     await tracker.close("#14", "bye");
     expect(await tracker.isClosed("14")).toBe(true);
     expect(calls.slice(0, 4)).toEqual([
-      ["issue", "comment", "14", "--body", "hello"],
-      ["issue", "close", "14"],
-      ["issue", "comment", "14", "--body", "bye"],
-      ["issue", "close", "14"],
+      ["issue", "comment", "14", "--body", "hello", "-R", "acme/web"],
+      ["issue", "close", "14", "-R", "acme/web"],
+      ["issue", "comment", "14", "--body", "bye", "-R", "acme/web"],
+      ["issue", "close", "14", "-R", "acme/web"],
     ]);
   });
 
@@ -180,7 +181,7 @@ describe("createGitHubTracker", () => {
     ];
     const { tracker, calls } = ghOf(() => rows.filter((r) => r.pull_request === undefined).map((r) => `${JSON.stringify(r)}\n`).join(""));
     const listed = await tracker.list({ labels: ["sous:ready", "type:task"] });
-    expect(calls).toEqual([["api", "--paginate", "repos/{owner}/{repo}/issues?state=open&per_page=100&labels=sous%3Aready%2Ctype%3Atask", "--jq", ".[] | select(.pull_request == null)"]]);
+    expect(calls).toEqual([["api", "--paginate", "repos/acme/web/issues?state=open&per_page=100&labels=sous%3Aready%2Ctype%3Atask", "--jq", ".[] | select(.pull_request == null)"]]);
     expect(listed).toEqual([{ id: "21", ref: "#21", title: "Ready", body: "b", labels: ["sous:ready", "type:task"], state: "open" }]);
   });
 
@@ -206,6 +207,7 @@ describe("createGitHubTracker", () => {
     const { tracker, calls } = ghOf(() => fail("HTTP 503: Service Unavailable"));
     await expect(tracker.getIssue("14")).rejects.toThrow(/HTTP 503/);
     expect(calls).toHaveLength(4);
+    expect(isIssueNotFound(await tracker.getIssue("14").catch((e: unknown) => e))).toBe(false);
   });
 
   it("throws immediately with stderr on a non-transient failure", async () => {
@@ -213,12 +215,14 @@ describe("createGitHubTracker", () => {
     await expect(tracker.getIssue("999")).rejects.toThrow(/gh issue view failed \(exit 1\): GraphQL: Could not resolve/);
     expect(calls).toHaveLength(1);
     expect(slept).toEqual([]);
+    // The one answer that says the repository has no such issue: sous run in a home counts it as a miss.
+    expect(isIssueNotFound(await tracker.getIssue("999").catch((e: unknown) => e))).toBe(true);
   });
 
   it("parent returns the parent id, undefined on 404, and throws otherwise", async () => {
     const { tracker, calls } = ghOf(() => "10\n");
     expect(await tracker.parent("14")).toBe("10");
-    expect(calls[0]).toEqual(["api", "repos/{owner}/{repo}/issues/14/parent", "--jq", ".number"]);
+    expect(calls[0]).toEqual(["api", "repos/acme/web/issues/14/parent", "--jq", ".number"]);
 
     const { tracker: orphan } = ghOf(() => fail("gh: Not Found (HTTP 404)"));
     expect(await orphan.parent("14")).toBeUndefined();
@@ -234,7 +238,7 @@ describe("createGitHubTracker", () => {
 
   it("asks the named repository whether an owner/repo#n blocker is closed, in blockers and isClosed", async () => {
     const { tracker, calls } = ghOf((args) => {
-      if (args.includes("-R")) return issueJson({ number: Number(args[2]), state: args[2] === "19" ? "CLOSED" : "OPEN" });
+      if (args.includes("sousfactory/planning")) return issueJson({ number: Number(args[2]), state: args[2] === "19" ? "CLOSED" : "OPEN" });
       return issueJson({ body: "## Blocked by\n- sousfactory/planning#19\n- sousfactory/planning#20\n" });
     });
     expect(await tracker.blockers("14")).toEqual(["sousfactory/planning#20"]);
@@ -243,9 +247,9 @@ describe("createGitHubTracker", () => {
     expect(await tracker.isClosed("sousfactory/planning#20")).toBe(false);
   });
 
-  describe("the repo option", () => {
+  describe("the repo, required", () => {
     /** One call of every method, answering each gh command with something it can parse. */
-    const everyCall = async (repo?: string) => {
+    const everyCall = async (repo: string) => {
       const { tracker, calls } = ghOf((args) => {
         if (args[0] === "api" && args[2]?.includes("/issues?")) return "";
         if (args[0] === "issue" && args[1] === "view") return issueJson({ labels: [{ name: "type:task" }], body: "## Blocked by\n- #12\n- acme/api#4\n" });
@@ -273,12 +277,6 @@ describe("createGitHubTracker", () => {
         else if (call.includes("acme/api")) expect(call).toEqual(["issue", "view", "4", "-R", "acme/api", "--json", "number,title,body,labels,state"]);
         else expect(call.slice(-2)).toEqual(["-R", "sousfactory/planning"]);
       }
-    });
-
-    it("passes no -R without the option, so gh infers the repository from the checkout", async () => {
-      const calls = await everyCall();
-      expect(calls.filter((c) => c.includes("-R") && !c.includes("acme/api"))).toEqual([]);
-      expect(calls.filter((c) => c[0] === "api").every((c) => c.join(" ").includes("repos/{owner}/{repo}/"))).toBe(true);
     });
   });
 });

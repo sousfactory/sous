@@ -1,4 +1,6 @@
-tracker: trackers/custom.ts
-trackerOptions:
-  title: Custom
 engine: ">=0.1.0"
+tracker:
+  type: trackers/custom.ts
+  shared: false
+  labels: sous
+  title: Custom

@@ -107,13 +107,16 @@ steps:
       - to: done
 `;
 
+/** The `tracker:` block every project's sous.yaml carries. */
+export const TRACKER = "tracker: { type: github, repo: acme/web, shared: false, labels: sous }\n";
+
 /** A project root (`<parent>/<repo>/.sous`, in a fresh temporary folder by default) with sous.yaml, the task flow and empty runs/logs. */
 export const tempProject = (repo = "repo", parent: string = mkdtempSync(join(tmpdir(), "sous-ui-"))): string => {
   const root = join(parent, repo, ".sous");
   mkdirSync(join(root, "flows"), { recursive: true });
   mkdirSync(join(root, "runs"), { recursive: true });
   mkdirSync(join(root, "logs"), { recursive: true });
-  writeFileSync(join(root, "sous.yaml"), "runsDir: runs\n");
+  writeFileSync(join(root, "sous.yaml"), `runsDir: runs\n${TRACKER}`);
   writeFileSync(join(root, "flows", "task.yaml"), TASK_YAML);
   return root;
 };
@@ -132,6 +135,6 @@ export const writeRun = (root: string, issue: string, s: Session | string, log?:
 export const tempHome = (): { home: string; web: string; api: string } => {
   const parent = mkdtempSync(join(tmpdir(), "sous-ui-"));
   const home = tempProject("home", parent);
-  writeFileSync(join(home, "sous.yaml"), "runsDir: runs\nrepos:\n  web: ../web\n  api: ../api\n");
+  writeFileSync(join(home, "sous.yaml"), `runsDir: runs\n${TRACKER}repos:\n  web: ../web\n  api: ../api\n`);
   return { home, web: tempProject("web", parent), api: tempProject("api", parent) };
 };

@@ -109,7 +109,7 @@ describe("the running engine as sous-factory", () => {
   });
 
   it("loads a tracker module under .sous/trackers/ the same way", async () => {
-    const tracker = (await loadTracker({ tracker: "trackers/custom.ts", trackerOptions: {} }, { root, repoRoot, runsDir: join(root, "runs"), labelPrefix: "sous:" })) as unknown as { seen: unknown };
+    const tracker = (await loadTracker({ tracker: { type: "trackers/custom.ts", shared: false, labels: "sous" } }, { root, repoRoot, runsDir: join(root, "runs") })) as unknown as { seen: unknown };
 
     expect(tracker.seen).toEqual(RUNNING);
   });
@@ -117,7 +117,7 @@ describe("the running engine as sous-factory", () => {
   it("hands a tracker module the engine's own exported classes, the same objects the engine uses", async () => {
     await write({ "trackers/classes.ts": `import { SousError } from "sous-factory";\nimport { fakeTracker } from "sous-factory/testing";\nexport default () => ({ ...fakeTracker(), SousError });\n` });
 
-    const tracker = (await loadTracker({ tracker: "trackers/classes.ts", trackerOptions: {} }, { root, repoRoot, runsDir: join(root, "runs"), labelPrefix: "sous:" })) as unknown as { SousError: unknown };
+    const tracker = (await loadTracker({ tracker: { type: "trackers/classes.ts", shared: false, labels: "sous" } }, { root, repoRoot, runsDir: join(root, "runs") })) as unknown as { SousError: unknown };
 
     expect(tracker.SousError).toBe(SousError);
   });

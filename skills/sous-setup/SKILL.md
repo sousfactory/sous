@@ -1,6 +1,6 @@
 ---
 name: sous-setup
-description: Set up the sous software factory, step by step. Interactive: asks first whether sous serves one repository or several, then which tracker holds the work (GitHub or bd), checks prerequisites, installs and inits sous-factory if .sous/ is missing (for several, the engine in a home repository with repos: and a definitions-only .sous/ in each listed repository via sous init --no-install), adapts steps/verify/eval.ts, sous.yaml, the flows and prompts/plan.md with the human, verifies, and offers /sous-migrate for a development-loop skill the repository already has. Use as /sous-setup ("set up sous", "sous setup"); skips what is already done.
+description: Set up the sous software factory, step by step. Interactive: asks first whether sous serves one repository or several, then which tracker holds the work (GitHub or bd) and writes the tracker: block with the human, checks prerequisites, installs and inits sous-factory if .sous/ is missing (for several, the engine in a home repository with repos: and a definitions-only .sous/ in each listed repository via sous init --no-install), adapts steps/verify/eval.ts, sous.yaml, the flows and prompts/plan.md with the human, verifies, and offers /sous-migrate for a development-loop skill the repository already has. Use as /sous-setup ("set up sous", "sous setup"); skips what is already done.
 disable-model-invocation: true
 ---
 
@@ -29,11 +29,15 @@ say in one line that this is a home repository and recommend **several**.
 
 ## 1. Tracker and prerequisites
 
-First ask where the work is tracked, unless `.sous/sous.yaml` already
-says so: `github` (the starter's default; issues, labels and sub-issues
-on the repository), `beads` (`bd`, local-first, in `.beads/`), `local`
-(issue files under `.sous/`) or a module of the project's own. The answer
-decides the checks below and the edits in step 3.
+First ask where the work is tracked, unless the `tracker:` block of
+`.sous/sous.yaml` already says so: `github` (the starter's default;
+issues, labels and sub-issues on a GitHub repository), `beads` (`bd`,
+local-first, in `.beads/`), `local` (issue files under `.sous/`) or a
+module of the project's own. Then ask where: for `github` the
+`owner/name` of the repository holding the issues (recommend the
+checkout's own, `git remote get-url origin`), for `local` the folder
+(`issues`, relative to `.sous/`), for beads nothing. The answers are the
+`tracker:` block of step 3 and decide the checks below.
 
 - `node --version` is 22 or newer.
 - `github`: `gh auth status` succeeds.
@@ -65,13 +69,30 @@ Read the file, propose the edit, show the diff, write on a yes.
    check, `dir` for a subfolder, `when` for a folder the diff must touch.
    Remove the TODO lines once filled. An empty list means every verify
    passes with a WARN in the log; say so if the human wants to defer it.
-2. `.sous/sous.yaml`: `tracker` (the answer from step 1), `baseBranch`
+2. `.sous/sous.yaml`: the `tracker:` block from the answers of step 1,
+   every key written out, since none has a default:
+
+   ```yaml
+   tracker:
+     type: github        # github, beads, local, or trackers/<name>.ts
+     repo: acme/web      # github: owner/name; local: dir: issues; beads: no key
+     shared: false       # this repository's issues only
+     labels: sous        # sous:ready, sous:running, sous:blocked
+   ```
+
+   `sous init` appended the block with `repo` from the origin; show it
+   and ask the human to confirm each key. `shared: false` for one
+   repository: the tracker holds this repository's issues and no
+   `repo:<name>` label is needed. Ask for another `labels` prefix only
+   when `sous:` labels already mean something else there. A
+   `repo: owner/name` placeholder (a checkout without an origin) is
+   refused by `sous validate` until replaced. Then `baseBranch`
    (the branch the checkout is on, `git rev-parse --abbrev-ref HEAD` is
    the usual answer; the flows and the verify eval read it as
    `ctx.baseBranch`), the `branch` template, `lifecycle` (`core`: runs
    claim, block and close the issue; `steps`: the project's steps do).
    Keep the other defaults unless asked. The plan prompt speaks to the
-   tracker through `.sous/trackers/<tracker>.md`; the starter ships
+   tracker through `.sous/trackers/<type>.md`; the starter ships
    `github.md`, `beads.md` and `local.md`.
    - `github`, `beads`, `local`: nothing to do; delete the two sheets the
      project does not use if the human wants a lean folder.
@@ -140,9 +161,23 @@ and how-to 21 describe the shape.
 Ask which checkout is the home repository (this one unless the human
 names another; a planning repository is the usual pick) and which
 repositories it serves, each as `name: path`, the path relative to the
-home repository (`api: ../api`). The name is what the `repo:<name>`
-labels say. List the home repository itself (`planning: .`) only when its
-own issues run there too. Check every path is a git checkout; stop at one
+home repository (`api: ../api`). The name is what a `repo:<name>` label
+says. List the home repository itself (`planning: .`) only when its own
+issues run there too.
+
+Then ask, per repository, where its issues live; recommend the first:
+
+- **Its own tracker** (the issues of `acme/api` on `acme/api`):
+  `shared: false`, the location its own. An issue runs in the repository
+  whose tracker listed it; no `repo:<name>` label is needed.
+- **A shared planning tracker** (several repositories' issues on
+  `acme/planning`): `shared: true` in every repository on it, the same
+  location in each. There each issue needs exactly one `repo:<name>`
+  label saying which repository runs it; an issue without one is
+  skipped with `tracker acme/planning is shared; add repo:<name>`.
+
+Two repositories on one location must both say `shared: true`; `sous
+validate` refuses the home otherwise. Check every path is a git checkout; stop at one
 that is not and ask again.
 
 Then the prerequisites of step 1 above, once: Node 22 or newer, the agent
@@ -152,9 +187,10 @@ CLI, and per tracker in use `gh auth status` or `bd info`.
 
 - **No `.sous/sous.yaml` in the home repository:** from its root, as in
   step 2 above, `npm install -D sous-factory` and `npx sous init`. Read
-  the checklist; the home repository's own `sous.yaml` gets the tracker
-  its issues live in (step 3, item 2), since `sous run <issue>` typed
-  there reads the issue's labels from it.
+  the checklist. The home repository's own `tracker:` block matters only
+  when `repos:` lists the home itself: `sous run <issue>` and `sous
+  watch` typed there ask the trackers of the listed repositories, not
+  the home's.
 - **It exists:** say so in one line and extend it; nothing is installed
   again.
 
@@ -187,8 +223,21 @@ repository's engine runs them. Ask yes or no for each; the default is no.
 
 For each listed repository, step 3 above, one file at a time in its
 `.sous/`: `steps/verify/eval.ts`, `sous.yaml` (an `engine:` line is
-already there; keep it), the flows and `prompts/plan.md`. The tracker and
-labels questions are asked per repository: each can have its own.
+already there; keep it), the flows and `prompts/plan.md`. The `tracker:`
+block is written with the human per repository from the answers of S1:
+its own tracker,
+
+```yaml
+tracker: { type: github, repo: acme/api, shared: false, labels: sous }
+```
+
+or the shared planning tracker,
+
+```yaml
+tracker: { type: github, repo: acme/planning, shared: true, labels: sous }
+```
+
+Each repository can have its own type and labels.
 
 ## S5. Verify
 
@@ -202,7 +251,7 @@ SOUS_ROOT=<path>/.sous .sous/node_modules/.bin/sous validate
 
 and `npx vitest run` in its `.sous/` where the dev install was taken.
 Fix what they report. Print the smoke test for the human to run, in the
-home repository: `./sous run <issue> --repo <name> --flow bench`.
+home repository: `./sous run <name>#<issue> --flow bench`.
 
 ## S6. The daemon and the labels
 
@@ -210,10 +259,14 @@ Finish by naming, without running them:
 
 - the daemon: `cd .sous && ./sous watch` in the home repository (`--once`
   for one pass);
-- the labels to create, one per entry, on the tracker that holds the
-  issues: `repo:<name>` for every name in `repos:` (on GitHub `gh label
-  create repo:<name> --force`; beads needs none). An issue runs in the
-  entry its label names; one without a `repo:*` label is skipped.
+- the labels to create, only on a shared tracker: `repo:<name>` for every
+  repository on it (on GitHub `gh label create repo:<name> -R
+  acme/planning --force`; beads needs none). An issue there runs in the
+  entry its label names; one without a `repo:*` label is skipped. A
+  repository's own tracker needs no `repo:*` label: its issues run in it;
+- `sous run <issue>` in the home repository asks every listed
+  repository's tracker; a number several of them hold is refused with
+  the `sous run <name>#<issue>` forms to type instead.
 
 Then step 5 above for an existing development loop, in each listed
 repository the human picks, and a two-line summary: the home repository,

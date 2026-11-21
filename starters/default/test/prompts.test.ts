@@ -266,8 +266,8 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
 
   it("decides the target from the run state: running refuses, blocked amends in the worktree here, no run amends the base", () => {
     expect(text).toContain("## 3. Run state and target");
-    expect(text).toContain("<labelPrefix>:running");
-    expect(text).toContain("<labelPrefix>:blocked");
+    expect(text).toContain("<labels>:running");
+    expect(text).toContain("<labels>:blocked");
     expect(text).toContain("git worktree list --porcelain");
     expect(text).toContain("No worktree here:** stop");
     expect(text).toContain("never pushed");
@@ -287,7 +287,23 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
     expect(text).not.toMatch(/\bgh (issue|api|label)\b|\bbd (create|show|update|dep)\b|sub_issue/);
   });
 
-  it("labels every planned issue repo:<name> at GO, from the repository's own name or the chosen repos: entry", () => {
+  it("reads the tracker: block of sous.yaml: tracker.type picks the sheet, tracker.labels is the label prefix", () => {
+    expect(flat).toContain("Read `tracker.type` from the `tracker:` block of `.sous/sous.yaml`");
+    expect(flat).toContain("`tracker.labels`, the label prefix (`sous` unless changed), written `<labels>` below");
+    expect(flat).toContain("`tracker.shared`");
+    expect(text).not.toMatch(/labelPrefix|trackerOptions/);
+  });
+
+  it("sets repo:<name> only on an issue of a shared tracker, and none on a repository's own tracker", () => {
+    expect(flat).toContain("only on an issue of a shared tracker (`tracker.shared: true`)");
+    expect(flat).toContain("On an unshared tracker (`tracker.shared: false`) the tracker itself says where the issue runs, and the session sets no `repo:*` label");
+    const go = flat.indexOf("ask for an explicit GO");
+    const set = flat.slice(go, flat.indexOf("## 10. Second gate"));
+    expect(set).toContain("On a shared tracker, still after GO, **set the repo label**");
+    expect(set).toContain("On an unshared tracker set none");
+  });
+
+  it("labels every planned issue of a shared tracker repo:<name> at GO, from the repository's own name or the chosen repos: entry", () => {
     const gate = flat.indexOf("ask for an explicit GO");
     expect(flat.indexOf("**set the repo label**", gate)).toBeGreaterThan(gate);
     expect(flat).toContain("exactly one `repo:<name>` label");
@@ -306,7 +322,7 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
   });
 
   it("gives a feature's children the parent's repo label and refuses to split a feature across repositories", () => {
-    expect(flat).toContain("the parent's `repo:<name>` label");
+    expect(flat).toContain("On a shared tracker a feature's children carry the parent's `repo:<name>` label");
     expect(flat).toMatch(/never has children in different repositories/);
     expect(flat).toMatch(/an epic/);
   });
@@ -318,9 +334,9 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
 
   it("sets the ready label only at the second gate: after GO and the repo label, one question recommending yes, on the issue and never on children", () => {
     const rules = flat.slice(flat.indexOf("## 5. Ground rules"), flat.indexOf("## 6. Clarify"));
-    expect(rules).toContain("the run phase owns the state labels apart from `<labelPrefix>:ready` (`sous:ready`), which you set only on a yes at the second gate in step 10");
+    expect(rules).toContain("the run phase owns the state labels apart from `<labels>:ready` (`sous:ready`), which you set only on a yes at the second gate in step 10");
     expect(rules).toContain("never run `./sous`");
-    expect(rules).not.toContain("Never set `<labelPrefix>:ready`");
+    expect(rules).not.toContain("Never set `<labels>:ready`");
     const go = flat.indexOf("ask for an explicit GO");
     const repoLabel = flat.indexOf("**set the repo label**", go);
     const gate = flat.indexOf("## 10. Second gate");
@@ -339,15 +355,15 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
   it("names the ready label as the manual step when nothing is to commit and both gates are skipped", () => {
     const bullet = flat.slice(flat.indexOf("- **Nothing to commit:**"), flat.indexOf("- **Something to commit:**"));
     expect(bullet).toContain("skip the gate and the second gate");
-    expect(bullet).toContain("naming `<labelPrefix>:ready` as the manual step, as after a no");
+    expect(bullet).toContain("naming `<labels>:ready` as the manual step, as after a no");
   });
 
   it("names the ready label in the report beside the run command: the manual step on a no, set on a yes", () => {
     const report = flat.slice(flat.indexOf("## 11. Sanity report"));
     expect(report).toContain("the next command: `./sous run <ISSUE>` in the target repository");
-    expect(report).toContain("`<labelPrefix>:ready`");
-    expect(report.indexOf("`<labelPrefix>:ready`")).toBeGreaterThan(report.indexOf("./sous run <ISSUE>"));
-    expect(report).toContain("On a no, or when the second gate was skipped, a human sets `<labelPrefix>:ready`");
+    expect(report).toContain("`<labels>:ready`");
+    expect(report.indexOf("`<labels>:ready`")).toBeGreaterThan(report.indexOf("./sous run <ISSUE>"));
+    expect(report).toContain("On a no, or when the second gate was skipped, a human sets `<labels>:ready`");
     expect(report).toContain("On a yes, the issue now carries it");
   });
 
@@ -364,11 +380,18 @@ describe.each(["github", "beads", "local"])("trackers/%s.md", (tracker) => {
     expect(text).toContain("**`REF`:**");
     expect(text).toContain("**Kind:**");
     expect(text).toContain("**State labels:**");
-    expect(text).toContain("<labelPrefix>:blocked");
+    expect(text).toContain("<labels>:blocked");
   });
 
   it("defines every verb the plan prompt uses", () => {
     for (const verb of TRACKER_VERBS) expect(text, `defines **${verb}**`).toContain(`- **${verb}:**`);
+  });
+
+  it("reads the tracker: block: the label prefix is tracker.labels, the repo label only on a shared tracker", () => {
+    const flatSheet = text.replace(/\s+/g, " ");
+    expect(text).not.toMatch(/labelPrefix|trackerOptions/);
+    expect(flatSheet).toContain("`<labels>` is `tracker.labels`");
+    expect(flatSheet).toContain("set only on an issue of a shared tracker (`tracker.shared: true`)");
   });
 
   it("says how the repo label is set and, where labels must exist first, created", () => {
@@ -379,7 +402,7 @@ describe.each(["github", "beads", "local"])("trackers/%s.md", (tracker) => {
 
   it("says how the ready label is set, and that /sous-plan sets it only through set ready", () => {
     const verb = text.slice(text.indexOf("- **Set ready:**")).replace(/\s+/g, " ");
-    expect(verb.slice(0, verb.indexOf(" - **", 1) > 0 ? verb.indexOf(" - **", 1) : undefined)).toContain("<labelPrefix>:ready");
+    expect(verb.slice(0, verb.indexOf(" - **", 1) > 0 ? verb.indexOf(" - **", 1) : undefined)).toContain("<labels>:ready");
     expect(text).not.toContain("never by `/sous-plan`");
     expect(text.replace(/\s+/g, " ")).toContain("`/sous-plan` sets it only through **set ready**");
   });
@@ -403,10 +426,13 @@ describe("trackers/github.md speaks gh", () => {
     expect(text).toContain('-F sub_issue_id="$cid"');
     expect(text).toContain("gh issue create");
     expect(text).not.toMatch(/\bbd (create|show|update|dep)\b/);
+    expect(text.replace(/\s+/g, " ")).toContain("`<repo>` is `tracker.repo`");
+    expect(text).toContain("gh issue view <n> -R <repo>");
+    expect(text).not.toContain("{owner}/{repo}");
     expect(text).toContain("gh label create repo:<name>");
     expect(text).toContain("--add-label repo:<name>");
-    expect(text).toContain("gh label create <labelPrefix>:ready");
-    expect(text).toContain("--add-label <labelPrefix>:ready");
+    expect(text).toContain("gh label create <labels>:ready");
+    expect(text).toContain("--add-label <labels>:ready");
   });
 });
 

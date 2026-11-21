@@ -90,8 +90,20 @@ and `/sous-setup` in Claude Code. Four things are the project's to set:
 
 1. `steps/verify/eval.ts`: the `CHECKS` to run. Until the
    list is filled, every verify passes with a `WARN` in the log.
-2. `sous.yaml`: tracker (`github` or `beads`), `baseBranch`, the branch
-   template, `lifecycle`.
+2. `sous.yaml`: the `tracker:` block, `baseBranch`, the branch template,
+   `lifecycle`. `sous init` appends the block with `repo` read from the
+   checkout's origin; check it says where the issues live:
+
+   ```yaml
+   tracker:
+     type: github          # github, beads, local, or a module path
+     repo: acme/web        # github: owner/name; local: dir; beads: nothing
+     shared: false         # true when the tracker holds other repositories' issues too
+     labels: sous          # prefix of sous:ready, sous:running, sous:blocked
+   ```
+
+   On a shared tracker each issue carries `repo:<name>`, the repository it
+   runs in; on a repository's own tracker it needs none.
 3. The flows: the agent and model per step, `allowedLabels`; on GitHub,
    create the `type:task`, `type:bug` and `type:feature` labels (bd derives
    them from the bead type).

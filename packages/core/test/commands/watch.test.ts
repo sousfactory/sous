@@ -47,6 +47,9 @@ const FLOWS = {
   "feature.yaml": "entry: plan\nallowedLabels: [type:feature]\nsteps:\n  - id: plan\n    uses: plan\n",
 };
 
+/** A tracker block whose building calls nothing; the tests hand the watcher a fake tracker anyway. */
+const TRACKER = "tracker: { type: local, dir: issues, shared: false, labels: sous }\n";
+
 /** The running engine's CLI, as `sous watch` is handed it. */
 const ENGINE = ["/usr/bin/node", "/engine/cli.js"];
 
@@ -118,7 +121,7 @@ describe("sous watch", () => {
     root = join(repoRoot, ".sous");
     await mkdir(join(root, "flows"), { recursive: true });
     for (const [name, text] of Object.entries(FLOWS)) await writeFile(join(root, "flows", name), text);
-    await writeFile(join(root, "sous.yaml"), "engine: ^0.9.0\n");
+    await writeFile(join(root, "sous.yaml"), `engine: ^0.9.0\n${TRACKER}`);
     tracker = fakeTracker();
     spawned = fakeSpawn();
     out = [];
@@ -129,7 +132,7 @@ describe("sous watch", () => {
 
   const deps = (overrides: Partial<WatchDeps> = {}): WatchDeps => ({
     root,
-    repos: [{ name: "app", root, repoRoot, tracker }],
+    repos: [{ name: "app", root, repoRoot, tracker, shared: false, location: { type: "local", at: join(root, "issues") } }],
     listed: false,
     engine: ENGINE,
     spawn: spawned.spawn,
@@ -469,7 +472,7 @@ describe("sous watch", () => {
   });
 
   it("refuses to start in a repository without engine:, naming the key, before taking its lock", async () => {
-    await writeFile(join(root, "sous.yaml"), "tracker: local\n");
+    await writeFile(join(root, "sous.yaml"), TRACKER);
     seed(ready("7"));
     expect(await watchCommand(["--once"], deps())).toBe(2);
     expect(err).toEqual([`sous watch: ${repoRoot} states no engine: range in sous.yaml; add engine: ^0.9.0`]);
@@ -512,6 +515,20 @@ describe("sous watch", () => {
       expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "7", "--flow", "task"], ["run", "9", "--flow", "task"]]);
     });
 
+    it("on a shared tracker runs only issues labelled with its name, skipping an unlabelled one once, and names the tracker as it starts", async () => {
+      seed(ready("7", ["type:task", "repo:web"]), ready("8"), ready("9", ["type:task", "repo:app"]));
+      const watcher = createWatcher(deps({ repos: [{ name: "app", root, repoRoot, tracker, shared: true, location: { type: "github", at: "acme/planning" } }] }));
+      await watcher.pass();
+      await watcher.pass();
+      expect(spawned.children.map((c) => c.args.slice(1))).toEqual([["run", "9", "--flow", "task"]]);
+      expect(out).toEqual([
+        "#7 skipped: repo:web names another repository than app",
+        "#8 skipped: tracker acme/planning is shared; add repo:app",
+        "#9: running in app (acme/planning)",
+        `#9: started sous run 9 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${repoRoot})`,
+      ]);
+    });
+
     it("reports an issue carrying two repo:* labels once and skips it", async () => {
       seed(ready("7", ["type:task", "repo:app", "repo:web"]));
       const watcher = createWatcher(deps());
@@ -524,13 +541,17 @@ describe("sous watch", () => {
 
   describe("with repos:", () => {
     /** A listed repository: its checkout beside the home repository, its own `.sous/` with the flows, its own tracker. */
+    const planning = { type: "github", at: "acme/planning" };
+    /** An entry on the shared planning tracker `shared`. */
+    const onPlanning = async (name: string, shared: FakeTracker) => ({ ...(await listedRepo(name, shared)), shared: true, location: planning });
     const listedRepo = async (name: string, own: FakeTracker = fakeTracker()): Promise<WatchRepo & { tracker: FakeTracker }> => {
       const checkout = join(repoRoot, "..", `${repoRoot.split("/").at(-1)}-${name}`);
       const projectRoot = join(checkout, ".sous");
       await mkdir(join(projectRoot, "flows"), { recursive: true });
       for (const [file, text] of Object.entries(FLOWS)) await writeFile(join(projectRoot, "flows", file), text);
+      await writeFile(join(projectRoot, "sous.yaml"), `engine: ^0.9.0\n${TRACKER}`);
       cleanup.push(checkout);
-      return { name, root: projectRoot, repoRoot: checkout, tracker: own };
+      return { name, root: projectRoot, repoRoot: checkout, tracker: own, shared: false, location: { type: "github", at: `acme/${name}` } };
     };
     const cleanup: string[] = [];
     afterEach(async () => {
@@ -559,39 +580,57 @@ describe("sous watch", () => {
       expect(out).toEqual([`a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`, `b #5: started sous run 5 --flow feature (pid 1001, /usr/bin/node /engine/cli.js in ${b.repoRoot})`]);
     });
 
-    it("runs an issue of a shared tracker in the entry its repo label names, once", async () => {
+    it("runs an issue of an unshared tracker in the entry that listed it, with no label or one naming it", async () => {
+      const a = await listedRepo("a");
+      const b = await listedRepo("b");
+      a.tracker.issues.set("3", ready("3"));
+      b.tracker.issues.set("5", ready("5", ["type:task", "repo:b"]));
+      const watcher = createWatcher(deps({ repos: [a, b], listed: true }));
+      await watcher.pass();
+      expect(starts()).toEqual([
+        { args: ["run", "3", "--flow", "task"], cwd: a.repoRoot, root: a.root },
+        { args: ["run", "5", "--flow", "task"], cwd: b.repoRoot, root: b.root },
+      ]);
+      expect(out).toEqual([`a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`, `b #5: started sous run 5 --flow task (pid 1001, /usr/bin/node /engine/cli.js in ${b.repoRoot})`]);
+    });
+
+    it("runs an issue of a shared tracker listed by two entries once, in the entry its repo label names, naming the tracker", async () => {
       const shared = fakeTracker();
-      const a = await listedRepo("a", shared);
-      const b = await listedRepo("b", shared);
+      const a = await onPlanning("a", shared);
+      const b = await onPlanning("b", shared);
       shared.issues.set("7", ready("7", ["type:task", "repo:b"]));
       const watcher = createWatcher(deps({ repos: [a, b], listed: true }));
       await watcher.pass();
       await watcher.pass();
       expect(starts()).toEqual([{ args: ["run", "7", "--flow", "task"], cwd: b.repoRoot, root: b.root }]);
+      expect(out).toEqual(["#7: running in b (acme/planning)", `b #7: started sous run 7 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${b.repoRoot})`]);
     });
 
-    it("reports an unknown repo label and a missing one once each and skips them, even when two trackers list them", async () => {
+    it("reports an unknown repo label, several and a missing one once each and skips them, even when two entries list them", async () => {
       const shared = fakeTracker();
-      const a = await listedRepo("a", shared);
-      const b = await listedRepo("b", shared);
+      const a = await onPlanning("a", shared);
+      const b = await onPlanning("b", shared);
+      shared.issues.set("6", ready("6", ["type:task", "repo:a", "repo:b"]));
       shared.issues.set("7", ready("7", ["type:task", "repo:zzz"]));
       shared.issues.set("8", ready("8"));
       const watcher = createWatcher(deps({ repos: [a, b], listed: true }));
       await watcher.pass();
       await watcher.pass();
       expect(spawned.children).toEqual([]);
-      expect(out).toEqual(["#7 skipped: repo:zzz names no entry of repos: (a, b)", "#8 skipped: no repo:* label names its repository"]);
+      expect(out).toEqual(["#6 skipped: carries several repo:* labels (repo:a, repo:b); keep one", "#7 skipped: repo:zzz names no entry of repos: (a, b)", "#8 skipped: tracker acme/planning is shared; add repo:a or repo:b"]);
     });
 
-    it("reports an issue labelled for an entry whose own tracker does not list it", async () => {
+    it("skips an issue of an unshared tracker naming another repository, and one of a shared tracker naming an entry elsewhere", async () => {
       const a = await listedRepo("a");
-      const b = await listedRepo("b");
+      const shared = fakeTracker();
+      const b = await onPlanning("b", shared);
       a.tracker.issues.set("7", ready("7", ["type:task", "repo:b"]));
+      shared.issues.set("8", ready("8", ["type:task", "repo:a"]));
       const watcher = createWatcher(deps({ repos: [a, b], listed: true }));
       await watcher.pass();
       await watcher.pass();
       expect(spawned.children).toEqual([]);
-      expect(out).toEqual(["#7 skipped: repo:b, but the tracker of b does not list it; a run in b could not find it"]);
+      expect(out).toEqual(["#7 skipped: repo:b names another repository than a", "#8 skipped: repo:a, but the tracker of a does not list it; a run in a could not find it"]);
     });
 
     it("runs nothing in the home repository unless the list names it", async () => {
@@ -619,7 +658,7 @@ describe("sous watch", () => {
     it("builds each entry from its own .sous and starts its runs on the running engine's CLI, never the entry's .sous/sous", async () => {
       const home = join(repoRoot, ".sous");
       const a = await listedRepo("a");
-      await writeFile(join(a.root, "sous.yaml"), "engine: ^0.9.0\ntracker: local\ntrackerOptions: { dir: issues }\n");
+      await writeFile(join(a.root, "sous.yaml"), `engine: ^0.9.0\n${TRACKER}`);
       await writeFile(join(a.root, "sous"), "#!/bin/sh\nexit 99\n");
       await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot} }\n`);
       const built = await watchReposOf(home, undefined, "0.9.0");
@@ -636,9 +675,9 @@ describe("sous watch", () => {
 
     it("serves an entry with sous.yaml but no wrapper and no node_modules; sets one without sous.yaml aside, reported once", async () => {
       const home = join(repoRoot, ".sous");
-      const a = await listedRepo("a");
+      const a = await onPlanning("a", fakeTracker());
       const gone = join(repoRoot, "..", `nowhere-${Date.now()}`);
-      await writeFile(join(a.root, "sous.yaml"), "engine: ^0.9.0\ntracker: local\ntrackerOptions: { dir: issues }\n");
+      await writeFile(join(a.root, "sous.yaml"), `engine: ^0.9.0\n${TRACKER}`);
       await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot}, gone: ${gone} }\n`);
       const built = await watchReposOf(home, undefined, "0.9.0");
       expect(built.repos.map((r) => r.name)).toEqual(["a"]);
@@ -650,18 +689,18 @@ describe("sous watch", () => {
       await watcher.pass();
       await watcher.pass();
       expect(starts()).toEqual([{ args: ["run", "3", "--flow", "task"], cwd: a.repoRoot, root: a.root }]);
-      expect(out).toEqual([`gone skipped: ${gone} holds no .sous/sous.yaml; sous watch starts nothing there`, `a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`]);
+      expect(out).toEqual([`gone skipped: ${gone} holds no .sous/sous.yaml; sous watch starts nothing there`, "#3: running in a (acme/planning)", `a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`]);
     });
 
     it("sets an entry without engine: or outside its range aside, reports each once and serves the others", async () => {
       const home = join(repoRoot, ".sous");
-      const a = await listedRepo("a");
+      const a = await onPlanning("a", fakeTracker());
       const old = await listedRepo("old");
       const unstated = await listedRepo("unstated");
-      await writeFile(join(a.root, "sous.yaml"), "engine: ^0.9.0\ntracker: local\ntrackerOptions: { dir: issues }\n");
+      await writeFile(join(a.root, "sous.yaml"), `engine: ^0.9.0\n${TRACKER}`);
       // A newer engine's key beside the range: read for engine: alone, never loaded as settings.
       await writeFile(join(old.root, "sous.yaml"), "engine: ^0.8.0\nsomethingNewer: true\n");
-      await writeFile(join(unstated.root, "sous.yaml"), "tracker: local\ntrackerOptions: { dir: issues }\n");
+      await writeFile(join(unstated.root, "sous.yaml"), TRACKER);
       await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot}, old: ${old.repoRoot}, unstated: ${unstated.repoRoot} }\n`);
       const built = await watchReposOf(home, undefined, "0.9.0");
       expect(built.repos.map((r) => r.name)).toEqual(["a"]);
@@ -676,7 +715,25 @@ describe("sous watch", () => {
       await watcher.pass();
       await watcher.pass();
       expect(starts()).toEqual([{ args: ["run", "3", "--flow", "task"], cwd: a.repoRoot, root: a.root }]);
-      expect(out).toEqual([`old skipped: ${built.unrunnable[0]?.reason}`, `unstated skipped: ${built.unrunnable[1]?.reason}`, `a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`]);
+      expect(out).toEqual([`old skipped: ${built.unrunnable[0]?.reason}`, `unstated skipped: ${built.unrunnable[1]?.reason}`, "#3: running in a (acme/planning)", `a #3: started sous run 3 --flow task (pid 1000, /usr/bin/node /engine/cli.js in ${a.repoRoot})`]);
+    });
+
+    it("refuses to build two entries on one tracker with shared: false, naming both", async () => {
+      const home = join(repoRoot, ".sous");
+      const a = await listedRepo("a");
+      const b = await listedRepo("b");
+      const block = "engine: ^0.9.0\ntracker: { type: github, repo: acme/planning, shared: false, labels: sous }\n";
+      await writeFile(join(a.root, "sous.yaml"), block);
+      await writeFile(join(b.root, "sous.yaml"), block);
+      await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot}, b: ${b.repoRoot} }\n`);
+      await expect(watchReposOf(home, undefined, "0.9.0")).rejects.toThrow("repos: a and b use one tracker (github acme/planning) with shared: false; set shared: true in both, or give each its own tracker");
+      await writeFile(join(b.root, "sous.yaml"), block.replace("false", "true"));
+      await expect(watchReposOf(home, undefined, "0.9.0")).rejects.toThrow("repos: a and b use one tracker");
+      await writeFile(join(a.root, "sous.yaml"), block.replace("false", "true"));
+      expect((await watchReposOf(home, undefined, "0.9.0")).repos.map(({ name, shared, location }) => ({ name, shared, location }))).toEqual([
+        { name: "a", shared: true, location: planning },
+        { name: "b", shared: true, location: planning },
+      ]);
     });
 
     it("refuses to build two entries under one name", async () => {

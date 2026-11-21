@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Exec, ExecResult } from "../../src/adapters/exec.js";
-import { defaultStarterDir, engineLine, GITIGNORE, initCommand, parseInitArgs, setupChecklist, SKILL_TARGET } from "../../src/commands/init.js";
+import { defaultStarterDir, engineLine, GITIGNORE, initCommand, parseInitArgs, setupChecklist, SKILL_TARGET, trackerBlock } from "../../src/commands/init.js";
+import { loadSettings } from "../../src/config/settings.js";
 import { homeRunCommand, type RunChild } from "../../src/commands/homerun.js";
 import { runEngineRefusal } from "../../src/commands/run.js";
 import { validateCommand } from "../../src/commands/validate.js";
@@ -43,10 +44,12 @@ const starterOf = async (): Promise<string> => {
   return dir;
 };
 
-const setup = async () => {
+/** A checkout whose origin is `origin` (none when `null`); records every command but `git remote`. */
+const setup = async (origin: string | null = "git@github.com:acme/web.git") => {
   const repoRoot = await mkdtemp(join(tmpdir(), "sous-repo-"));
   const calls: { command: string; args: string[]; cwd?: string }[] = [];
   const exec: Exec = async (command, args, options) => {
+    if (command === "git" && args[0] === "remote") return origin === null ? { code: 2, stdout: "", stderr: "error: No such remote 'origin'" } : { ...ok, stdout: `${origin}\n` };
     calls.push({ command, args: [...args], ...(options?.cwd !== undefined ? { cwd: options.cwd } : {}) });
     return ok;
   };
@@ -141,12 +144,12 @@ describe("initCommand", () => {
     expect(existsSync(join(s.repoRoot, ".sous"))).toBe(false);
     const name = basename(api);
     expect(s.out).toContain(`  add to .sous/sous.yaml here, the home repository: repos: { ${name}: ${relative(s.repoRoot, api)} }`);
-    expect(s.out.join("\n")).toContain(`sous run <issue> --repo ${name} --flow bench`);
+    expect(s.out.join("\n")).toContain(`sous run ${name}#<issue> --flow bench`);
   });
 
   it("a repository initialised with --no-install is run by the home repository's engine, from sous watch and from sous run there", async () => {
     const starter = await starterOf();
-    await writeFile(join(starter, "sous.yaml"), "tracker: local\ntrackerOptions: { dir: issues }\n", "utf8");
+    await writeFile(join(starter, "sous.yaml"), "tracker: { type: local, dir: issues, shared: false, labels: sous }\n", "utf8");
     await writeFile(join(starter, "flows", "task.yaml"), `allowedLabels: [type:task]\n${await readFile(join(starter, "flows", "good.yaml"), "utf8")}`, "utf8");
     const dir = await mkdtemp(join(tmpdir(), "sous-served-"));
     const home = join(dir, "home", ".sous");
@@ -169,7 +172,7 @@ describe("initCommand", () => {
 
     const ran: { command: string; args: string[]; cwd: string; env: Record<string, string> }[] = [];
     const runChild: RunChild = async (command, args, { cwd, env }) => (ran.push({ command, args: [...args], cwd, env }), 0);
-    const homeRun = { root: home, tracker, engine: ENGINE, engineVersion: "0.9.0", runChild, runHere: async () => 1, out: () => undefined, err: () => undefined };
+    const homeRun = { root: home, lookup: { ...built, repos: built.repos.map((r) => ({ ...r, tracker })) }, engine: ENGINE, engineVersion: "0.9.0", runChild, runHere: async () => 1, out: () => undefined, err: () => undefined };
     expect(await homeRunCommand(["7", "--flow", "task"], homeRun)).toBe(0);
 
     const started = { command: "/usr/bin/node", args: ["/engine/cli.js", "run", "7", "--flow", "task"], cwd: api.repoRoot, env: { SOUS_ROOT: api.root } };
@@ -200,13 +203,49 @@ describe("initCommand", () => {
     await writeFile(join(commented, "sous.yaml"), "# settings\n\nbaseBranch: main\n", "utf8");
     const s = await setup();
     expect(await initCommand(["--starter", commented], { ...s.deps, engineVersion: "1.2.3-rc.1" })).toBe(0);
-    expect(await readFile(join(s.repoRoot, ".sous", "sous.yaml"), "utf8")).toBe(`# settings\n\n${engineLine("1.2.3-rc.1")}\nbaseBranch: main\n`);
+    expect(await readFile(join(s.repoRoot, ".sous", "sous.yaml"), "utf8")).toBe(`# settings\n\n${engineLine("1.2.3-rc.1")}\nbaseBranch: main\n${trackerBlock("acme/web")}`);
     expect(engineLine("1.2.3-rc.1")).toMatch(/^engine: \^1\.2\.3-rc\.1 +# /);
 
     const none = await mkdtemp(join(tmpdir(), "sous-none-"));
     const t = await setup();
     expect(await initCommand(["--starter", none], t.deps)).toBe(0);
-    expect(await readFile(join(t.repoRoot, ".sous", "sous.yaml"), "utf8")).toBe(`${engineLine("0.9.0")}\n`);
+    expect(await readFile(join(t.repoRoot, ".sous", "sous.yaml"), "utf8")).toBe(`${engineLine("0.9.0")}\n${trackerBlock("acme/web")}`);
+  });
+
+  it("writes the tracker block in full, with the repo of the checkout's origin, shared: false and labels: sous", async () => {
+    const starter = await mkdtemp(join(tmpdir(), "sous-blockless-"));
+    await writeFile(join(starter, "sous.yaml"), "baseBranch: main\n", "utf8");
+    for (const origin of ["git@github.com:acme/web.git", "https://github.com/acme/web", "https://github.com/acme/web.git/"]) {
+      const s = await setup(origin);
+      expect(await initCommand(["--no-install", "--starter", starter], s.deps)).toBe(0);
+      expect(loadSettings(join(s.repoRoot, ".sous", "sous.yaml")).tracker).toEqual({ type: "github", repo: "acme/web", shared: false, labels: "sous" });
+    }
+  });
+
+  it("fills the owner/name placeholder of a starter's block from the origin, and leaves a block naming another location alone", async () => {
+    const placeholder = await mkdtemp(join(tmpdir(), "sous-placeholder-"));
+    await writeFile(join(placeholder, "sous.yaml"), "tracker:\n  type: github  # where\n  repo: owner/name  # the repo\n  shared: false\n  labels: sous\nbaseBranch: main\n", "utf8");
+    const s = await setup();
+    expect(await initCommand(["--no-install", "--starter", placeholder], s.deps)).toBe(0);
+    expect(await readFile(join(s.repoRoot, ".sous", "sous.yaml"), "utf8")).toContain("  repo: acme/web  # the repo\n");
+
+    const local = await mkdtemp(join(tmpdir(), "sous-local-"));
+    await writeFile(join(local, "sous.yaml"), "tracker: { type: local, dir: issues, shared: true, labels: work }\n", "utf8");
+    const t = await setup();
+    expect(await initCommand(["--no-install", "--starter", local], t.deps)).toBe(0);
+    expect(loadSettings(join(t.repoRoot, ".sous", "sous.yaml")).tracker).toEqual({ type: "local", dir: "issues", shared: true, labels: "work" });
+  });
+
+  it("without an origin writes the owner/name placeholder, says so, and validate names it", async () => {
+    const starter = await mkdtemp(join(tmpdir(), "sous-blockless-"));
+    await writeFile(join(starter, "sous.yaml"), "baseBranch: main\n", "utf8");
+    const s = await setup(null);
+    expect(await initCommand(["--no-install", "--starter", starter], s.deps)).toBe(0);
+    const root = join(s.repoRoot, ".sous");
+    expect(await readFile(join(root, "sous.yaml"), "utf8")).toContain(trackerBlock("owner/name"));
+    expect(s.out).toContain(`init: the checkout has no origin; set tracker.repo in ${join(".sous", "sous.yaml")} to the owner/name of the repository the issues live in`);
+    const { err } = await checked(root);
+    expect(err.join("\n")).toContain("tracker.repo is required for github: the owner/name of the repository the issues live in, not the owner/name placeholder");
   });
 
   it("skips the skill when the starter has none and reports a failed install", async () => {

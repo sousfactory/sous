@@ -22,20 +22,52 @@ describe("parseSettings", () => {
       templatesDir: "templates",
       logsDir: "logs",
       runsDir: "runs",
-      labelPrefix: "sous",
       lifecycle: "core",
       idleTimeoutSeconds: 1800,
       uiPort: 4680,
-      tracker: "github",
-      trackerOptions: {},
     });
   });
 
-  it("takes any tracker name, since a path names a project module, and options for it", () => {
-    expect(parseSettings({ tracker: "beads" })).toEqual({ ...DEFAULT_SETTINGS, tracker: "beads" });
-    expect(parseSettings({ tracker: "trackers/jira.ts", trackerOptions: { project: "CA" } })).toEqual({ ...DEFAULT_SETTINGS, tracker: "trackers/jira.ts", trackerOptions: { project: "CA" } });
-    expect(() => parseSettings({ tracker: "" })).toThrow(/tracker/);
-    expect(() => parseSettings({ trackerOptions: "x" })).toThrow(/trackerOptions must be object/);
+  it("takes the tracker block: type, location, shared and labels", () => {
+    const tracker = { type: "github", repo: "acme/web", shared: false, labels: "sous" };
+    expect(parseSettings({ tracker })).toEqual({ ...DEFAULT_SETTINGS, tracker });
+    expect(parseSettings({ tracker: { type: "local", dir: "issues", shared: true, labels: "factory" } }).tracker).toEqual({ type: "local", dir: "issues", shared: true, labels: "factory" });
+    expect(parseSettings({ tracker: { type: "beads", shared: false, labels: "sous" } }).tracker).toEqual({ type: "beads", shared: false, labels: "sous" });
+  });
+
+  it("hands a module type whatever further keys it documents, under the same block", () => {
+    const tracker = { type: "trackers/jira.ts", shared: true, labels: "sous", project: "CA", board: { id: 3 } };
+    expect(parseSettings({ tracker }).tracker).toEqual(tracker);
+  });
+
+  it.each([
+    [{ repo: "acme/web", shared: false, labels: "sous" }, "sous.yaml: tracker.type is required: github, beads, local, or the path of a tracker module"],
+    [{ type: "github", repo: "acme/web", labels: "sous" }, "sous.yaml: tracker.shared is required: true when the tracker holds the issues of several repositories, false when it holds this one's alone"],
+    [{ type: "github", repo: "acme/web", shared: false }, "sous.yaml: tracker.labels is required: the prefix of the sous:* labels, sous unless you chose another"],
+    [{ type: "github", shared: false, labels: "sous" }, "sous.yaml: tracker.repo is required for github: the owner/name of the repository the issues live in"],
+    [{ type: "github", repo: "owner/name", shared: false, labels: "sous" }, "sous.yaml: tracker.repo is required for github: the owner/name of the repository the issues live in, not the owner/name placeholder"],
+    [{ type: "local", shared: false, labels: "sous" }, "sous.yaml: tracker.dir is required for local: the folder of the issue files, relative to .sous/"],
+  ])("refuses the block %j naming the missing key", (tracker, message) => {
+    expect(() => parseSettings({ tracker }, "sous.yaml")).toThrow(message);
+  });
+
+  it.each([
+    [{ type: "github", repo: "planning", shared: false, labels: "sous" }, 'sous.yaml: tracker.repo must be owner/name, not "planning"'],
+    [{ type: "github", repo: "acme/web", shared: "no", labels: "sous" }, "sous.yaml: tracker.shared must be true or false"],
+    [{ type: "github", repo: "acme/web", shared: false, labels: "" }, "sous.yaml: tracker.labels must be a non-empty string"],
+    [{ type: "local", dir: 3, shared: false, labels: "sous" }, "sous.yaml: tracker.dir must be a non-empty string"],
+  ])("refuses the block %j naming the wrong key", (tracker, message) => {
+    expect(() => parseSettings({ tracker }, "sous.yaml")).toThrow(message);
+  });
+
+  it("refuses each old key with the new key to type, before any schema error", () => {
+    expect(() => parseSettings({ tracker: "github" }, "sous.yaml")).toThrow("sous.yaml: tracker is now a block: tracker: { type: github, repo: owner/name, shared: false, labels: sous }");
+    expect(() => parseSettings({ labelPrefix: "sous" }, "sous.yaml")).toThrow("sous.yaml: labelPrefix is now tracker.labels");
+    expect(() => parseSettings({ trackerOptions: { repo: "acme/web" } }, "sous.yaml")).toThrow("sous.yaml: trackerOptions.repo is now tracker.repo");
+    expect(() => parseSettings({ tracker: "local", trackerOptions: { dir: "issues" }, labelPrefix: "x", unknownKey: 1 }, "sous.yaml")).toThrow(
+      "sous.yaml: tracker is now a block: tracker: { type: github, repo: owner/name, shared: false, labels: sous }; trackerOptions.dir is now tracker.dir; labelPrefix is now tracker.labels",
+    );
+    expect(() => parseSettings({ trackerOptions: {} }, "sous.yaml")).toThrow("sous.yaml: trackerOptions is now the tracker block: tracker.<key>");
   });
 
   it("resolves every dir against the project root", () => {
@@ -56,7 +88,6 @@ describe("parseSettings", () => {
       lifecycle: "steps",
       specsDir: "docs/specs",
     });
-    expect(() => parseSettings({ labelPrefix: null })).toThrow(/labelPrefix must be string/);
     expect(() => parseSettings({ lifecycle: "mirror" })).toThrow(/lifecycle/);
   });
 
@@ -97,7 +128,14 @@ describe("loadSettings", () => {
   });
 
   it("merges a project file over the defaults", () => {
-    expect(loadSettings(fixture("project", "sous.yaml"))).toEqual({ ...DEFAULT_SETTINGS, baseBranch: "develop", lifecycle: "steps", idleTimeoutSeconds: 60, engine: ">=0.1.0" });
+    expect(loadSettings(fixture("project", "sous.yaml"))).toEqual({
+      ...DEFAULT_SETTINGS,
+      baseBranch: "develop",
+      lifecycle: "steps",
+      idleTimeoutSeconds: 60,
+      engine: ">=0.1.0",
+      tracker: { type: "github", repo: "acme/web", shared: false, labels: "sous" },
+    });
   });
 
   it("names the file in a violation", () => {

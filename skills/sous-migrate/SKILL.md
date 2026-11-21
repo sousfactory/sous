@@ -216,9 +216,11 @@ Finish with the message for the repository's users, filled in, for the
 human to pass on:
 
 > `.sous/sous` is gone: this repository's runs start in `<home>`.
-> Label an issue `repo:<name>` and `sous:ready` for its `sous watch`, or
-> type `./sous run <issue>` there (`--repo <name>` when the issue has no
-> label). Runs, logs and worktrees stay in this repository's `.sous/`;
+> Label an issue `sous:ready` for its `sous watch` (and `repo:<name>`
+> when its tracker is shared, `tracker.shared: true`), or type
+> `./sous run <issue>` there (`./sous run <name>#<issue>` when several
+> entries' trackers hold that number). Runs, logs and worktrees stay in
+> this repository's `.sous/`;
 > read them with `SOUS_ROOT=<path>/.sous .sous/node_modules/.bin/sous
 > status` from `<home>`'s root. To edit or test steps here, `cd .sous && npm install`, then
 > `npx vitest run`; `npx sous <command>` in `.sous/` then replaces

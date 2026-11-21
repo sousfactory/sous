@@ -256,8 +256,8 @@ describe("statusCommand", () => {
   });
   afterEach(() => rm(repoRoot, { recursive: true, force: true }));
 
-  it("reads the run folder under the settings' runsDir and renders session and timeline", async () => {
-    await writeFile(join(root, "sous.yaml"), "runsDir: ../state/runs\n");
+  it("reads the run folder under the settings' runsDir of a project written with the tracker block and renders session and timeline", async () => {
+    await writeFile(join(root, "sous.yaml"), "runsDir: ../state/runs\ntracker: { type: github, repo: acme/web, shared: false, labels: sous }\n");
     const runs = join(repoRoot, "state", "runs");
     await saveSession(sessionFile(runs, "12"), sample());
     const log = createFileEventLog(eventsFile(runs, "12"));

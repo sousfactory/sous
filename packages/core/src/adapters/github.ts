@@ -3,20 +3,20 @@
  * are retried with a short backoff so a flaky connection does not fail a
  * long run; anything else throws with stderr.
  */
-import { byId, matchesList, parseBlockedBy, QUALIFIED_REF, stateLabels, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
+import { byId, IssueNotFoundError, matchesList, parseBlockedBy, QUALIFIED_REF, stateLabels, swapStateLabel, type Tracker, type Issue } from "../ports/tracker.js";
 import { exec as defaultExec, ExecError, must, type Exec } from "./exec.js";
 
 export type GitHubOptions = {
   exec?: Exec;
-  /** Repository checkout `gh` resolves `{owner}/{repo}` from. */
+  /** Where `gh` runs; it never decides the repository, `repo` does. */
   cwd?: string;
   /**
-   * `owner/name` of the repository the issues live in, when it is not the
-   * checkout's: `-R` on every command, the path of every `gh api` endpoint
-   * (which has no `-R`). `trackerOptions.repo` in `sous.yaml`.
+   * `owner/name` of the repository the issues live in: `-R` on every command,
+   * the path of every `gh api` endpoint (which has no `-R`). `tracker.repo`
+   * in `sous.yaml`; never the checkout's origin.
    */
-  repo?: string;
-  /** `sous` of `sous:running`; the project's `labelPrefix` setting. */
+  repo: string;
+  /** `sous` of `sous:running`; `tracker.labels` in `sous.yaml`. */
   labelPrefix?: string;
   /** Retries after the first failed attempt. */
   retries?: number;
@@ -31,6 +31,9 @@ const TRANSIENT = /HTTP 5\d\d|timeout|timed out|TLS|connection reset|EOF|rate li
 export const isTransient = (stderr: string): boolean => TRANSIENT.test(stderr);
 
 const ISSUE_FIELDS = "number,title,body,labels,state";
+
+/** What `gh issue view` prints for a number the repository has no issue or pull request under. */
+const NO_SUCH_ISSUE = /Could not resolve to an? (issue|pull ?request)/i;
 
 export { parseBlockedBy } from "../ports/tracker.js";
 
@@ -63,7 +66,7 @@ export const toIssue = (raw: RawIssue): Issue => ({
   labels: (raw.labels ?? []).map((l) => l.name),
 });
 
-export const createGitHubTracker = (options: GitHubOptions = {}): Tracker => {
+export const createGitHubTracker = (options: GitHubOptions): Tracker => {
   const {
     exec = defaultExec,
     labelPrefix = "sous",
@@ -79,7 +82,7 @@ export const createGitHubTracker = (options: GitHubOptions = {}): Tracker => {
   /** Addresses `options.repo`, unless the call names its own repository (`-R` of a qualified blocker). */
   const addressed = (args: readonly string[], own: boolean): readonly string[] => {
     const { repo } = options;
-    if (repo === undefined || own) return args;
+    if (own) return args;
     if (args[0] === "api") return args.map((a) => a.replace("repos/{owner}/{repo}/", `repos/${repo}/`));
     return [...args, "-R", repo];
   };
@@ -99,7 +102,13 @@ export const createGitHubTracker = (options: GitHubOptions = {}): Tracker => {
   /** `#96` and `96` name the same issue. */
   const numberOf = (id: string): string => id.replace(/^#/, "");
 
-  const getIssue = async (id: string): Promise<Issue> => toIssue(JSON.parse(await gh(["issue", "view", numberOf(id), "--json", ISSUE_FIELDS])) as RawIssue);
+  const getIssue = async (id: string): Promise<Issue> => {
+    const args = ["issue", "view", numberOf(id), "--json", ISSUE_FIELDS];
+    const result = await ghResult(args);
+    // GitHub's own answer for a number the repository does not have; any other failure is the tracker's, not a miss.
+    if (result.code !== 0 && NO_SUCH_ISSUE.test(result.stderr)) throw new IssueNotFoundError(new ExecError(what(addressed(args, false)), result).message);
+    return toIssue(JSON.parse(must(result, what(addressed(args, false)))) as RawIssue);
+  };
 
   /** An `owner/repo#n` blocker is asked of its own repository; anything else is an issue of this one. */
   const stateOf = async (ref: string): Promise<Issue["state"]> => {

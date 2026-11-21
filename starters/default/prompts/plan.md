@@ -18,9 +18,10 @@ sous repository draws the same sequence as one diagram.
 - `ISSUE`: an optional issue id, passed as the skill argument (`/sous-plan
   123`, `/sous-plan #123`, `/sous-plan bd-a3f8`); a leading `#` is not part
   of the id.
-- **The tracker sheet.** Read `tracker:` from `.sous/sous.yaml`. The sheet
-  is `.sous/trackers/<tracker>.md` (`github.md`, `beads.md`, `local.md`; for
-  a module such as `trackers/jira.ts`, the `.md` beside it). Every tracker
+- **The tracker sheet.** Read `tracker.type` from the `tracker:` block of
+  `.sous/sous.yaml`. The sheet is `.sous/trackers/<tracker>.md`, named by
+  that type (`github.md`, `beads.md`, `local.md`; for a module such as
+  `trackers/jira.ts`, the `.md` beside it). Every tracker
   verb below is written in bold, **like this**, and the sheet defines it as
   a command or a file edit. Use the sheet's commands and nothing else to
   talk to the tracker. The sheet also defines `REF`, how the issue is
@@ -32,13 +33,18 @@ sous repository draws the same sequence as one diagram.
   tracker or to apply a `ready-for-agent` label, this prompt says what to
   publish instead.
 - **Settings** from `.sous/sous.yaml`: `baseBranch` (the base, `main`
-  unless changed), the `branch` template, `labelPrefix` (`sous` unless
-  changed) and `specsDir` (`../specs` from `.sous`, so `specs/` at the
-  repository root).
+  unless changed), the `branch` template, `tracker.labels`, the label
+  prefix (`sous` unless changed), written `<labels>` below,
+  `tracker.shared` and `specsDir` (`../specs` from `.sous`, so `specs/` at
+  the repository root).
 - **The repository** the work belongs to, and its `<name>` for the
-  `repo:<name>` label. Every issue this session plans ends up with
-  exactly one `repo:<name>` label, so `sous watch` knows where to run it.
-  Without `repos:` in `.sous/sous.yaml` the repository is this one, and
+  `repo:<name>` label. The label is set only on an issue of a shared
+  tracker (`tracker.shared: true`), one that holds several repositories'
+  issues: there every issue this session plans ends up with exactly one
+  `repo:<name>` label, so `sous watch`, and `sous run` in a home
+  repository, know which of them runs it. On an unshared tracker (`tracker.shared: false`) the tracker
+  itself says where the issue runs, and the session sets no `repo:*`
+  label. Without `repos:` in `.sous/sous.yaml` the repository is this one, and
   its name is `name:` in `sous.yaml`, else the repository part of the
   `origin` remote, else the folder (`git remote get-url origin`: the last
   path segment without `.git`). With `repos:` this is a home repository,
@@ -87,13 +93,13 @@ Stop with a clear message if one fails:
 ## 3. Run state and target
 
 The run phase marks an issue it works on with the **state labels**
-`<labelPrefix>:running` and `<labelPrefix>:blocked`. The labels and the
+`<labels>:running` and `<labels>:blocked`. The labels and the
 local worktree decide where this session writes:
 
-- **`<labelPrefix>:running`:** stop. A run is in progress; nothing may be
+- **`<labels>:running`:** stop. A run is in progress; nothing may be
   amended, neither on the base nor on the branch. Tell the human to block
   the run or wait for it.
-- **`<labelPrefix>:blocked`:** compute the run's branch from the `branch`
+- **`<labels>:blocked`:** compute the run's branch from the `branch`
   template in `sous.yaml` (`${{ issue.id }}` is `ISSUE`, `${{ slug }}` is
   the slug of the title by the rule in step 5). Find its worktree:
   `git worktree list --porcelain` lists each worktree's path followed by
@@ -133,10 +139,11 @@ Look for an existing spec in the target: `ls -d specs/<ISSUE>-*/ 2>/dev/null`.
   vendored copy under `.sous/skills/`. The issue, its children and the spec
   file are the outputs; the kinds are the only classification you ever set.
   Never set a state label: the run phase owns the state labels apart from
-  `<labelPrefix>:ready` (`sous:ready`), which you set only on a yes at the
+  `<labels>:ready` (`sous:ready`), which you set only on a yes at the
   second gate in step 10, and otherwise a human sets.
-  Besides the kinds and that one, the label you set is `repo:<name>`, at GO.
-- `<labelPrefix>:ready` is the label `sous watch` starts work from. Set it
+  Besides the kinds and that one, the label you set is `repo:<name>`, at
+  GO, and only on a shared tracker.
+- `<labels>:ready` is the label `sous watch` starts work from. Set it
   only on the issue itself, only through **set ready**, and only when the
   human says yes at the second gate; without that yes a human sets it, by
   hand or on the tracker's web page, when the work may start.
@@ -241,8 +248,8 @@ gets published is defined here.
    the order the sheet describes, so publishing in dependency order also
    gives a sensible default order.
 
-A feature's children carry the parent's `repo:<name>` label: the feature
-runs as one flow in one checkout, so it never has children in different
+On a shared tracker a feature's children carry the parent's `repo:<name>`
+label: the feature runs as one flow in one checkout, so it never has children in different
 repositories. If the slices belong in different repositories, stop: that
 is cross-repository work, an epic whose children are features or tasks
 each planned on its own, and this procedure does not plan an epic.
@@ -274,7 +281,7 @@ If the issue already has criteria that match the spec, leave them.
 Otherwise draft them from the spec, show them to the human, and after
 their approval **set the acceptance criteria**, which replaces the
 existing checklist rather than appending to it. Like a feature, a task or
-bug carries one `repo:<name>` label, set at GO (step 9).
+bug on a shared tracker carries one `repo:<name>` label, set at GO (step 9).
 
 ## 9. GO gate
 
@@ -283,7 +290,7 @@ to the spec folder, `docs/adr/` and the glossary.
 
 - **Nothing to commit:** skip the gate and the second gate. Report as in
   step 11, listing the children you rewrote, if any, and naming
-  `<labelPrefix>:ready` as the manual step, as after a no; then stop.
+  `<labels>:ready` as the manual step, as after a no; then stop.
   Issue edits were each announced on their own; nothing is committed.
 - **Something to commit:** before any `git commit` or `git push`, show the
   human a summary:
@@ -292,7 +299,8 @@ to the spec folder, `docs/adr/` and the glossary.
   - the ADRs and glossary changes, if any;
   - the children: id, title and blockers, with the ones you rewrote marked;
     or the acceptance criteria added to a task or bug;
-  - the `repo:<name>` label the issue and its children will carry;
+  - on a shared tracker, the `repo:<name>` label the issue and its
+    children will carry;
   - every issue edit you made.
 
   Then ask for an explicit GO. This is a soft gate: nothing enforces it, so
@@ -323,11 +331,11 @@ No push: the amendment reaches the base with the run's merge and dies with
 a `--restart`. Add only the paths named above; the worktree may hold the
 run's uncommitted work.
 
-Then, still after GO, **set the repo label** on the issue and, for a
-feature, on every child: exactly one `repo:<name>` label each, creating
+On a shared tracker, still after GO, **set the repo label** on the issue
+and, for a feature, on every child: exactly one `repo:<name>` label each, creating
 the label in the tracker when it is missing, removing any other `repo:*`
 label. With nothing to commit, set it where it is missing all the same,
-announced like any other issue edit.
+announced like any other issue edit. On an unshared tracker set none.
 
 Plain commit message, no `Co-Authored-By` and no other trailers. Never create
 a branch, never force-push. If the rebase conflicts, stop and show the human.
@@ -335,7 +343,7 @@ a branch, never force-push. If the rebase conflicts, stop and show the human.
 ## 10. Second gate
 
 Only after GO, once the spec is committed and the children or the
-criteria are published and the repo label is set, ask the human one
+criteria are published and any repo label is set, ask the human one
 question: may the work start now? Ask it with your recommended answer,
 recommending yes.
 
@@ -358,11 +366,12 @@ Finish with a short report (nothing is enforced, this is for the human):
   acceptance criteria;
 - for a worktree commit: the amendment is on the branch and reaches the
   base with the merge;
-- the `repo:<name>` label the issue and its children carry;
+- on a shared tracker, the `repo:<name>` label the issue and its children
+  carry;
 - the next command: `./sous run <ISSUE>` in the target repository.
   For a blocked run that is the same
   command the blocked comment names; the run re-enters at the blocked
   step. On a no, or when the second gate was skipped, a human sets
-  `<labelPrefix>:ready` on the issue when the work may start, and
+  `<labels>:ready` on the issue when the work may start, and
   `sous watch` runs it; name that manual step here.
   On a yes, the issue now carries it, and `sous watch` picks it up.

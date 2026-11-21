@@ -135,7 +135,19 @@ cd .sous
 
 `init` prints a checklist: the check commands in
 `.sous/steps/verify/eval.ts`, `sous.yaml`, the flows' models and labels,
-the `ADAPT` notes in `.sous/prompts/plan.md`. Prefer a guided setup? Copy
+the `ADAPT` notes in `.sous/prompts/plan.md`. In `sous.yaml` it writes the
+`tracker:` block, which says where the issues live; check it:
+
+```yaml
+tracker:
+  type: github        # github, beads, local, or a module of your own
+  repo: acme/web      # the issues' repository, read from origin at init; never guessed later
+  shared: false       # true on a planning tracker several repositories share
+  labels: sous        # the prefix of sous:ready, sous:running, sous:blocked
+```
+
+On a shared tracker each issue carries a `repo:<name>` label naming the
+repository that runs it; on a repository's own tracker none is needed. Prefer a guided setup? Copy
 `skills/sous-setup` from this repository into `.claude/skills/`, then
 `/sous-setup` installs, inits and adapts the files with you in Claude Code.
 
@@ -149,6 +161,7 @@ Daily use:
 ./sous ui                     # live, at http://127.0.0.1:4680 (uiPort in sous.yaml)
 ./sous watch                  # unattended: runs issues labelled sous:ready, one at a time
 sous run <issue>              # the same from a global engine (npm install -g sous-factory), in a home repository or any .sous/
+sous run <name>#<issue>       # in a home repository: the issue of entry <name>'s tracker, when several hold the number
 ```
 
 A run that cannot go on stops `blocked`: the issue gets a comment saying
@@ -222,7 +235,7 @@ your-project/
 ├── .claude/skills/sous-plan/     # the planning skill, installed by init
 ├── specs/<id>-<slug>/spec.md     # written by /sous-plan (specsDir, ../specs from .sous)
 └── .sous/
-    ├── sous.yaml                 # settings: tracker, baseBranch, branch, lifecycle, dirs
+    ├── sous.yaml                 # settings: the tracker: block, baseBranch, branch, lifecycle, dirs
     ├── sous                      # wrapper: npx sous
     ├── package.json              # depends on sous-factory; node_modules/ lives here
     ├── flows/                    # task.yaml, feature.yaml, bench.yaml
