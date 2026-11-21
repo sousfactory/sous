@@ -88,11 +88,14 @@ One issue goes through it like this:
 > /sous-plan 57
 
 # the rest runs without you
-$ ./sous run 57 --flow task
+$ ./sous run 57
 $ ./sous status 57
 
 # optional: watch it live
 $ ./sous ui
+
+# or leave the queue to the daemon
+$ ./sous watch
 ```
 
 ![sous ui flow graph for task 57: init and implement done, review running; fix, sync, review-full, fix-review-full and merge still queued](docs/images/task-flow-panel.png)
@@ -114,9 +117,16 @@ running, with each step's agent, model and duration.
   implement and Codex can review.
 - **Resumable.** A blocked run keeps its worktree. Fix it by hand, run the
   same command, and it continues at that step's eval.
+- **Steered or unattended.** `sous run` takes one issue through its flow
+  while you watch; `sous watch` works the queue of `sous:ready` issues on
+  its own, one at a time.
+- **One repository or several.** Most projects run their own factory in
+  `.sous/`. A home repository runs several with one engine and one daemon,
+  each from its own tracker or all from a shared planning one.
 
 Every visit is recorded, every step can be tested alone with fixed inputs,
-and the tracker is GitHub, beads, local files or a module of your own. The
+the `/sous-run` skill drives it from a Claude Code session, and the tracker
+is GitHub, beads, local files or a module of your own. The
 [homepage](https://sousfactory.com) has the longer list.
 
 ## Quick start
