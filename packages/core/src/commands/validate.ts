@@ -80,7 +80,7 @@ const checkEngines = (root: string, version: string): ValidationError[] => {
 };
 
 /** In a home repository, two entries on one tracker unless both say `shared: true`, as `sous watch` refuses them. */
-const checkLocations = (root: string): ValidationError[] => {
+const checkLocations = (root: string, engineVersion: string): ValidationError[] => {
   const file = join(root, SETTINGS_FILE);
   let settings;
   try {
@@ -88,7 +88,7 @@ const checkLocations = (root: string): ValidationError[] => {
   } catch {
     return [];
   }
-  return sameLocationProblems(listedTrackersOf(root, settings)).map((message) => ({ file, rule: "settings", message }));
+  return sameLocationProblems(listedTrackersOf(root, settings, engineVersion)).map((message) => ({ file, rule: "settings", message }));
 };
 
 const COMMONJS = "so steps and tracker modules load as CommonJS, where sous-factory cannot be imported";
@@ -121,7 +121,7 @@ export const validateCommand = async (args: readonly string[], deps: ValidateDep
   const tracker = await checkTracker(deps.root);
   if (tracker !== undefined) report.errors.push(tracker);
   report.errors.push(...checkEngines(deps.root, deps.engineVersion ?? ENGINE_VERSION));
-  report.errors.push(...checkLocations(deps.root));
+  report.errors.push(...checkLocations(deps.root, deps.engineVersion ?? ENGINE_VERSION));
   const moduleType = checkModuleType(deps.root);
   if (moduleType !== undefined) report.errors.push(moduleType);
   for (const e of report.errors) deps.err(formatError(deps.root, e));

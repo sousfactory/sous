@@ -65,9 +65,15 @@ describe("parseSettings", () => {
     expect(() => parseSettings({ labelPrefix: "sous" }, "sous.yaml")).toThrow("sous.yaml: labelPrefix is now tracker.labels");
     expect(() => parseSettings({ trackerOptions: { repo: "acme/web" } }, "sous.yaml")).toThrow("sous.yaml: trackerOptions.repo is now tracker.repo");
     expect(() => parseSettings({ tracker: "local", trackerOptions: { dir: "issues" }, labelPrefix: "x", unknownKey: 1 }, "sous.yaml")).toThrow(
-      "sous.yaml: tracker is now a block: tracker: { type: github, repo: owner/name, shared: false, labels: sous }; trackerOptions.dir is now tracker.dir; labelPrefix is now tracker.labels",
+      "sous.yaml: tracker is now a block: tracker: { type: local, dir: issues, shared: false, labels: sous }; trackerOptions.dir is now tracker.dir; labelPrefix is now tracker.labels",
     );
     expect(() => parseSettings({ trackerOptions: {} }, "sous.yaml")).toThrow("sous.yaml: trackerOptions is now the tracker block: tracker.<key>");
+  });
+
+  it("refuses a string tracker with a block of its own type", () => {
+    expect(() => parseSettings({ tracker: "beads" }, "sous.yaml")).toThrow("sous.yaml: tracker is now a block: tracker: { type: beads, shared: false, labels: sous }");
+    expect(() => parseSettings({ tracker: "local" }, "sous.yaml")).toThrow("sous.yaml: tracker is now a block: tracker: { type: local, dir: issues, shared: false, labels: sous }");
+    expect(() => parseSettings({ tracker: "trackers/jira.ts" }, "sous.yaml")).toThrow("sous.yaml: tracker is now a block: tracker: { type: trackers/jira.ts, shared: false, labels: sous }");
   });
 
   it("resolves every dir against the project root", () => {

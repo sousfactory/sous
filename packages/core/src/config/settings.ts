@@ -74,8 +74,14 @@ export type TrackerSettings = {
 /** What `sous init` writes when the checkout has no origin to read the repository from; refused until replaced. */
 export const REPO_PLACEHOLDER = "owner/name";
 
-/** The block as a string `tracker:` is refused with. */
+/** The block a missing `tracker:` is refused with. */
 export const TRACKER_BLOCK = `tracker: { type: github, repo: ${REPO_PLACEHOLDER}, shared: false, labels: sous }`;
+
+/** The block an old string `tracker: <type>` is refused with: its own type, with the location key that type needs. */
+export const trackerBlockOf = (type: string): string => {
+  const location = type === "github" ? `, repo: ${REPO_PLACEHOLDER}` : type === "local" ? ", dir: issues" : "";
+  return `tracker: { type: ${type}${location}, shared: false, labels: sous }`;
+};
 
 export const DEFAULT_SETTINGS: Settings = {
   baseBranch: "main",
@@ -131,11 +137,11 @@ const checkRepos = (repos: unknown, file: string): void => {
  * key to type instead, so an existing project learns the move rather than
  * reading a schema error.
  */
-const oldKeyRefusals = (doc: unknown): string[] => {
+export const oldKeyRefusals = (doc: unknown): string[] => {
   if (typeof doc !== "object" || doc === null || Array.isArray(doc)) return [];
   const record = doc as Record<string, unknown>;
   const refusals: string[] = [];
-  if (typeof record["tracker"] === "string") refusals.push(`tracker is now a block: ${TRACKER_BLOCK}`);
+  if (typeof record["tracker"] === "string") refusals.push(`tracker is now a block: ${trackerBlockOf(record["tracker"])}`);
   if ("trackerOptions" in record) {
     const options = record["trackerOptions"];
     const keys = typeof options === "object" && options !== null && !Array.isArray(options) ? Object.keys(options) : [];

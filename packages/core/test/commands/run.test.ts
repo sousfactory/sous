@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFileEventLog } from "../../src/adapters/eventlog.js";
 import { worktreePathFor, type OpenSandbox, type OpenSandboxOptions } from "../../src/adapters/sandbox.js";
 import { lockPath, locksDir } from "../../src/commands/lock.js";
-import { existingSpecDirName, onProcessSignal, parseRunArgs, runCommand, type RunDeps, type SignalHandler, type StopSignal } from "../../src/commands/run.js";
+import { entryOf, existingSpecDirName, onProcessSignal, parseRunArgs, runCommand, type RunDeps, type SignalHandler, type StopSignal } from "../../src/commands/run.js";
 import { AgentProcessError } from "../../src/exec/errors.js";
 import { recordVisit, type Session } from "../../src/exec/scope.js";
 import type { Event } from "../../src/session/events.js";
@@ -24,11 +24,17 @@ describe("parseRunArgs", () => {
     expect(parseRunArgs(["--restart", "3", "--flow", "feature"])).toEqual({ flow: "feature", issue: "3", restart: true });
   });
 
-  it("reads name#issue as the issue of one repos: entry, the name being everything before the last #", () => {
-    expect(parseRunArgs(["web#42", "--flow", "task"])).toEqual({ entry: "web", issue: "42", flow: "task", restart: false });
-    expect(parseRunArgs(["a#b#7"])).toEqual({ entry: "a#b", issue: "7", restart: false });
+  it("keeps a # inside the issue as typed, dropping one leading #; name#issue is the home repository's to split", () => {
+    expect(parseRunArgs(["web#42", "--flow", "task"])).toEqual({ issue: "web#42", flow: "task", restart: false });
     expect(parseRunArgs(["#42"])).toEqual({ issue: "42", restart: false });
-    expect(parseRunArgs(["web#"])).toMatchObject({ error: expect.stringContaining("usage:") });
+    expect(parseRunArgs(["#"])).toMatchObject({ error: expect.stringContaining("usage:") });
+  });
+
+  it("splits a home repository's name#issue at the last #, the name being everything before it", () => {
+    expect(entryOf("web#42")).toEqual({ entry: "web", issue: "42" });
+    expect(entryOf("a#b#7")).toEqual({ entry: "a#b", issue: "7" });
+    expect(entryOf("42")).toEqual({ issue: "42" });
+    expect(entryOf("web#")).toEqual({ entry: "web", issue: "" });
   });
 
   it("rejects --repo, naming the qualified form that replaces it", () => {
@@ -142,6 +148,13 @@ describe("runCommand", () => {
     out.length = 0;
     expect(await runCommand(["#7", "--flow", "walk"], deps())).toBe(0);
     expect(out[0]).toBe(`starting #7 at start in ${worktree}`);
+  });
+
+  it("passes an id containing # to the tracker unchanged", async () => {
+    tracker.issues.set("abc#7", issue({ id: "abc#7", ref: "abc#7", title: "A hashed id", labels: ["type:task"] }));
+    expect(await runCommand(["abc#7", "--flow", "walk"], deps())).toBe(0);
+    expect(err).toEqual([]);
+    expect(out[0]).toBe(`starting abc#7 at start in ${worktree}`);
   });
 
   it("walks the flow end to end: validate, lock, sandbox, run record outside git, exit 0", async () => {

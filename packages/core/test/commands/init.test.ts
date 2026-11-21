@@ -172,7 +172,7 @@ describe("initCommand", () => {
 
     const ran: { command: string; args: string[]; cwd: string; env: Record<string, string> }[] = [];
     const runChild: RunChild = async (command, args, { cwd, env }) => (ran.push({ command, args: [...args], cwd, env }), 0);
-    const homeRun = { root: home, lookup: { ...built, repos: built.repos.map((r) => ({ ...r, tracker })) }, engine: ENGINE, engineVersion: "0.9.0", runChild, runHere: async () => 1, out: () => undefined, err: () => undefined };
+    const homeRun = { root: home, lookup: async () => ({ ...built, repos: built.repos.map((r) => ({ ...r, tracker })) }), engine: ENGINE, engineVersion: "0.9.0", runChild, runHere: async () => 1, out: () => undefined, err: () => undefined };
     expect(await homeRunCommand(["7", "--flow", "task"], homeRun)).toBe(0);
 
     const started = { command: "/usr/bin/node", args: ["/engine/cli.js", "run", "7", "--flow", "task"], cwd: api.repoRoot, env: { SOUS_ROOT: api.root } };
@@ -243,9 +243,39 @@ describe("initCommand", () => {
     expect(await initCommand(["--no-install", "--starter", starter], s.deps)).toBe(0);
     const root = join(s.repoRoot, ".sous");
     expect(await readFile(join(root, "sous.yaml"), "utf8")).toContain(trackerBlock("owner/name"));
-    expect(s.out).toContain(`init: the checkout has no origin; set tracker.repo in ${join(".sous", "sous.yaml")} to the owner/name of the repository the issues live in`);
+    expect(s.out).toContain(`init: the checkout has no github.com origin; set tracker.repo in ${join(".sous", "sous.yaml")} to the owner/name of the repository the issues live in`);
     const { err } = await checked(root);
     expect(err.join("\n")).toContain("tracker.repo is required for github: the owner/name of the repository the issues live in, not the owner/name placeholder");
+  });
+
+  it("writes the placeholder and warns for an origin that is not a github.com owner/name", async () => {
+    const starter = await mkdtemp(join(tmpdir(), "sous-blockless-"));
+    await writeFile(join(starter, "sous.yaml"), "baseBranch: main\n", "utf8");
+    for (const origin of ["git@gitlab.com:acme/web.git", "https://github.com/acme/team/web.git"]) {
+      const s = await setup(origin);
+      expect(await initCommand(["--no-install", "--starter", starter], s.deps)).toBe(0);
+      expect(await readFile(join(s.repoRoot, ".sous", "sous.yaml"), "utf8")).toContain(trackerBlock("owner/name"));
+      expect(s.out.join("\n")).toContain(`set tracker.repo in ${join(".sous", "sous.yaml")} to the owner/name of the repository the issues live in`);
+    }
+  });
+
+  it("warns only when the written repo: is the placeholder, not for owner/name in a comment", async () => {
+    const commented = await mkdtemp(join(tmpdir(), "sous-commented-"));
+    await writeFile(join(commented, "sous.yaml"), "# repo: owner/name of the repository\ntracker: { type: local, dir: issues, shared: false, labels: sous }\n", "utf8");
+    for (const origin of [null, "git@github.com:acme/web.git"]) {
+      const s = await setup(origin);
+      expect(await initCommand(["--no-install", "--starter", commented], s.deps)).toBe(0);
+      expect(s.out.join("\n")).not.toContain("set tracker.repo");
+    }
+  });
+
+  it("refuses a starter whose sous.yaml has an old tracker key, naming the line, and writes nothing", async () => {
+    const old = await mkdtemp(join(tmpdir(), "sous-old-"));
+    await writeFile(join(old, "sous.yaml"), "baseBranch: main\ntracker: beads\n", "utf8");
+    const s = await setup();
+    expect(await initCommand(["--no-install", "--starter", old], s.deps)).toBe(2);
+    expect(s.err).toEqual([`sous init: ${join(old, "sous.yaml")}:2: tracker is now a block: tracker: { type: beads, shared: false, labels: sous }`]);
+    expect(existsSync(join(s.repoRoot, ".sous"))).toBe(false);
   });
 
   it("skips the skill when the starter has none and reports a failed install", async () => {

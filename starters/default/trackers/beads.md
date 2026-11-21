@@ -1,10 +1,12 @@
 # Tracker sheet: beads
 
 How `/sous-plan` speaks to the tracker when the `tracker:` block of
-`sous.yaml` says `type: beads`. The run phase uses the engine's bd adapter;
+`sous.yaml` says `type: beads`: the sheet `.sous/trackers/<type>.md` of
+that type. The run phase uses the engine's bd adapter;
 this sheet is its prose twin, so the plan prompt can name a verb and this
 file says the command. Everything goes through the `bd` CLI in the
-repository. `<labels>` is `tracker.labels`.
+repository. `<labels>` is `tracker.labels`, the state-label prefix; it
+has no default (`sous` in the starter).
 
 ## Identity
 
@@ -16,7 +18,7 @@ repository. `<labels>` is `tracker.labels`.
   bead. Never set a label for the kind.
 - **State labels:** the run phase claims a bead with `bd update --claim`
   under an actor named `… (sous:<branch>)`, and adds the bd label
-  `<labels>:blocked` (`sous:blocked` by default) when it stops. A bead
+  `<labels>:blocked` (`sous:blocked` with `labels: sous`) when it stops. A bead
   whose status is `in_progress` and whose owner names `sous:` is running; a
   bead with the blocked label is blocked. `<labels>:ready` is set by
   a human; `/sous-plan` sets it only through **set ready**, on a yes at its

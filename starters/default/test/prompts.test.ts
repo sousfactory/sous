@@ -282,14 +282,16 @@ describe.each(PLANS)("prompts/%s", (_name, text, ref) => {
   });
 
   it("speaks to the tracker only through the sheet's verbs: no gh, bd or file commands of its own", () => {
-    expect(text).toContain(".sous/trackers/<tracker>.md");
+    expect(text).toContain(".sous/trackers/<type>.md");
+    expect(text).not.toContain("<tracker>.md");
     for (const verb of TRACKER_VERBS) expect(text.toLowerCase(), `uses **${verb}**`).toContain(`**${verb.toLowerCase()}**`);
     expect(text).not.toMatch(/\bgh (issue|api|label)\b|\bbd (create|show|update|dep)\b|sub_issue/);
   });
 
   it("reads the tracker: block of sous.yaml: tracker.type picks the sheet, tracker.labels is the label prefix", () => {
     expect(flat).toContain("Read `tracker.type` from the `tracker:` block of `.sous/sous.yaml`");
-    expect(flat).toContain("`tracker.labels`, the label prefix (`sous` unless changed), written `<labels>` below");
+    expect(flat).toContain("`tracker.labels`, the state-label prefix (no default; `sous` in the starter), written `<labels>` below");
+    expect(flat).not.toContain("unless changed), written");
     expect(flat).toContain("`tracker.shared`");
     expect(text).not.toMatch(/labelPrefix|trackerOptions/);
   });
@@ -390,7 +392,9 @@ describe.each(["github", "beads", "local"])("trackers/%s.md", (tracker) => {
   it("reads the tracker: block: the label prefix is tracker.labels, the repo label only on a shared tracker", () => {
     const flatSheet = text.replace(/\s+/g, " ");
     expect(text).not.toMatch(/labelPrefix|trackerOptions/);
-    expect(flatSheet).toContain("`<labels>` is `tracker.labels`");
+    expect(flatSheet).toContain("`<labels>` is `tracker.labels`, the state-label prefix; it has no default");
+    expect(flatSheet).toContain("`.sous/trackers/<type>.md`");
+    expect(flatSheet).not.toContain("by default");
     expect(flatSheet).toContain("set only on an issue of a shared tracker (`tracker.shared: true`)");
   });
 

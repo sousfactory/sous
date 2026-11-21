@@ -56,8 +56,8 @@ describe("sous run in a home repository", () => {
   };
 
   /** The lookup `sous watch` would build here, each tracker the fake at its location. */
-  const lookup = async (): Promise<Lookup> => {
-    const built = await lookupOf(home, undefined, "0.9.1");
+  const lookup = async (only?: string): Promise<Lookup> => {
+    const built = await lookupOf(home, undefined, "0.9.1", only);
     return { ...built, repos: built.repos.map((r) => ({ ...r, tracker: trackerAt(r.location.at) })) };
   };
 
@@ -93,7 +93,7 @@ describe("sous run in a home repository", () => {
   const run = async (args: string[], overrides: Partial<HomeRunDeps> = {}): Promise<number> =>
     homeRunCommand(args, {
       root: home,
-      lookup: await lookup(),
+      lookup,
       engine: ENGINE,
       engineVersion: "0.9.1",
       runChild: engineChild,
@@ -137,6 +137,42 @@ describe("sous run in a home repository", () => {
     expect(status.join("\n")).toContain(join(b.root, "runs", "42"));
   });
 
+  it("names one qualified form per shared tracker holding the number, not one per entry on it", async () => {
+    await listed("a", SHARED);
+    await listed("b", SHARED);
+    await listed("c");
+    await writeFile(join(home, "sous.yaml"), "repos: { a: ../a, b: ../b, c: ../c }\n");
+    shared().issues.set("42", issue({ id: "42", labels: ["type:task", "repo:b"] }));
+    own("c").issues.set("42", issue({ id: "42", labels: ["type:task"] }));
+    expect(await run(["42"])).toBe(2);
+    expect(err).toEqual(["sous run: issue 42 is in several trackers; name the entry: sous run a#42, sous run c#42"]);
+  });
+
+  it("says which entries were not asked on a miss alone, not on a closed issue or a collision", async () => {
+    const a = await listed("a");
+    await writeFile(join(home, "sous.yaml"), "repos: { a: ../a, b: ../b, c: ../c }\n");
+    const c = await listed("c");
+    own("a").issues.set("7", issue({ id: "7", state: "closed", labels: ["type:task"] }));
+    own("a").issues.set("8", issue({ id: "8", labels: ["type:task"] }));
+    own("c").issues.set("8", issue({ id: "8", labels: ["type:task"] }));
+    const asked = `local ${join(a.root, "issues")}, local ${join(c.root, "issues")}`;
+    expect(await run(["7"])).toBe(2);
+    expect(await run(["8"])).toBe(2);
+    expect(await run(["9"])).toBe(2);
+    expect(err).toEqual([
+      `sous run: issue 7 is closed wherever it is found (asked: ${asked})`,
+      "sous run: issue 8 is in several trackers; name the entry: sous run a#8, sous run c#8",
+      `sous run: issue 9 is in none of the trackers asked (${asked}); not asked, as nothing runs there: b`,
+    ]);
+  });
+
+  it("refuses name# with nothing after the #", async () => {
+    await listed("a");
+    await listed("b");
+    expect(await run(["a#"])).toBe(2);
+    expect(err).toEqual(["usage: sous run <issue | name#issue> [--flow <name>] [--restart]"]);
+  });
+
   it("refuses a number several trackers hold, naming the qualified form for each entry, and starts nothing", async () => {
     await listed("a");
     await listed("b");
@@ -154,6 +190,15 @@ describe("sous run in a home repository", () => {
     own("b").issues.set("42", issue({ id: "42", labels: ["type:task"] }));
     expect(await run(["a#42", "--flow", "walk"])).toBe(0);
     expect(children.map(({ args, cwd, env }) => ({ args, cwd, root: env["SOUS_ROOT"] }))).toEqual([{ args: ["/engine/cli.js", "run", "42", "--flow", "walk"], cwd: a.repoRoot, root: a.root }]);
+  });
+
+  it("name#issue still refuses a label naming an entry on another tracker, which could not find the issue", async () => {
+    await listed("a", SHARED);
+    await listed("b");
+    shared().issues.set("42", issue({ id: "42", labels: ["type:task", "repo:b"] }));
+    expect(await run(["a#42"])).toBe(2);
+    expect(children).toEqual([]);
+    expect(err).toEqual(["sous run: #42: repo:b, but the tracker of b does not list it; a run in b could not find it"]);
   });
 
   it("name#issue naming no entry exits 2 naming the known entries; one whose tracker lacks the issue says so", async () => {
@@ -305,26 +350,6 @@ describe("sous run in a home repository", () => {
     const reason = `engine 0.9.1 does not satisfy engine: ^0.8.0 of ${b.repoRoot}; run it with an engine in that range or widen the range`;
     expect(err).toEqual([`sous run: b: ${reason}`, `sous run: b: ${reason}`]);
     expect((await watchReposOf(home, undefined, "0.9.1")).unrunnable).toContainEqual({ name: "b", reason: `${reason}; sous watch starts nothing there` });
-  });
-});
-
-describe("sous run name#issue outside a home repository", () => {
-  it("exits 2: there are no entries to name", async () => {
-    const err: string[] = [];
-    const code = await runCommand(["a#42"], {
-      root: "/nowhere/.sous",
-      repoRoot: "/nowhere",
-      git: fakeGit(),
-      tracker: fakeTracker(),
-      openSandbox: async () => {
-        throw new Error("never opened");
-      },
-      confirm: async () => false,
-      out: () => undefined,
-      err: (line) => err.push(line),
-    });
-    expect(code).toBe(2);
-    expect(err).toEqual(["sous run: a#42 names an entry of repos:, and this repository's sous.yaml lists none; run sous run 42"]);
   });
 });
 

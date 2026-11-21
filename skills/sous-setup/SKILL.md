@@ -80,13 +80,16 @@ Read the file, propose the edit, show the diff, write on a yes.
      labels: sous        # sous:ready, sous:running, sous:blocked
    ```
 
-   `sous init` appended the block with `repo` from the origin; show it
-   and ask the human to confirm each key. `shared: false` for one
+   `sous init` appended the block with `repo` from the origin when that is
+   a github.com `owner/name`; show it and ask the human to confirm each
+   key, changing `type` and its location key for another tracker (the
+   value of `type` alone, `tracker: beads`, is refused: the block is
+   required). `shared: false` for one
    repository: the tracker holds this repository's issues and no
    `repo:<name>` label is needed. Ask for another `labels` prefix only
    when `sous:` labels already mean something else there. A
-   `repo: owner/name` placeholder (a checkout without an origin) is
-   refused by `sous validate` until replaced. Then `baseBranch`
+   `repo: owner/name` placeholder (a checkout without a github.com
+   origin) is refused by `sous validate` until replaced. Then `baseBranch`
    (the branch the checkout is on, `git rev-parse --abbrev-ref HEAD` is
    the usual answer; the flows and the verify eval read it as
    `ctx.baseBranch`), the `branch` template, `lifecycle` (`core`: runs
@@ -187,10 +190,12 @@ CLI, and per tracker in use `gh auth status` or `bd info`.
 
 - **No `.sous/sous.yaml` in the home repository:** from its root, as in
   step 2 above, `npm install -D sous-factory` and `npx sous init`. Read
-  the checklist. The home repository's own `tracker:` block matters only
-  when `repos:` lists the home itself: `sous run <issue>` and `sous
-  watch` typed there ask the trackers of the listed repositories, not
-  the home's.
+  the checklist. `sous run <issue>` and `sous watch` typed there ask the
+  trackers of the listed repositories, and the home's own only when
+  `repos:` lists the home itself. The home's own `tracker:` block must
+  still be valid when the home is not listed: every command reads the
+  home's `sous.yaml` and refuses a broken block, so fix it or delete it
+  (a home that does not list itself may have none).
 - **It exists:** say so in one line and extend it; nothing is installed
   again.
 

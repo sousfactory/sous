@@ -1,12 +1,14 @@
 # Tracker sheet: GitHub
 
 How `/sous-plan` speaks to the tracker when the `tracker:` block of
-`sous.yaml` says `type: github`. The run phase uses the engine's GitHub
+`sous.yaml` says `type: github`: the sheet `.sous/trackers/<type>.md` of
+that type. The run phase uses the engine's GitHub
 adapter; this sheet is its prose twin, so the plan prompt can name a verb
 and this file says the command. Everything goes through the `gh` CLI,
 always on the repository the block names: `<repo>` is `tracker.repo`
 (`owner/name`), never inferred from the checkout. `<labels>` is
-`tracker.labels`.
+`tracker.labels`, the state-label prefix; it has no default (`sous` in
+the starter).
 
 ## Identity
 
@@ -16,7 +18,7 @@ always on the repository the block names: `<repo>` is `tracker.repo`
   missing label is a missing kind. `gh label list -R <repo>` shows what exists;
   `gh label create <name> -R <repo>` adds one.
 - **State labels:** `<labels>:running` and `<labels>:blocked`
-  (`sous:running`, `sous:blocked` by default), set and removed by the run
+  (`sous:running`, `sous:blocked` with `labels: sous`), set and removed by the run
   phase only. A child carrying one is mid-run. `<labels>:ready` is set
   by a human; `/sous-plan` sets it only through **set ready**, on a yes at
   its second gate.

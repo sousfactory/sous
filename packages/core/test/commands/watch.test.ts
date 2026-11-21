@@ -736,6 +736,19 @@ describe("sous watch", () => {
       ]);
     });
 
+    it("leaves an engine-refused entry out of the one-tracker conflict, as sous validate does", async () => {
+      const home = join(repoRoot, ".sous");
+      const a = await listedRepo("a");
+      const b = await listedRepo("b");
+      const block = "tracker: { type: github, repo: acme/planning, shared: false, labels: sous }\n";
+      await writeFile(join(a.root, "sous.yaml"), `engine: ^0.9.0\n${block}`);
+      await writeFile(join(b.root, "sous.yaml"), `engine: ^0.8.0\n${block}`);
+      await writeFile(join(home, "sous.yaml"), `repos: { a: ${a.repoRoot}, b: ${b.repoRoot} }\n`);
+      const built = await watchReposOf(home, undefined, "0.9.0");
+      expect(built.repos.map((r) => r.name)).toEqual(["a"]);
+      expect(built.unrunnable.map((u) => u.name)).toEqual(["b"]);
+    });
+
     it("refuses to build two entries under one name", async () => {
       const home = join(repoRoot, ".sous");
       const a = await listedRepo("a");

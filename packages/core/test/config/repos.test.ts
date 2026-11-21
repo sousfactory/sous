@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Exec } from "../../src/adapters/exec.js";
-import { repoEntries, repoNameOf, routeIssue, sameLocationProblems, trackerLocationOf } from "../../src/config/repos.js";
+import { ownerNameOf, repoEntries, repoNameOf, routeIssue, sameLocationProblems, trackerLocationOf } from "../../src/config/repos.js";
 import { DEFAULT_SETTINGS, parseSettings } from "../../src/config/settings.js";
 import { validateProject } from "../../src/config/validate.js";
 
@@ -77,6 +77,35 @@ describe("sous validate with repos", () => {
   it("reports two list entries named by the same folder", () => {
     const { root } = workspace("repos: [../a, ../x/a]\n");
     expect(validateProject(root).errors.map((e) => e.message)).toContain("repos: two entries are named a; use a map to name them apart");
+  });
+});
+
+describe("ownerNameOf", () => {
+  it("reads owner/name from a github.com origin in every form git writes", () => {
+    for (const url of [
+      "git@github.com:acme/web.git",
+      "git@github.com:acme/web",
+      "https://github.com/acme/web",
+      "https://github.com/acme/web.git/",
+      "http://github.com/acme/web/",
+      "ssh://git@github.com/acme/web.git",
+      "git://github.com/acme/web.git",
+    ])
+      expect(ownerNameOf(url)).toBe("acme/web");
+  });
+
+  it("reads nothing from another host or a path of more than owner/name", () => {
+    for (const url of [
+      "git@gitlab.com:acme/web.git",
+      "https://gitlab.com/group/sub/web.git",
+      "https://github.example.com/acme/web",
+      "https://github.com/acme/web/extra",
+      "git@github.com:acme/team/web.git",
+      "https://github.com/acme",
+      "/srv/git/acme/web.git",
+      "",
+    ])
+      expect(ownerNameOf(url)).toBeUndefined();
   });
 });
 

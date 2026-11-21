@@ -28,11 +28,18 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   ```
 
   The old keys are refused by `sous validate`, `sous run`, `sous watch`
-  and the run viewer, one message each: `tracker is now a block: …`,
-  `trackerOptions.repo is now tracker.repo`, `labelPrefix is now
-  tracker.labels`. `sous init` writes the block with `shared: false`,
-  `labels: sous` and `repo` read from the checkout's origin; without an
-  origin it writes `repo: owner/name`, which is refused until replaced. A
+  and the run viewer, one message each: `tracker is now a block: …`
+  showing the block of the string's own type (`tracker: beads` with
+  `type: beads`, `tracker: local` with `type: local, dir: issues`, a
+  module path with `type: <path>`), `trackerOptions.repo is now
+  tracker.repo`, `labelPrefix is now tracker.labels`. `sous init --starter`
+  refuses a starter whose `sous.yaml` still has one of them, naming the
+  file and line, before copying anything. `sous init` writes the block
+  with `shared: false`, `labels: sous` and `repo` read from the
+  checkout's origin when it is a github.com URL of exactly `owner/name`;
+  without one (no origin, another host, a longer path) it writes `repo:
+  owner/name` and says so, the one `sous.yaml` it writes that is refused
+  until replaced. A
   tracker module still receives the label prefix as `env.labelPrefix`,
   and the block as its options.
 - **`sous watch` runs an issue where its tracker lives.** An issue listed
@@ -44,25 +51,31 @@ are described in their annotated tag messages (`git tag -n99 v0.3.0`).
   shared issue listed by several entries runs once, and its start is
   preceded by `#42: running in web (acme/planning)`. Two `repos:` entries
   on one tracker without `shared: true` in both are a `sous validate`
-  error in the home and a `sous watch` refusal naming both.
+  error in the home and a `sous watch` refusal naming both; both judge
+  the entries the daemon loads, so an entry set aside for its `engine:`
+  is not counted.
 - **`sous run` in a home repository looks the issue up as `sous watch`
   does; `--repo` is gone.** `sous run 42` asks every distinct tracker of
   the `repos:` entries (by type and location) for issue 42, ready label or
   not, and runs it where the routing rule of `sous watch` says, so a home
-  repository needs no tracker of its own. A number several trackers hold
-  exits 2 listing `sous run <name>#42` for each entry that holds it;
-  `sous run web#42` asks entry web's tracker alone. Not found, or closed
-  wherever found, exits 2 naming the trackers asked. `sous run 42 --repo
+  repository needs no tracker of its own. The arguments are read before
+  any entry loads, so a usage error or `--repo` comes first. A number
+  several trackers hold exits 2 listing `sous run <name>#42` once per
+  tracker that holds it; `sous run web#42` loads and asks entry web
+  alone, so another entry's broken settings do not stop it. Not found,
+  or closed wherever found, exits 2 naming the trackers asked; not found
+  also names the entries set aside and so not asked. `sous run 42 --repo
   api` exits 2 naming `sous run api#42`: update scripts to the qualified
   form. The command is `sous run <issue | name#issue> [--flow <name>]
-  [--restart]`; outside a home repository a bare id behaves as before.
+  [--restart]`; outside a home repository the id goes to the tracker as
+  typed but for one leading `#`, so an id containing `#` runs.
   Only a definite miss counts: a tracker that fails to answer stops the
   lookup with exit 2 naming it and its error. A tracker module's
   `getIssue` throws `IssueNotFoundError` from `sous-factory` (or any error
   with `code: "ISSUE_NOT_FOUND"`) for an id it has no issue under; any
   other error it throws stops `sous run` in a home repository.
 - **`sous run <issue>`: the flow comes from the issue's labels.** The
-  command is `sous run <issue> [--flow <name>] [--restart]`. Without
+  command is `sous run <issue | name#issue> [--flow <name>] [--restart]`. Without
   `--flow` the one flow whose `allowedLabels` accept the issue runs; none
   or several is exit 2 with a message naming the labels, or the flows and
   whether the issue carries several `type:*` labels or several flows

@@ -37,11 +37,11 @@ import { formatError } from "./validate.js";
 
 /**
  * `issue` is the tracker's id as typed, minus a leading `#`, so `sous run #96`
- * works. `flow` is named with `--flow`; absent, the issue's labels resolve it.
- * `entry` is the `repos:` entry of `name#issue`, in a home repository only:
- * the name is everything before the last `#`.
+ * works; any other `#` is the tracker's (`name#issue` is split by the home
+ * repository alone, `entryOf`). `flow` is named with `--flow`; absent, the
+ * issue's labels resolve it.
  */
-export type RunArgs = { issue: string; flow?: string; entry?: string; restart: boolean };
+export type RunArgs = { issue: string; flow?: string; restart: boolean };
 
 export type RunDeps = {
   /** The project root (`.sous/`). */
@@ -103,11 +103,19 @@ export const parseRunArgs = (args: readonly string[]): RunArgs | { error: string
   }
   const [issueArg] = positional;
   if (issueArg === undefined || positional.length > 1) return { error: USAGE };
-  const hash = issueArg.lastIndexOf("#");
-  const entry = hash > 0 ? issueArg.slice(0, hash) : undefined;
-  const issue = hash > 0 ? issueArg.slice(hash + 1) : issueArg.replace(/^#/, "");
+  const issue = issueArg.replace(/^#/, "");
   if (issue === "") return { error: USAGE };
-  return { ...(entry !== undefined ? { entry } : {}), issue, ...(flow !== undefined ? { flow } : {}), restart };
+  return { issue, ...(flow !== undefined ? { flow } : {}), restart };
+};
+
+/**
+ * `name#issue` of a home repository's `sous run`: the `repos:` entry is
+ * everything before the last `#`, `undefined` for a bare id; `issue` is
+ * empty when nothing follows the `#`.
+ */
+export const entryOf = (id: string): { entry?: string; issue: string } => {
+  const hash = id.lastIndexOf("#");
+  return hash > 0 ? { entry: id.slice(0, hash), issue: id.slice(hash + 1) } : { issue: id };
 };
 
 export const gitShortSha = (repoRoot: string) => async (): Promise<string> => {
@@ -211,11 +219,6 @@ export const runCommand = async (args: readonly string[], deps: RunDeps): Promis
     return 2;
   }
   const { root, repoRoot, git, tracker, out, err } = deps;
-  // A home repository's `sous run` routes before it gets here; this one is the repository the run is in.
-  if (parsed.entry !== undefined) {
-    err(`sous run: ${parsed.entry}#${parsed.issue} names an entry of repos:, and this repository's sous.yaml lists none; run sous run ${parsed.issue}`);
-    return 2;
-  }
   const clock = deps.clock ?? (() => new Date());
   const log: Logger = { info: out, warn: err };
 

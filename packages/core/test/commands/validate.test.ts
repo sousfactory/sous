@@ -76,7 +76,7 @@ describe("validateCommand", () => {
     const { deps: lines, err } = io();
     expect(await validateCommand([], { ...deps(root), ...lines })).toBe(2);
     expect(err[0]).toBe(
-      "sous.yaml: settings: tracker is now a block: tracker: { type: github, repo: owner/name, shared: false, labels: sous }; trackerOptions.dir is now tracker.dir; labelPrefix is now tracker.labels",
+      "sous.yaml: settings: tracker is now a block: tracker: { type: local, dir: issues, shared: false, labels: sous }; trackerOptions.dir is now tracker.dir; labelPrefix is now tracker.labels",
     );
   });
 
@@ -149,6 +149,16 @@ describe("validateCommand", () => {
     const shared = join(repository(`engine: ^0.9.0\nrepos: { docs: ${docs}, more: ${repository(block(true))} }\n`), ".sous");
     const ok = io();
     expect(await validateCommand([], { ...deps(shared), ...ok.deps })).toBe(0);
+  });
+
+  it("judges the one-tracker conflict over the entries sous watch loads: an engine-refused entry is reported for its engine alone", async () => {
+    const block = "tracker: { type: github, repo: acme/planning, shared: false, labels: sous }\n";
+    const api = repository(`engine: ^0.9.0\n${block}`);
+    const old = repository(`engine: ^0.8.0\n${block}`);
+    const home = join(repository(`engine: ^0.9.0\nrepos: { api: ${api}, old: ${old} }\n`), ".sous");
+    const { deps: lines, err } = io();
+    expect(await validateCommand([], { ...deps(home), ...lines })).toBe(2);
+    expect(err).toEqual([`sous.yaml: settings: repos.old: engine 0.9.0 does not satisfy engine: ^0.8.0 of old; run it with an engine in that range or widen the range`, "1 error(s)"]);
   });
 
   it("accepts a home repository without a tracker block whose repos: does not name it, and refuses one that names itself", async () => {

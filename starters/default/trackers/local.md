@@ -1,14 +1,16 @@
 # Tracker sheet: local
 
 How `/sous-plan` speaks to the tracker when the `tracker:` block of
-`sous.yaml` says `type: local`. Issues are plain files the engine's local adapter reads; this sheet
+`sous.yaml` says `type: local`: the sheet `.sous/trackers/<type>.md` of
+that type. Issues are plain files the engine's local adapter reads; this sheet
 is its prose twin, so the plan prompt can name a verb and this file says
 the file edit. Nothing leaves the machine.
 
 The folder is `tracker.dir` in `sous.yaml`, relative to
 `.sous/` (`.sous/issues/` in the starter). Each issue is
 `<dir>/<id>.json`; its comments are `<dir>/<id>.comments.md`. `<labels>`
-is `tracker.labels`.
+is `tracker.labels`, the state-label prefix; it has no default (`sous` in
+the starter).
 
 ```json
 {
@@ -29,7 +31,7 @@ is `tracker.labels`.
   create one; any string without `/` works, numbers keep the order readable.
 - **Kind:** one of `type:feature`, `type:task`, `type:bug` in `labels`.
 - **State labels:** `<labels>:running` and `<labels>:blocked`
-  (`sous:running`, `sous:blocked` by default) in `labels`, set and removed
+  (`sous:running`, `sous:blocked` with `labels: sous`) in `labels`, set and removed
   by the run phase only. A child carrying one is mid-run.
   `<labels>:ready` is set by a human; `/sous-plan` sets it only
   through **set ready**, on a yes at its second gate.

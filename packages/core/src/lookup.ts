@@ -48,9 +48,10 @@ const entryOf = async (name: string, root: string): Promise<LookupEntry> => {
  * The lookup of the project at `root`. An entry without `.sous/sous.yaml`, or
  * whose `engine:` this engine does not satisfy, is set aside; two entries
  * under one name, or on one tracker without `shared: true` in both, are
- * refused.
+ * refused. `only` names the one entry to load (`sous run name#issue`): the
+ * others are neither read nor judged, so a broken one does not stop it.
  */
-export const lookupOf = async (root: string, exec?: Exec, engineVersion: string = ENGINE_VERSION): Promise<Lookup> => {
+export const lookupOf = async (root: string, exec?: Exec, engineVersion: string = ENGINE_VERSION, only?: string): Promise<Lookup> => {
   const file = join(root, SETTINGS_FILE);
   const settings = loadSettings(file);
   const entries = repoEntries(root, settings);
@@ -60,7 +61,7 @@ export const lookupOf = async (root: string, exec?: Exec, engineVersion: string 
   const unrunnable = unrunnableRepos(root, settings);
   const repos: LookupEntry[] = [];
   for (const { name, path } of entries) {
-    if (unrunnable.some((u) => u.name === name)) continue;
+    if (unrunnable.some((u) => u.name === name) || (only !== undefined && name !== only)) continue;
     const projectRoot = join(path, PROJECT_DIR);
     // Before its settings load: a repository written for a newer engine may hold keys this one rejects.
     // A missing range counts too: a run nobody watches must say what it was written for.
@@ -82,14 +83,17 @@ export const lookupOf = async (root: string, exec?: Exec, engineVersion: string 
 
 /**
  * The `repos:` entries of the home at `root` as routing sees them, read
- * tolerantly for `sous validate`: an entry whose settings do not load or
- * hold no tracker block is left out, its own check reports it.
+ * tolerantly for `sous validate`: the entries `lookupOf` loads, so the two
+ * judge one set. An entry without `.sous/sous.yaml`, whose `engine:` this
+ * engine does not satisfy, or whose settings do not load or hold no tracker
+ * block is left out; its own check reports it.
  */
-export const listedTrackersOf = (root: string, settings: Pick<Settings, "repos">): Lister[] => {
+export const listedTrackersOf = (root: string, settings: Pick<Settings, "repos">, engineVersion: string = ENGINE_VERSION): Lister[] => {
   const listers: Lister[] = [];
   for (const { name, path } of repoEntries(root, settings) ?? []) {
     const projectRoot = join(path, PROJECT_DIR);
     if (!existsSync(join(projectRoot, SETTINGS_FILE))) continue;
+    if (engineRefusalOf(engineCheckOf(projectRoot, engineVersion, path), engineVersion) !== undefined) continue;
     try {
       listers.push(listerOf(name, projectRoot, loadSettings(join(projectRoot, SETTINGS_FILE))));
     } catch {

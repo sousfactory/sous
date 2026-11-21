@@ -1,4 +1,4 @@
-<!-- TEMPLATE: the /sous-plan skill starts this prompt. It came with the starter and speaks to the tracker only through the verbs defined in `.sous/trackers/<tracker>.md` (github, beads, local). Review every ADAPT note against your steps and repository, then delete the notes. -->
+<!-- TEMPLATE: the /sous-plan skill starts this prompt. It came with the starter and speaks to the tracker only through the verbs defined in `.sous/trackers/<type>.md` (github, beads, local). Review every ADAPT note against your steps and repository, then delete the notes. -->
 # sous plan: from an idea to a spec and runnable issues
 
 You are running the plan phase of `sous` (the factory: https://github.com/sousfactory/sous/blob/main/docs/manual.md;
@@ -19,7 +19,7 @@ sous repository draws the same sequence as one diagram.
   123`, `/sous-plan #123`, `/sous-plan bd-a3f8`); a leading `#` is not part
   of the id.
 - **The tracker sheet.** Read `tracker.type` from the `tracker:` block of
-  `.sous/sous.yaml`. The sheet is `.sous/trackers/<tracker>.md`, named by
+  `.sous/sous.yaml`. The sheet is `.sous/trackers/<type>.md`, named by
   that type (`github.md`, `beads.md`, `local.md`; for a module such as
   `trackers/jira.ts`, the `.md` beside it). Every tracker
   verb below is written in bold, **like this**, and the sheet defines it as
@@ -33,8 +33,9 @@ sous repository draws the same sequence as one diagram.
   tracker or to apply a `ready-for-agent` label, this prompt says what to
   publish instead.
 - **Settings** from `.sous/sous.yaml`: `baseBranch` (the base, `main`
-  unless changed), the `branch` template, `tracker.labels`, the label
-  prefix (`sous` unless changed), written `<labels>` below,
+  unless changed), the `branch` template, `tracker.labels`, the
+  state-label prefix (no default; `sous` in the starter), written
+  `<labels>` below,
   `tracker.shared` and `specsDir` (`../specs` from `.sous`, so `specs/` at
   the repository root).
 - **The repository** the work belongs to, and its `<name>` for the

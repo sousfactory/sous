@@ -135,12 +135,16 @@ const repoPartOf = (url: string): string | undefined => {
   return part === undefined || part === "" ? undefined : part;
 };
 
-/** `acme/web` of an origin URL (`git@github.com:acme/web.git`, `https://github.com/acme/web`): the last two path parts, without `.git`. */
+/**
+ * `acme/web` of a github.com origin whose path is exactly `owner/name`
+ * (`git@github.com:acme/web.git`, `https://github.com/acme/web/`,
+ * `ssh://git@github.com/acme/web`, `git://github.com/acme/web`), else
+ * `undefined`: another host or a longer path names no github repository
+ * sous could address, so `sous init` writes the placeholder instead.
+ */
 export const ownerNameOf = (url: string): string | undefined => {
-  const parts = url.trim().replace(/\/+$/, "").replace(/\.git$/, "").split(/[/:]/);
-  const owner = parts.at(-2);
-  const name = parts.at(-1);
-  return owner === undefined || name === undefined || !/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(name) ? undefined : `${owner}/${name}`;
+  const match = /^(?:git@github\.com:|(?:https?|git):\/\/github\.com\/|ssh:\/\/git@github\.com\/)([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(url.trim());
+  return match === null ? undefined : `${match[1]}/${match[2]}`;
 };
 
 /** `owner/name` of the checkout's `origin` remote, or `undefined` without one. */

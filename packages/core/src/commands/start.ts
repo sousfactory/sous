@@ -53,7 +53,7 @@ export const startRun = async (args: readonly string[], deps: StartDeps): Promis
     runCommand(runArgs, { root, repoRoot, git, tracker: await trackerOf(root, repoRoot), openSandbox: createOpenSandbox(git), confirm: confirmOnStdin, engineVersion, out, err });
   // A home repository runs nothing itself: the issue is looked up as `sous watch` looks, and runs where it would.
   if (isHomeRepository(root)) {
-    const lookup = await lookupOf(root, undefined, engineVersion);
+    const lookup = (only?: string) => lookupOf(root, undefined, engineVersion, only);
     return homeRunCommand(args, { root, lookup, engine: engineCommandOf(deps.cliFile), engineVersion, runChild: runChildInTerminal, runHere, out, err });
   }
   return runHere(args);

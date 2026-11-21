@@ -10,10 +10,11 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 import { exec as defaultExec, type Exec } from "../adapters/exec.js";
 import { ENGINE_VERSION, initialRange } from "../config/engine.js";
 import { originRepoOf } from "../config/repos.js";
-import { REPO_PLACEHOLDER, SETTINGS_FILE } from "../config/settings.js";
+import { oldKeyRefusals, REPO_PLACEHOLDER, SETTINGS_FILE } from "../config/settings.js";
 import { PROJECT_DIR } from "../root.js";
 
 export const USAGE = "usage: sous init [--starter <dir>] [--force] [--no-install] [<path>]";
@@ -97,6 +98,38 @@ const withTracker = (text: string, repo: string): string => {
   return `${lines.join("\n")}\n`;
 };
 
+/**
+ * The settings parser's refusals of the keys before the tracker block, each
+ * as `<file>:<line>: <refusal>`: init neither guesses a block's location nor
+ * copies a `sous.yaml` the next command refuses. A file that does not parse
+ * is left to `sous validate`.
+ */
+export const oldKeysIn = (text: string, file: string): string[] => {
+  let doc: unknown;
+  try {
+    doc = parse(text);
+  } catch {
+    return [];
+  }
+  const lines = text.split("\n");
+  return oldKeyRefusals(doc).map((refusal) => {
+    const key = refusal.split(/[ .]/)[0] ?? "";
+    const line = lines.findIndex((l) => new RegExp(`^${key}\\s*:`).test(l));
+    return `${file}${line === -1 ? "" : `:${line + 1}`}: ${refusal}`;
+  });
+};
+
+/** `repo:` of the `tracker:` block in `text` (a `sous.yaml`), or `undefined` when the block names none. */
+const trackerRepoOf = (text: string): unknown => {
+  try {
+    const doc: unknown = parse(text);
+    const tracker = typeof doc === "object" && doc !== null ? (doc as Record<string, unknown>)["tracker"] : undefined;
+    return typeof tracker === "object" && tracker !== null ? (tracker as Record<string, unknown>)["repo"] : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 /** Folders a starter checkout may contain that a fresh project must not inherit. */
 const SKIPPED = new Set(["node_modules", "logs", "runs", "locks", ".lock"]);
 
@@ -159,6 +192,12 @@ export const initCommand = async (args: readonly string[], deps: InitDeps): Prom
     err(`sous init: no starter at ${starter}; pass --starter <dir>`);
     return 2;
   }
+  const starterSettings = join(starter, SETTINGS_FILE);
+  const oldKeys = existsSync(starterSettings) ? oldKeysIn(await readFile(starterSettings, "utf8"), starterSettings) : [];
+  if (oldKeys.length > 0) {
+    for (const line of oldKeys) err(`sous init: ${line}`);
+    return 2;
+  }
   const target = join(repoRoot, PROJECT_DIR);
   if (!(await isEmptyDir(target)) && !parsed.force) {
     err(`sous init: ${target} is not empty; pass --force to copy over it`);
@@ -188,8 +227,8 @@ export const initCommand = async (args: readonly string[], deps: InitDeps): Prom
 
   // A path argument's project as typed from where init ran, so the checklist reads right in that shell.
   const project = relative(parsed.path !== undefined ? (deps.cwd ?? deps.repoRoot) : repoRoot, target);
-  if (origin === undefined && (await readFile(settingsFile, "utf8")).includes(REPO_PLACEHOLDER)) {
-    out(`init: the checkout has no origin; set tracker.repo in ${join(project, SETTINGS_FILE)} to the owner/name of the repository the issues live in`);
+  if (trackerRepoOf(await readFile(settingsFile, "utf8")) === REPO_PLACEHOLDER) {
+    out(`init: the checkout has no github.com origin; set tracker.repo in ${join(project, SETTINGS_FILE)} to the owner/name of the repository the issues live in`);
   }
   if (!parsed.install) {
     const entry = resolve(repoRoot) === resolve(deps.repoRoot) ? undefined : relative(deps.repoRoot, repoRoot);

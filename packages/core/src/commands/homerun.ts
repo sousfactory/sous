@@ -17,11 +17,11 @@ import { join, resolve } from "node:path";
 import { ENGINE_VERSION, engineCheckOf, engineRefusalOf } from "../config/engine.js";
 import { repoEntries, routeIssue, type TrackerLocation } from "../config/repos.js";
 import { loadSettings, SETTINGS_FILE } from "../config/settings.js";
-import type { Lookup, LookupEntry } from "../lookup.js";
+import { listedTrackersOf, type Lookup, type LookupEntry } from "../lookup.js";
 import { isIssueNotFound, type Issue } from "../ports/tracker.js";
 import { messageOf } from "../config/schema.js";
 import { PROJECT_DIR } from "../root.js";
-import { parseRunArgs, SIGNAL_EXIT_CODES, type StopSignal } from "./run.js";
+import { entryOf, parseRunArgs, SIGNAL_EXIT_CODES, USAGE, type StopSignal } from "./run.js";
 
 /** Runs `command args` in `cwd` with `env` over this process's own, the terminal shared; resolves with its exit code. Injected so tests start no processes. */
 export type RunChild = (command: string, args: readonly string[], options: { cwd: string; env: Record<string, string> }) => Promise<number>;
@@ -29,8 +29,12 @@ export type RunChild = (command: string, args: readonly string[], options: { cwd
 export type HomeRunDeps = {
   /** The home repository's project root (`.sous/`), the one with `repos:`. */
   root: string;
-  /** The entries and their trackers (`lookupOf`), as `sous watch` serves them. */
-  lookup: Lookup;
+  /**
+   * The entries and their trackers (`lookupOf`), as `sous watch` serves them;
+   * `only` loads that entry alone. Called once the arguments parse, so a
+   * usage error is never hidden behind a broken entry.
+   */
+  lookup: (only?: string) => Promise<Lookup>;
   /** The running engine's CLI as a command line (`engineCommandOf`). */
   engine: readonly string[];
   /** The running engine's version, checked against the entry's `engine:` as the daemon checks it; injectable for tests. */
@@ -77,8 +81,11 @@ const findIn = async (entry: LookupEntry, id: string): Promise<Found> => {
   return { issue, listedBy: entry };
 };
 
-/** A bare id: every distinct tracker, once; found open in exactly one, that one listed it. */
-const findAcross = async (repos: readonly LookupEntry[], id: string): Promise<Found> => {
+/**
+ * A bare id: every distinct tracker, once; found open in exactly one, that
+ * one listed it. `notAsked` explains a miss by the entries not asked.
+ */
+const findAcross = async (repos: readonly LookupEntry[], id: string, notAsked: string): Promise<Found> => {
   const trackers = new Map<string, LookupEntry[]>();
   for (const repo of repos) trackers.set(keyOf(repo.location), [...(trackers.get(keyOf(repo.location)) ?? []), repo]);
   const asked = [...trackers.values()].map((on) => trackerName(on[0]!.location)).join(", ");
@@ -90,9 +97,10 @@ const findAcross = async (repos: readonly LookupEntry[], id: string): Promise<Fo
     if (issue.state === "closed") closed = true;
     else open.push({ issue, on });
   }
-  if (open.length === 0) return { error: closed ? `issue ${id} is closed wherever it is found (asked: ${asked})` : `issue ${id} is in none of the trackers asked (${asked})` };
+  if (open.length === 0) return { error: closed ? `issue ${id} is closed wherever it is found (asked: ${asked})` : `issue ${id} is in none of the trackers asked (${asked})${notAsked}` };
   if (open.length > 1) {
-    const named = open.flatMap(({ on }) => on.map((e) => `sous run ${e.name}#${id}`));
+    // One form per tracker: every entry on a shared one asks the same tracker, and the label routes it.
+    const named = open.map(({ on }) => `sous run ${on[0]!.name}#${id}`);
     return { error: `issue ${id} is in several trackers; name the entry: ${named.join(", ")}` };
   }
   const [{ issue, on }] = open as [{ issue: Issue; on: LookupEntry[] }];
@@ -113,35 +121,50 @@ export const homeRunCommand = async (args: readonly string[], deps: HomeRunDeps)
     deps.err(parsed.error);
     return 2;
   }
+  const { entry: named, issue: id } = entryOf(parsed.issue);
+  if (id === "") {
+    deps.err(USAGE);
+    return 2;
+  }
   const fail = (message: string): number => {
     deps.err(`sous run: ${message}`);
     return 2;
   };
-  const { repos, unrunnable } = deps.lookup;
   const version = deps.engineVersion ?? ENGINE_VERSION;
-  const entries = repoEntries(deps.root, loadSettings(join(deps.root, SETTINGS_FILE))) ?? [];
+  const settings = loadSettings(join(deps.root, SETTINGS_FILE));
+  const entries = repoEntries(deps.root, settings) ?? [];
   const pathOf = (name: string): string => entries.find((e) => e.name === name)!.path;
+  // Refused before anything loads: what the daemon would set aside is refused in its words.
+  if (named !== undefined) {
+    if (!entries.some((e) => e.name === named)) return fail(`${named}#${id}: ${named} names no entry of repos: (${entries.map((e) => e.name).join(", ")})`);
+    const refusal = unrunnableReason(named, pathOf(named), version);
+    if (refusal !== undefined) return fail(refusal);
+  }
+  const { repos, unrunnable } = await deps.lookup(named);
 
   const unanswered = (error: unknown): Found => {
     if (error instanceof Unanswered) return { error: error.message };
     throw error;
   };
   let found: Found;
-  if (parsed.entry !== undefined) {
-    const qualified = `${parsed.entry}#${parsed.issue}`;
-    const entry = repos.find((r) => r.name === parsed.entry);
-    if (entry === undefined) {
-      if (!entries.some((e) => e.name === parsed.entry)) return fail(`${qualified}: ${parsed.entry} names no entry of repos: (${entries.map((e) => e.name).join(", ")})`);
-      return fail(unrunnableReason(parsed.entry, pathOf(parsed.entry), version) ?? `${parsed.entry}: ${unrunnable.find((u) => u.name === parsed.entry)?.reason ?? "not served"}`);
-    }
-    found = await findIn(entry, parsed.issue).catch(unanswered);
-  } else found = await findAcross(repos, parsed.issue).catch(unanswered);
-  // Entries the lookup set aside were not asked: an issue only their trackers hold is not found, and the message says why.
-  const notAsked = parsed.entry === undefined && unrunnable.length > 0 ? `; not asked, as nothing runs there: ${unrunnable.map((u) => u.name).join(", ")}` : "";
-  if ("error" in found) return fail(`${found.error}${notAsked}`);
+  if (named !== undefined) {
+    const entry = repos.find((r) => r.name === named);
+    if (entry === undefined) return fail(`${named}: ${unrunnable.find((u) => u.name === named)?.reason ?? "not served"}`);
+    found = await findIn(entry, id).catch(unanswered);
+  } else {
+    // Entries the lookup set aside were not asked: an issue only their trackers hold is not found, and the message says why.
+    const notAsked = unrunnable.length > 0 ? `; not asked, as nothing runs there: ${unrunnable.map((u) => u.name).join(", ")}` : "";
+    found = await findAcross(repos, id, notAsked).catch(unanswered);
+  }
+  if ("error" in found) return fail(found.error);
 
   const { issue, listedBy } = found;
-  const route = routeIssue(issue.labels, { listedBy, entries: [...repos, ...unrunnable.map(({ name }) => ({ name }))], home: true });
+  // Entries not loaded (set aside, or not asked for by name#issue) keep the location their settings name, read
+  // tolerantly and without building a tracker, so a label naming an entry on another tracker is still refused;
+  // one whose settings do not load, or that is set aside, takes part by name only.
+  const located = listedTrackersOf(deps.root, settings, version);
+  const others = entries.filter((e) => !repos.some((r) => r.name === e.name)).map(({ name }) => located.find((l) => l.name === name) ?? { name });
+  const route = routeIssue(issue.labels, { listedBy, entries: [...repos, ...others], home: true });
   if ("reason" in route) return fail(`${issue.ref}: ${route.reason}`);
   const name = route.to;
   const path = pathOf(name);

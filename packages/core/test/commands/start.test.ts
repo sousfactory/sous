@@ -100,5 +100,27 @@ describe("sous run and sous watch from the command line", () => {
       expect(await startRun(["42", "--repo", "b"], deps())).toBe(2);
       expect(err).toEqual(["sous run: --repo is gone; name the entry with the issue: sous run b#42\nusage: sous run <issue | name#issue> [--flow <name>] [--restart]"]);
     });
+
+    it("sous run reports a usage error or --repo before any entry's settings load, even a broken one", async () => {
+      await entry("a", []);
+      await mkdir(join(repoRoot, "b", ".sous"), { recursive: true });
+      await writeFile(join(repoRoot, "b", ".sous", "sous.yaml"), "engine: ^0.9.0\ntracker: beads\n");
+      expect(await startRun(["--bogus"], deps())).toBe(2);
+      expect(await startRun(["42", "--repo", "b"], deps())).toBe(2);
+      expect(err).toEqual([
+        "unknown option --bogus\nusage: sous run <issue | name#issue> [--flow <name>] [--restart]",
+        "sous run: --repo is gone; name the entry with the issue: sous run b#42\nusage: sous run <issue | name#issue> [--flow <name>] [--restart]",
+      ]);
+    });
+
+    it("sous run name#issue asks that entry's tracker alone, whatever another entry holds", async () => {
+      const a = await entry("a", []);
+      await mkdir(join(repoRoot, "b", ".sous"), { recursive: true });
+      await writeFile(join(repoRoot, "b", ".sous", "sous.yaml"), "engine: ^0.9.0\ntracker: beads\n");
+      expect(await startRun(["a#7"], deps())).toBe(2);
+      await writeFile(join(repoRoot, "b", ".sous", "sous.yaml"), "engine: ^0.10.0\nfromTheFuture: true\n");
+      expect(await startRun(["a#7"], deps())).toBe(2);
+      expect(err).toEqual([`sous run: a#7 is not in the tracker of a (local ${a})`, `sous run: a#7 is not in the tracker of a (local ${a})`]);
+    });
   });
 });
