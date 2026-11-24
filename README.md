@@ -132,11 +132,28 @@ is GitHub, beads, local files or a module of your own. The
 ## Quick start
 
 Once per machine: Node 22, `gh auth login`, and `claude` or `codex` on the
-`PATH`. Then, from the repository root:
+`PATH`.
+
+**Guided, recommended.** Paste this into Claude Code at the repository root:
+
+```
+Install the sous-setup skill into this repository and run it: copy the folder
+skills/sous-setup from https://github.com/sousfactory/sous into .claude/skills/,
+then invoke /sous-setup.
+```
+
+`/sous-setup` asks whether sous serves one repository or several and which
+tracker holds the work, installs and inits `sous-factory`, then adapts the
+check commands, `sous.yaml`, the flows and the plan prompt with you, every
+edit shown as a diff before it is written. It ends with `validate` and a
+smoke run command, skips what is already done, and offers `/sous-migrate` for
+a development-loop skill the repository already has.
+
+**By hand.** From the repository root:
 
 ```sh
 npm install -D sous-factory
-npx sous init                 # copies the starter into .sous/, installs it, adds /sous-plan and /sous-run
+npx sous init                     # copies the starter into .sous/, installs it, adds /sous-plan and /sous-run
 
 cd .sous
 ./sous validate
@@ -157,9 +174,7 @@ tracker:
 ```
 
 On a shared tracker each issue carries a `repo:<name>` label naming the
-repository that runs it; on a repository's own tracker none is needed. Prefer a guided setup? Copy
-`skills/sous-setup` from this repository into `.claude/skills/`, then
-`/sous-setup` installs, inits and adapts the files with you in Claude Code.
+repository that runs it; on a repository's own tracker none is needed.
 
 Daily use:
 
