@@ -5,6 +5,12 @@ One section per version, newest first; the release workflow publishes the
 section of the tagged version as the GitHub Release. Versions before 0.4.0
 are described in their annotated tag messages (`git tag -n99 v0.3.0`).
 
+## Unreleased
+
+### Fixed
+
+- **`sous-run` skill: the status answer renders as markdown.** The layout block is marked as markdown source to write as plain text, not inside a code fence, so the table shows as a table; blank lines keep the mode, daemon and UI lines apart; a title prefixed with the entry's name (`<name>: …`) drops the prefix in the table.
+
 ## 0.9.0
 
 ### Breaking

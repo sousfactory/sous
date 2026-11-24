@@ -31,11 +31,17 @@ the command it names, and answer in its layout, the same every time.
 
 On "what is running", "status", "how is 42 doing" and the like, run
 `sous status --json`; when the human named an issue, also
-`sous status <issue> --json`. Answer in this layout, nothing before it:
+`sous status <issue> --json`. Answer in this layout, nothing before it.
+The block below is the markdown source of the answer: write it as plain
+markdown, never inside a code fence, so the table renders as a table. The
+blank lines between the first three lines keep markdown from joining them
+into one paragraph.
 
-```
+````markdown
 single repository <name> · engine <engine>
+
 daemon: <running (pid <pid>, since <time>) | none | stale lock, no daemon>
+
 ui: <url | not running (sous ui)>
 
 | issue | title | state | step | since |
@@ -43,8 +49,9 @@ ui: <url | not running (sous ui)>
 | <issue> | <title or -> | <state> | <step or -> | <since as a duration, or -> |
 
 <n> done, see sous ui
+
 <notes>
-```
+````
 
 - **Mode line.** `mode: "single"` gives `single repository <name>` (the one
   entry's name); `mode: "home"` gives `home repository, <n> entries:
@@ -55,7 +62,9 @@ ui: <url | not running (sous ui)>
   terminal makes it clickable), else `not running (sous ui)`.
 - **The table.** One row per run of every entry, then the entry's
   `ready[]` as rows with state `ready`, step `-` and since `-`. In a home,
-  an `entry` column comes first. Sort the rows by state (running,
+  an `entry` column comes first. A title that starts with the entry's
+  name and a colon (`<name>: …`) drops that prefix, so the row stays
+  short. Sort the rows by state (running,
   blocked, crashed, interrupted, ready), then by the entries' order in
   the JSON, then by issue number; do this yourself, whatever order the
   JSON lists them in. `since` is an ISO time; print how
